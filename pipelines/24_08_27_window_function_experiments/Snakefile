@@ -1,0 +1,9 @@
+rule all:
+    input:
+        "data/touchfile_download_act"
+
+rule download_act:
+    output:
+        "data/touchfile_download_act"
+    shell:
+        "python -m kszx download_act 5 && touch {output}"
