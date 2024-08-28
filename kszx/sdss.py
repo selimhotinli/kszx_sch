@@ -1,21 +1,64 @@
 import os
 import gzip
 import shutil
+import fitsio
 
+from . import Catalog
 from . import io_utils
 
 
 def read_galaxies(survey, download=False):
-    pass
+    filename = _galaxy_filename(survey, download)
+    return read_fits_catalog(filename, is_randcat=False)
 
 
 def read_randoms(survey, download=False):
-    pass
+    filenames = _random_filenames(survey, download)
+    catalogs = [ read_fits_catalog(f, is_randcat=True) for f in filenames ]
+    return Catalog.concatenate(catalogs, name=f'{survey} randoms', destructive=True)
 
 
 def download(survey):
     _galaxy_filename(survey, download=True)
     _random_filenames(survey, download=True)
+
+
+####################################################################################################
+
+
+def read_fits_catalog(filename, is_randcat, name=None, extra_columns=[]):
+    """Intended to be called through wrapper such as read_galaxies() or read_randoms()."""
+
+    print(f'Reading {filename}')
+    catalog = Catalog(name=name, filename=filename)
+
+    with fitsio.FITS(filename) as f:
+        
+        # For a list of all fields, see
+        #   https://data.sdss.org/datamodel/files/BOSS_LSS_REDUX/galaxy_DRX_SAMPLE_NS.html
+        #   http://data.sdss3.org/datamodel/files/BOSS_LSS_REDUX/galaxy_DR11v1_SAMPLE_NS.html
+        #   http://data.sdss3.org/datamodel/files/BOSS_LSS_REDUX/randomN_DR10v8_SAMPLE_NS.html
+        
+        catalog.add_column('ra_deg', f[1].read('RA'))
+        catalog.add_column('dec_deg', f[1].read('DEC'))
+        catalog.add_column('z', f[1].read('Z'))
+
+        # catalog.add_column('ipoly', f[1].read('IPOLY'))
+        # catalog.add_column('isect', f[1].read('ISECT'))
+
+        if not is_randcat:
+            catalog.add_column('wfkp', f[1].read('WEIGHT_FKP'))
+            catalog.add_column('wcp', f[1].read('WEIGHT_CP'))
+            catalog.add_column('wzf', f[1].read('WEIGHT_NOZ'))
+            catalog.add_column('wsys', f[1].read('WEIGHT_SYSTOT'))
+            catalog.add_column('cboss', f[1].read('COMP'))
+            catalog.add_column('id', f[1].read('ID'))
+
+        for col_name in extra_columns:
+            catalog.add_column(col_name.lower(), f[1].read(col_name.upper()))
+
+    catalog._announce_file_read()
+    return catalog
 
 
 ####################################################################################################
