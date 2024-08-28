@@ -54,4 +54,5 @@ def wget(filename, url):
     print(f'Downloading {url} -> {filename}')
     
     wget_module.download(url, out=filename)
+    print()   # extra newline after progress bar
     assert os.path.exists(filename)

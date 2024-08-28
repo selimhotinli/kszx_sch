@@ -1,9 +1,16 @@
 rule all:
     input:
-        "data/touchfile_download_act"
+        "data/touchfile_download_act",
+        "data/touchfile_download_sdss"
 
 rule download_act:
     output:
         "data/touchfile_download_act"
     shell:
         "python -m kszx download_act 5 && touch {output}"
+
+rule download_sdss:
+    output:
+        "data/touchfile_download_sdss"
+    shell:
+        "python -m kszx download_sdss CMASS_North && touch {output}"
