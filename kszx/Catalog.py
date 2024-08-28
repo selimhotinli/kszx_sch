@@ -2,8 +2,10 @@ import h5py
 import copy
 import healpy
 import numpy as np
+import pixell.enmap
 
-from . import io_utils    # mkdir_containing()
+from . import io_utils       # mkdir_containing()
+from . import pixell_utils   # ang2pix()
 
 
 class Catalog:
@@ -85,7 +87,8 @@ class Catalog:
         new_size = np.sum(mask)
 
         if name is not None:
-            print(f'{name}: {self.size} -> {new_size}')
+            p = 100 * new_size / self.size
+            print(f'{name}: {self.size} -> {new_size} [{p:.05}% retained]')
         
         for col_name in self.col_names:
             col = getattr(self, col_name)
@@ -127,6 +130,42 @@ class Catalog:
                 ret[ipix[i]] += weights[i]
                 
         return ret
+
+
+    def to_pixell(self, shape, wcs, weights=None, allow_outliers=False):
+        """Returns a pixell.enmap.ndmap.
+        
+        If 'allow_outliers' is True, then "out-of-bounds" galaxies (i.e. galaxies outside 
+        the boundaries of the pixell map) will be silently discarded. If 'allow_outliers'
+        is False, then out-of-bounds galaxies will raise an exception."""
+
+        # Returns (idec,ira) if allow_outliers is False, or (idec,ira,mask) if allow_outliers is True.
+        
+        if weights is not None:
+            weights = np.asarray(weights)
+            assert weights.shape == (self.size,)
+
+        if not allow_outliers:
+            idec, ira = pixell_utils.ang2pix(shape, wcs, self.ra_deg, self.dec_deg, allow_outliers=False)
+            ra_deg, dec_deg = self.ra_deg, self.dec_deg
+        else:
+            idec, ira, mask = pixell_utils.ang2pix(shape, wcs, self.ra_deg, self.dec_deg, allow_outliers=True)
+            idec, ira, ra_deg, dec_deg = idec[mask], ira[mask], self.ra_deg[mask], self.dec_deg[mask]
+            weights = weights[mask] if (weights is not None) else None
+            
+        # FIXME slow non-vectorized loop, write C++ helper function?
+        # (I don't think there is a numpy function that helps.)
+
+        ret = np.zeros(shape)
+
+        if weights is None:
+            for i in range(self.size):
+                ret[idec[i],ira[i]] += 1.0
+        else:
+            for i in range(self.size):
+                ret[idec[i],ira[i]] += weights[i]
+                
+        return pixell.enmap.enmap(ret, wcs=wcs)
 
 
     def generate_batches(self, batchsize, verbose=True):

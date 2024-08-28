@@ -102,7 +102,7 @@ def _beam_filename(freq, dr, download=False):
     return _act_path(f'act_dr5.01_auxilliary.zip', dr, download, is_aux=True)
 
 
-def _read_map(self, filename):
+def _read_map(filename):
     """Called by read_cmb() and read_ivar()."""
     
     print(f'Reading {filename}')

@@ -1,8 +1,42 @@
+### Environment:
+
+```
 conda create -n kszx -c conda-forge \
    python jupyterlab jupytext pybind11 automake gxx_linux-64 \
    h5py python-wget astropy camb fitsio healpy \
    bioconda::snakemake
 
-conda activate ksz
+conda activate kszx
 
-pip install pixell
+pip install pixell   # not in conda
+```
+
+### Jupyterlab:
+
+Doing this the "wrong" way for now -- will set up jupyterhub later.
+
+One-time initializations:
+```
+# On server, starts interactive dialog to set password
+jupyter lab password 
+
+# In server bashrc
+alias iamtunnel='echo && echo && echo "      THIS IS AN SSH TUNNEL -- DO NOT CLOSE THIS WINDOW     " && echo && echo && sleep 10000000'
+
+# In laptop bashrc
+tunnel_mango='ssh -L 8888:localhost:8888 mango'
+```
+
+On server:
+```
+tmux new -s jupyter   # subsequent commands are in this tmux window
+conda activate kszx   # since jupyter is not in base conda env
+jupyter lab list      # check whether jupyter is already running
+jupyter lab --no-browser --port=8888 --notebook-dir=/home/kmsmith/git/kszx/pipelines
+```
+
+On laptop (to connect):
+```
+tunnel_mango
+iamtunnel
+```
