@@ -159,10 +159,10 @@ class Catalog:
         ret = np.zeros(shape)
 
         if weights is None:
-            for i in range(self.size):
+            for i in range(len(idec)):
                 ret[idec[i],ira[i]] += 1.0
         else:
-            for i in range(self.size):
+            for i in range(len(idec)):
                 ret[idec[i],ira[i]] += weights[i]
                 
         return pixell.enmap.enmap(ret, wcs=wcs)

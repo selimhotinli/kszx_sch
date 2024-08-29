@@ -1,5 +1,6 @@
 import numpy as np
 import pixell.enmap
+import pixell.enplot
 import pixell.curvedsky
 
 from . import io_utils
@@ -22,7 +23,34 @@ def write_map(filename, m):
     io_utils.mkdir_contaning(filename)
     pixell.enmap.write_map(filename, m)
 
+
+def plot_map(m, downgrade, nolabels=True, filename=None, **kwds):
+    """Thin wrapper around pixell.enplot(), just adding a few tweaks:
+
+       - Make downgrade argument mandatory (usually needed in practice to avoid
+         runaway heavyweight behavior). Suggest downgrade=40 for ACT.
+
+       - Make nolabels=True the default (haven't figured out how to make labels
+         look reasonable).
+
+       - Add 'filename' argument to select between show/write.
+
+    For more kwds, see:
+      https://pixell.readthedocs.io/en/latest/reference.html#pixell.enplot.plot"""
     
+    assert isinstance(m, pixell.enmap.ndmap)
+
+    bunch = pixell.enplot.plot(m, downgrade=downgrade, nolabels=nolabels, **kwds)
+
+    if filename is None:
+        pixell.enplot.show(bunch)
+    else:
+        print(f'Writing {filename}')
+        assert filename.endswith('.png')
+        io_utils.mkdir_containing(filename)
+        pixell.enplot.write(filename[:-4], bunch)
+
+
 ####################################################################################################
 
 

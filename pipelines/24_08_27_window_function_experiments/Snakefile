@@ -1,6 +1,7 @@
 rule all:
     input:
-        "data/randoms_with_act_ivar.h5"
+        "01_plot_surveys.ipynb"
+
 
 rule download_act:
     output:
@@ -8,11 +9,13 @@ rule download_act:
     shell:
         "python -m kszx download_act 5 && touch {output}"
 
+
 rule download_sdss:
     output:
         "data/touchfile_download_sdss"
     shell:
         "python -m kszx download_sdss CMASS_North && touch {output}"
+
 
 rule eval_act_ivar_on_sdss_randoms:
     input:
@@ -23,4 +26,13 @@ rule eval_act_ivar_on_sdss_randoms:
     run:
         import local_pipeline
         local_pipeline.eval_act_ivar_on_sdss_randoms()
-        
+
+
+rule plot_surveys:
+    input:
+        "data/randoms_with_act_ivar.h5",
+        "01_plot_surveys.py"
+    output:
+        "01_plot_surveys.ipynb"
+    shell:
+        "jupytext --to notebook --execute 01_plot_surveys.py"

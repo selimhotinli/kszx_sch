@@ -7,7 +7,7 @@ def eval_act_ivar_on_sdss_randoms():
     
     idec, ira, mask = kszx.pixell_utils.ang2pix(ivar.shape, ivar.wcs, rcat.ra_deg, rcat.dec_deg, allow_outliers=True)
     rcat_ivar = np.where(mask, ivar[idec,ira], 0)
-    rcat.add_column('ivar', rcat_ivar)
+    rcat.add_column('act_ivar', rcat_ivar)
 
     # Remove randoms from catalog if ACT does not observe the corresponding pixel.
     rcat = rcat.apply_boolean_mask(rcat_ivar > 0, name = 'ACT footprint')
