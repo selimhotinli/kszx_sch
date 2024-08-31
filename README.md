@@ -32,7 +32,7 @@ On server:
 tmux new -s jupyter   # subsequent commands are in this tmux window
 conda activate kszx   # since jupyter is not in base conda env
 jupyter lab list      # check whether jupyter is already running
-jupyter lab --no-browser --port=8888 --notebook-dir=/home/kmsmith/git/kszx/pipelines
+jupyter lab --no-browser --port=8888 --notebook-dir=/home/kmsmith/git/kszx
 ```
 
 On laptop (to connect):
