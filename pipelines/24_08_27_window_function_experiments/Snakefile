@@ -1,5 +1,6 @@
 rule all:
     input:
+        "data/cosmology.pkl",
         "01_plot_surveys.ipynb"
 
 
@@ -15,6 +16,14 @@ rule download_sdss:
         "data/touchfile_download_sdss"
     shell:
         "python -m kszx download_sdss CMASS_North && touch {output}"
+
+
+rule run_camb:
+    output:
+        "data/cosmology.pkl"
+    run:
+        import local_pipeline
+        local_pipeline.run_camb()
 
 
 rule eval_act_ivar_on_sdss_randoms:

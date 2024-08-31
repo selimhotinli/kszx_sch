@@ -13,12 +13,15 @@
 #     name: python3
 # ---
 
+# %%
+import numpy as np
+import matplotlib.pyplot as plt
+import kszx
+
 # %% [markdown]
 # ### Read ACT ivar map (150 GHz) and SDSS randoms (CMASS_North)
 
 # %%
-import kszx
-
 ivar = kszx.act.read_ivar(freq=150, dr=5)
 rcat = kszx.Catalog.from_h5('data/randoms_with_act_ivar.h5')
 
@@ -38,4 +41,14 @@ rmap = rcat.to_pixell(ivar.shape, ivar.wcs, weights=rcat.act_ivar)
 kszx.pixell_utils.plot_map(rmap, downgrade=40)
 
 # %% [markdown]
-# ### (More plots to come later)
+# ### Redshift distribution of randoms
+
+# %%
+plt.hist(rcat.z, bins=50)
+plt.xlabel(r'Redshift $z$')
+plt.show()
+
+print(f'Min redshift: {np.min(rcat.z)}')
+print(f'Max redshift: {np.max(rcat.z)}')
+
+# %%

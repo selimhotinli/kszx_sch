@@ -101,6 +101,7 @@ class Cosmology:
         """
         
         if isinstance(params, str):
+            print(f"Initializing '{params}' cosmology")
             params = CosmologicalParams(params)   # 'params' arg is a string, e.g. 'planck18+bao' or 'hmvec'.
         elif not isinstance(params, CosmologicalParams):
             raise RuntimeError("Cosmology constructor: argument must be either a CosmologicalParams, or a string e.g. 'planck18+bao'")
