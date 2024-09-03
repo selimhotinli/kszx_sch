@@ -59,7 +59,6 @@ class BoundingBox(Box):
             r = np.array(r, dtype=int)
             npix = np.minimum(npix, p * 2**r)
 
-        print(f'XXX {self.npix_prepad=} {self.npix_preround=} {npix=}')
         Box.__init__(self, npix, pixsize, cpos=cpos)
 
         

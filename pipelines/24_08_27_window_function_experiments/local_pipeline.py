@@ -1,10 +1,20 @@
 import kszx
 import numpy as np
 
+
 def run_camb():
     cosmo = kszx.Cosmology('planck18+bao')
     kszx.io_utils.write_pickle('data/cosmology.pkl', cosmo)
 
+
+def make_bounding_box():
+    cosmo = kszx.io_utils.read_pickle('data/cosmology.pkl')
+    rcat = kszx.sdss.read_randoms('CMASS_North')
+    rcat.apply_redshift_cut(0.43, 0.7)
+
+    bb = kszx.BoundingBox(rcat, cosmo, pixsize=15, rpad=200)
+    kszx.io_utils.write_pickle('data/bounding_box.pkl', bb)
+    
 
 def eval_act_ivar_on_sdss_randoms():
     rcat = kszx.sdss.read_randoms('CMASS_North')

@@ -51,4 +51,11 @@ plt.show()
 print(f'Min redshift: {np.min(rcat.z)}')
 print(f'Max redshift: {np.max(rcat.z)}')
 
+# %% [markdown]
+# ### Bounding box
+
+# %%
+bb = kszx.io_utils.read_pickle('data/bounding_box.pkl')
+print(bb)
+
 # %%

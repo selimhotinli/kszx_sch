@@ -1,6 +1,5 @@
 rule all:
     input:
-        "data/cosmology.pkl",
         "01_plot_surveys.ipynb"
 
 
@@ -26,6 +25,17 @@ rule run_camb:
         local_pipeline.run_camb()
 
 
+rule make_bounding_box:
+    input:
+        "data/cosmology.pkl",
+        "data/touchfile_download_sdss"
+    output:
+        "data/bounding_box.pkl"
+    run:
+        import local_pipeline
+        local_pipeline.make_bounding_box()
+
+
 rule eval_act_ivar_on_sdss_randoms:
     input:
         "data/touchfile_download_act",
@@ -39,6 +49,7 @@ rule eval_act_ivar_on_sdss_randoms:
 
 rule plot_surveys:
     input:
+        "data/bounding_box.pkl",
         "data/randoms_with_act_ivar.h5",
         "01_plot_surveys.py"
     output:

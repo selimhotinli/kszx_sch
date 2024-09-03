@@ -3,6 +3,35 @@ import scipy.integrate
 import scipy.interpolate
 
 
+def ra_dec_to_xyz(ra_deg, dec_deg, r=None):
+    """Returns shape s+(3,) array, where ra_deg.shape == dec_deg.shape == s."""
+    
+    ra_deg = np.asarray(ra_deg)
+    dec_deg = np.asarray(dec_deg)
+    assert ra_deg.shape == dec_deg.shape
+
+    # FIXME memory-inefficent (uses too many temp arrays)
+    
+    ra = ra_deg * (np.pi/180.)
+    dec = dec_deg * (np.pi/180.)
+    cos_dec = np.cos(dec)
+    
+    ret = np.empty(ra_deg.shape + (3,), dtype=float)
+    ret[...,0] = cos_dec * np.cos(ra)
+    ret[...,1] = cos_dec * np.sin(ra)
+    ret[...,2] = np.sin(dec)
+
+    if r is not None:
+        r = np.asarray(r)
+        assert r.shape == ra_deg.shape
+        ret *= np.reshape(r, r.shape + (1,))
+    
+    return ret
+
+
+####################################################################################################
+
+
 def quad(f, xmin, xmax, epsabs=0.0, epsrel=1.0e-4, points=None):
     """Wrapper for scipy.integrate.quad()."""
     
