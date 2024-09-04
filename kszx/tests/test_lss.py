@@ -77,8 +77,8 @@ def test_interpolation():
         poly = RandomPoly(degree=degree, lpos=box.lpos, rpos=box.rpos)
         ndim = box.ndim
 
-        pad = (degree - 1 + 1.0e-7) * (box.pixsize/2.)
         npoints = np.random.randint(100, 200)
+        pad = (degree - 1 + 1.0e-7) * (box.pixsize/2.)
         points = np.random.uniform(box.lpos+pad, box.rpos-pad, size=(npoints,ndim))
         
         grid = poly.eval_grid(box.npix)
@@ -89,4 +89,37 @@ def test_interpolation():
         assert epsilon < 1.0e-12
         
     print('test_interpolation(): pass')
+
+
+def test_gridding():
+    print('test_gridding(): start')
     
+    for _ in range(100):
+        # Currently, lss.interpolate_points() only supports CIC.
+        kernel, degree = ('cic', 1)
+
+        # Currently, lss.interpolate_point() only supports ndim=3.
+        box = helpers.random_box(ndim=3, nmin=degree+1)
+        ndim = box.ndim
+
+        npoints = np.random.randint(100, 200)
+        pad = (degree - 1 + 1.0e-7) * (box.pixsize/2.)
+        points = np.random.uniform(box.lpos+pad, box.rpos-pad, size=(npoints,ndim))
+
+        g = np.random.normal(size=box.npix)  # random grid
+        w = np.random.normal(size=npoints)   # random weights
+        
+        Ag = lss.interpolate_points(box, g, points, kernel)
+        Aw = np.zeros(shape=box.npix)
+        lss.grid_points(box, Aw, points, kernel, weights=w)
+
+        dot1 = np.dot(w,Ag)
+        dot2 = helpers.map_dot_product(box,Aw,g)
+        
+        den = np.dot(w,w) * np.dot(Ag,Ag)
+        den += helpers.map_dot_product(box,g,g) * helpers.map_dot_product(box,Aw,Aw)
+
+        epsilon = np.abs(dot1-dot2) / den**(0.5)
+        assert epsilon < 1.0e-12
+        
+    print('test_gridding(): pass')
