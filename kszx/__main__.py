@@ -14,6 +14,8 @@ if __name__ == '__main__':
 
     p = subparsers.add_parser('show')
     p.add_argument('filename')
+
+    p = subparsers.add_parser('test')
     
     args = parser.parse_args()
 
@@ -29,6 +31,9 @@ if __name__ == '__main__':
     elif args.command == 'show':
         from . import io_utils
         io_utils.show_file(args.filename)
+    elif args.command == 'test':
+        from . import tests
+        tests.run_all_tests()
     else:
         parser.print_help()
         sys.exit(2)

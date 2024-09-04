@@ -166,67 +166,6 @@ def range_checked_index_operator(source_array, index_array, default_value=None, 
 
     raise RuntimeError(error_message)
 
-    
-def compare_arrays(arr1, arr2):
-    assert arr1.shape == arr2.shape
-    assert arr1.dtype == arr2.dtype
-
-    t = arr1-arr2
-    num = np.vdot(t,t)
-    den = np.vdot(arr1,arr1) + np.vdot(arr2,arr2)
-    
-    return np.sqrt(num/den) if (den > 0.0) else 0.0
-
-
-def random_shape(ndim=None, rng=np.random.default_rng()):
-    if ndim is None:
-        ndim = rng.integers(1,4)
-    
-    nmax = int(10000 ** (1./ndim))
-    ret = np.zeros(ndim, dtype=int)
-    
-    for d in range(ndim):
-        if rng.uniform() < 0.1:
-            ret[d] = 1
-        elif rng.uniform() < 0.1:
-            ret[d] = 2
-        else:
-            ret[d] = rng.integers(3,nmax+1)
-
-    return ret
-
-
-def randomize_array(arr, *, lo=-1.0, hi=1.0, rng=np.random.default_rng()):
-    if arr.dtype == float:
-        arr[:] = rng.uniform(lo, hi, arr.shape)
-    elif arr.dtype == complex:
-        arr.real = rng.uniform(lo, hi, arr.shape)
-        arr.imag = rng.uniform(lo, hi, arr.shape)
-    else:
-        raise RuntimeError('dtype must be real or complex')
-
-    
-def random_array(dtype, *, shape=None, lo=-1.0, hi=1.0, pad=True, rng=np.random.default_rng()):
-    if shape is None:
-        shape = random_shape(rng=rng)
-            
-    if not pad:
-        ret = np.empty(shape, dtype=dtype)
-    else:
-        # FIXME should sometimes make last axis non-contiguous
-        shape = np.asarray(shape, dtype=int)
-        new_shape = shape + rng.integers(0, 3, size=len(shape))
-        ret = np.empty(new_shape, dtype=dtype)
-
-        for d in range(len(shape)):
-            if shape[d] < ret.shape[d]:
-                ret = np.take(ret, np.arange(shape[d]), axis=d)
-                
-    assert np.all(np.asarray(shape) == np.asarray(ret.shape))
-    randomize_array(ret, lo=lo, hi=hi, rng=rng)
-    
-    return ret
-
 
 def contains_duplicates(l):
     return len(l) != len(set(l))
