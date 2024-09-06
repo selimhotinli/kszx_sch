@@ -235,9 +235,9 @@ def test_estimate_power_spectrum():
         box = helpers.random_box()
         use_dc = (np.random.uniform() < 0.5)
 
-        # Note! Currently assuming nmaps=2 is max value supported by kernel.
+        # Note! Currently assuming nmaps=4 is max value supported by kernel.
         # If the kernel changes in the future, make sure to update the line below.
-        nmaps = np.random.randint(1,3) if (np.random.uniform() < 0.95) else None
+        nmaps = np.random.randint(1,5) if (np.random.uniform() < 0.95) else None
         # print(f'{nmaps=}')
         
         # Generate random kbin_delim

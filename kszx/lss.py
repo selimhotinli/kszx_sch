@@ -157,7 +157,7 @@ def grid_points(box, grid, points, kernel, weights=None):
 
 
 def multiply_rfunc(box, arr, f, regulate=False, eps=1.0e-6):
-    """Multiply real-space map 'arr' in-place by a function f(r), where r is scalar radial coordinate.
+    """Multiply real-space map 'arr' by a function f(r), where r is scalar radial coordinate.
 
     Args:
         box: instance of class kszx.Box.
@@ -456,7 +456,7 @@ def estimate_power_spectrum(box, map_or_maps, kbin_delim, *, use_dc=False, allow
             <f(k) f(k')^*> = (box volume) P(k) delta_{kk'}
     """
 
-    kbin_delim = np.ascontiguousarray(kbin_delim, dtype=float)
+    kbin_delim = np.asarray(kbin_delim, dtype=float)
     
     assert kbin_delim.ndim == 1
     assert len(kbin_delim) >= 2    
@@ -469,10 +469,10 @@ def estimate_power_spectrum(box, map_or_maps, kbin_delim, *, use_dc=False, allow
                            + "a Fourier-space map, or an iterable returning Fourier-space maps")
 
     
-    if len(map_list) > 2:
+    if len(map_list) > 4:
         # Note: If the C++ code is modified to allow larger numbers of maps,,
         # make sure to update the unit test too (test_estimate_power_spectrum()).
-        raise RuntimeError("kszx.lss.estimate_power_spectrum(): we currently only support nmaps <= 2."
+        raise RuntimeError("kszx.lss.estimate_power_spectrum(): we currently only support nmaps <= 4."
                            + " This is a temporary problem that I'll fix later. It needs minor changes"
                            + " to the C++ code.")
 
@@ -483,7 +483,7 @@ def estimate_power_spectrum(box, map_or_maps, kbin_delim, *, use_dc=False, allow
     if (not use_dc) and (kbin_delim[0] == 0):
         kbin_delim = np.copy(kbin_delim)
         kbin_delim[0] = min(np.min(box.kfund), kbin_delim[1]) / 2.
-
+    
     pk, bin_counts = cpp_kernels.estimate_power_spectrum(map_list, kbin_delim, box.npix, box.kfund, box.box_volume)
 
     if (not allow_empty_bins) and (np.min(bin_counts) == 0):
