@@ -13,4 +13,9 @@ PYBIND11_MODULE(cpp_kernels, m) {
 	  py::arg("grid"), py::arg("points"), py::arg("weights"),
 	  py::arg("lpos0"), py::arg("lpos1"), py::arg("lpos2"),
 	  py::arg("pixsize"));
+
+    m.def("estimate_power_spectrum", estimate_power_spectrum,
+	  py::arg("map_list"), py::arg("k_delim"),
+	  py::arg("npix"), py::arg("kf"),
+	  py::arg("box_volume"));
 }

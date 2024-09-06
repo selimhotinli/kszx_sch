@@ -125,6 +125,13 @@ def covscale(m):
     return ret
 
 
+def is_perfect_square(n):
+    if n < 0:
+        return False
+    m = int(np.round(np.sqrt(n)))
+    return n == m**2
+
+
 def is_sorted(x):
     assert x.ndim == 1
     assert len(x) >= 2
@@ -145,6 +152,13 @@ def trapezoid_weights(xmin, xmax, n):
     return xvec, wvec
 
 
+def array_slice(arr, axis, *args):
+    assert 0 <= axis < arr.ndim
+    t1 = (slice(None),) * axis
+    t2 = (slice(*args),)
+    return a[t1+t2]
+        
+        
 def range_checked_index_operator(source_array, index_array, default_value=None, error_message=None):
     """Returns source_array[index_array], but substitutes 'default_value' if index is out of range."""
     

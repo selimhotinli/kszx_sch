@@ -63,12 +63,12 @@ class BoundingBox(Box):
 
         
     def __str__(self):
-        f = io.StringIO()
-        print(f'BoundingBox(', file=f)
-        self._print_box_members(f, end='')
-        print(f'    zmin = {self.zmin:.04f}, zmax = {self.zmax:.04f},', file=f)
-        print(f'    chi_min = {self.chi_min:.02f}, chi_max = {self.chi_max:.02f},', file=f)
-        print(f'    npix_prepad = {self.npix_prepad},', file=f)
-        print(f'    npix_preround = {self.npix_preround}', file=f)
-        print(f')', file=f)
-        return f.getvalue()
+        with io.StringIO() as f:
+            print(f'BoundingBox(', file=f)
+            self._print_box_members(f, end='')
+            print(f'    zmin = {self.zmin:.04f}, zmax = {self.zmax:.04f},', file=f)
+            print(f'    chi_min = {self.chi_min:.02f}, chi_max = {self.chi_max:.02f},', file=f)
+            print(f'    npix_prepad = {self.npix_prepad},', file=f)
+            print(f'    npix_preround = {self.npix_preround}', file=f)
+            print(f')', file=f)
+            return f.getvalue()

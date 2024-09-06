@@ -1,4 +1,5 @@
 import io    # StringIO
+import functools
 import numpy as np
 
 
@@ -30,11 +31,17 @@ class Box:
 
            - A Fourier-space map is represented by a pair (box, arr), where 'arr' is a
              numpy array with shape box.fourier_space_shape and dtype=complex.
+        
+           - The real-space and Fourier-space shapes are related as follows:
+                if    self.real_space_shape = (n_0, n_1, ..., n_{d-1})
+                then  self.fourier_space_shape = (n_0, n_1, ..., n_{d-1}//2 + 1)
 
            - You'll notice that we don't define a Map class (instead, we represent maps by
-             pairs (box,arr)). This design is intentional, to maximize interoperability with
-             other libraries. (Currently, 'arr' must be a numpy array, but in the future we
-             might also support cupy/jax/dask arrays.)
+             pairs (box,arr)). I might revisit this decision later. (Currently, 'arr' must be 
+             a numpy array, but in the future we might also support cupy/jax/dask arrays.)
+
+           - Most functions which manipulate (box,map) pairs (e.g. FFTs, interpolation, gridding)
+             can be found in the ksx.lss subpackage.
 
         Members:
         
@@ -55,9 +62,9 @@ class Box:
 
         Our Fourier conventions in a discretized finite volume are:
 
-           f(k) = (pixel volume) sum_x f(x) e^{-ik.x}     [ morally int d^nx f(x) e^{-ik.x} ]
-           f(x) = (box volume)^{-1} sum_k f(k) e^{ik.x}   [ morally int d^nk/(2pi)^n f(k) e^{ik.x} ]        
-           <f(k) f(-k')> = (box volume) P(k) delta_{kk'}  [ morally P(k) (2pi)^n delta^n(k-k') ]
+           f(k) = (pixel volume) sum_x f(x) e^{-ik.x}      [ morally int d^nx f(x) e^{-ik.x} ]
+           f(x) = (box volume)^{-1} sum_k f(k) e^{ik.x}    [ morally int d^nk/(2pi)^n f(k) e^{ik.x} ]        
+           <f(k) f(k')^*> = (box volume) P(k) delta_{kk'}  [ morally P(k) (2pi)^n delta^n(k-k') ]
         """
         
         npix = np.asarray(npix)
@@ -93,9 +100,16 @@ class Box:
 
         # Box location in observer coordinates.
         t = 0.5 * (self.npix - 1) * self.pixsize
-        self.cpos = cpos if (cpos is not None) else (boxsize/2.)
+        self.cpos = cpos if (cpos is not None) else (self.boxsize/2.)
         self.lpos = self.cpos - t
         self.rpos = self.cpos + t
+
+        # Used internally in self.get_r(): which real-space pixel has the smallest r-coordinate?
+        self._ix_smallest_r = -self.lpos / self.pixsize
+        self._ix_smallest_r = np.array(np.round(self._ix_smallest_r), dtype=int)
+        self._ix_smallest_r = np.maximum(self._ix_smallest_r, 0)
+        self._ix_smallest_r = np.minimum(self._ix_smallest_r, self.npix-1)
+        self._ix_smallest_r = tuple(self._ix_smallest_r)
 
         
     def is_real_space_map(self, arr):
@@ -107,19 +121,23 @@ class Box:
         """Returns True if array 'arr' has the right shape/dtype for Fourier-space map."""
         return isinstance(arr, np.ndarray) and np.all(arr.shape == self.fourier_space_shape) and (arr.dtype == complex)
 
-    
-    def zeros(self, *, fourier):
-        """Returns a zeroed map (either real-space or Fourier-space, depending on boolean 'fourier' argument0."""
-        shape = self.fshape if fourier else self.rshape
-        dtype = complex if fourier else float
-        return np.zeros(shape, dtype=dtype)
-
 
     def get_k_component(self, axis, zero_nyquist=True, one_dimensional=False):
-        """Returns array (k[0], k[1], ...) containing k-values for specified axis.
-        
-        If one_dimensional=True, the returned array will have shape (N,), where N = self.nk[axis].
-        If one_dimensional=False, the returned array will have shape (1,...,1, N, 1,...1).
+        """Returns array (k[0], k[1], ...) containing signed k-values along specified axis.
+
+        Args:
+            axis (integer): satisfies 0 <= axis < ndim.
+            zero_nyquist (boolean): if True (recommended) zero will be returned at k_nyquist.
+            one_dimensonal (booolean):
+               - if True, the returned array will have shape (N,), where N = self.nk[axis].
+               - if False, the returned array will have shape (1,...,1, N, 1,...1).
+
+        Returns: real-valued array with shape described above.
+
+        Notes:
+            - k-values include the usual factor (2pi / boxsize).
+            - Roughly half the k-values will be positive, and roughly half will be
+              negative (except for the last axis, where negative values are not stored).
         """
 
         nd = self.ndim
@@ -145,29 +163,41 @@ class Box:
         return ret
 
 
-    def get_k(self, regulate=False, zero_nyquist=False):
-        """Returns an N-dimensional array containing |k| values, with the same shape as a Fourier-space grid."""
+    def get_k(self, exponent=1, regulate=False):
+        """Returns an N-dimensional array containing |k|^exponent values.
 
-        ret = np.zeros(self.fourier_space_shape, dtype=float)
-        for axis in range(self.ndim):
-            ret += self.get_k_component(axis, zero_nyquist=zero_nyquist)**2
+        Args:
+            exponent (float): return |k|^exponent. If k<0, then regulate=True is implied.
+            regulate (boolean): if True, then replace k=0 by k=(2pi/boxsize).
 
-        if regulate:
-            k_tiny = 1.0e-6 / np.max(self.boxsize)
-            ret[(0,)*self.ndim] = k_tiny**2
+        Returns: real-valued array with shape (self.fourier_space_shape).
+        """
 
-        ret **= 0.5   # k^2 -> k
+        k2 = [ self.get_k_component(axis, zero_nyquist=False)**2 for axis in range(self.ndim) ]
+        ret = functools.reduce(np.add, k2)
+            
+        if regulate or (exponent < 0):
+            ret[(0,)*self.ndim] = np.min(self.kfund)**2
+
+        if exponent != 2:
+            ret **= (0.5*exponent)
+
         return ret
 
 
     def get_r_component(self, axis, one_dimensional=False):
-        """Returns array (r[0], r[1], ...) containing observer coordinates along specified axis.
+        """Returns array (r[0], r[1], ...) containing signed observer coordinate along specified axis.
 
-        Note that observer coordinates are signed, include the additive term (self.cpos), and
-        the multiplicative term (self.pixsize).
+        Args:
+            axis (integer): satisfies 0 <= axis < ndim.
+            one_dimensonal (booolean):
+               - if True, the returned array will have shape (N,), where N = self.npix[axis].
+               - if False, the returned array will have shape (1,...,1, N, 1,...1).
 
-        If one_dimensional=True, the returned array will have shape (npix[axis],).
-        If one_dimensional=False, the returned array will have shape (1,...,1, npix[axis], 1,...1).
+        Returns: real-valued array with shape described above.
+        
+        Note: returned r-components are in "observer" coordinates, i.e. the observer is at
+        the origin, and the box corners are given by self.lpos, self.rpos.
         """        
         
         assert 0 <= axis < self.ndim
@@ -183,23 +213,37 @@ class Box:
         return ret
 
 
-    def get_r(self, regulate=False):
-        """Returns an N-dimensional array containing |r| values, with the same shape as a real-space grid."""
+    def get_r(self, exponent=1, regulate=False, eps=1.0e-6):
+        """Returns an N-dimensional array containing |r|^exponent values.
 
-        ret = np.zeros(self.real_space_shape, dtype=float)
-        for axis in range(self.ndim):
-            ret += self.get_r_component(axis)**2
+        Args:
+            exponent (float): return |r|^exponent. If k<0, then regulate=True is implied.
+            regulate (boolean): if True, then replace r = max(r,eps*pixsize).
+            eps (float): only used if regulation is performed.
 
-        if regulate:
-            r_tiny = 1.0e-6 * self.pixsize
-            ret = np.maximum(ret, r_tiny**2)   # FIXME optimize
+        Returns: real-valued array with shape (self.real_space_shape).
+        
+        Note: returned r-values are in "observer" coordinates, i.e. the observer is at
+        the origin, and the box corners are given by self.lpos, self.rpos.
+        """
+        
+        assert 0 < eps < 0.5
 
-        ret **= 0.5   # r^2 -> r
+        r2 = [ self.get_r_component(axis)**2 for axis in range(self.ndim) ]
+        ret = functools.reduce(np.add, r2)
+        
+        if regulate or (exponent < 0):
+            i = self._ix_smallest_r
+            ret[i] = max(ret[i], (eps * self.pixsize)**2)
+
+        if exponent != 2:
+            ret **= (0.5 * exponent)
+
         return ret
 
 
     def _print_box_members(self, f, end=','):
-        """Helper function called by __str__(). (This factorization is convenient for the BoundingBox subclass.)"""
+        """Helper function called by __str__(). (This factorization is convenient for the BoundingBox subclass.)"""        
         print(f'    npix = {self.npix},', file=f)
         print(f'    pixsize = {self.pixsize},', file=f)
         print(f'    boxsize = {self.boxsize},', file=f)
@@ -210,11 +254,11 @@ class Box:
         print(f'    rpos = {self.rpos}{end}', file=f)
         
     def __str__(self):
-        f = io.StringIO()
-        print(f'Box(', file=f)
-        self._print_box_members(f)
-        print(f')', file=f)
-        return f.getvalue()
+        with io.StringIO() as f:
+            print(f'Box(', file=f)
+            self._print_box_members(f)
+            print(f')', file=f)
+            return f.getvalue()
     
     def __repr__(self):
         return str(self)

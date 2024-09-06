@@ -14,6 +14,16 @@ def compare_arrays(arr1, arr2):
     return np.sqrt(num/den) if (den > 0.0) else 0.0
 
 
+def generate_indices(shape):
+    if len(shape) == 1:
+        for i in range(shape[0]):
+            yield (i,)
+    else:
+        for t in generate_indices(shape[:-1]):
+            for i in range(shape[-1]):
+                yield t + (i,)
+
+
 def random_shape(ndim=None, nmin=1):
     if ndim is None:
         ndim = np.random.randint(1,4)
@@ -36,7 +46,9 @@ def random_shape(ndim=None, nmin=1):
 def random_box(ndim=None, nmin=2):
     npix = random_shape(ndim, nmin)
     pixsize = np.random.uniform(1.0, 10.0)
-    cpos = np.random.uniform(-1000, 1000, size=len(npix))
+    
+    t = np.random.uniform(0, pixsize)
+    cpos = np.random.uniform(-t*npix, t*npix, size=len(npix))
     return Box(npix, pixsize, cpos)
 
 

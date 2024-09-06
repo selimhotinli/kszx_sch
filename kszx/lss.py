@@ -2,7 +2,8 @@ import numpy as np
 
 from . import Box
 from . import cpp_kernels
-
+from . import utils
+    
 
 ####################################################################################################
 
@@ -150,3 +151,345 @@ def grid_points(box, grid, points, kernel, weights=None):
         raise RuntimeError('kszx.grid_points(): currently only kernel=="cic" is supported')
     
     cpp_kernels.cic_grid_3d(grid, points, weights, box.lpos[0], box.lpos[1], box.lpos[2], box.pixsize)
+
+
+####################################################################################################
+
+
+def multiply_rfunc(box, arr, f, regulate=False, eps=1.0e-6):
+    """Multiply real-space map 'arr' in-place by a function f(r), where r is scalar radial coordinate.
+
+    Args:
+        box: instance of class kszx.Box.
+        arr: numpy array representing a real-space map (i.e. shape=box.real_space_shape, dtype=float)
+        f: function (or callable object) representing the function r -> f(r).
+        regulate (boolean): if True, then replace r = max(r,eps*pixsize) before calling f().
+        eps (float): only used if regulate=True.
+
+    Returns: None. (The real-space map 'arr' is modified in-place.)
+
+    Notes: 
+    
+       - The function f() must be vectorized: its argument 'r' will be a 3-dimensional arary,
+         and the return value should be an array with the same shape.
+
+       - r-values passed to f() will be in "observer" coordinates, i.e. the observer is at
+         the origin, and the box corners are given by self.lpos, self.rpos.
+    """
+
+    assert isinstance(box, Box)
+    assert box.is_real_space_map(arr)   # check shape, dtype
+    assert callable(f)
+    assert eps < 0.5
+
+    r = box.get_r(regulate=regulate, eps=eps)
+    fr = f(r)
+    
+    if not box.is_real_space_map(fr):
+        raise RuntimeError('kszx.lss.multiply_rfunc(): function f(r) returned unexpected shape/dtype')
+
+    arr *= fr
+    
+    
+def multiply_kfunc(box, arr, f, dc=None):
+    """Multiply Fourier-space map 'arr' in-place by a real-valued function f(k), where k=|k| is scalar wavenumber.
+
+    Args:
+        box: instance of class kszx.Box.
+        arr: numpy array representing a Fourier-space map (i.e. shape=box.fourier_space_shape, dtype=complex)
+        f: function (or callable object) representing the function k -> f(k).
+        dc (float): if True, then f() is not evaluated at k=0, and the value of 'dc' is used instead of f(0).
+
+    Returns: None. (The Fourier-space map 'arr' is modified in-place.)
+
+    Notes: 
+    
+       - The function f() must be vectorized: its argument 'k' will be a 3-dimensional arary,
+         and the return value should be an array with the same shape.
+
+       - k-values passed to f() will include the factor (2pi / boxsize).
+
+       - If 'dc' is specified, then f() will not be evaluated at k=0.
+         For example, this code is okay (will not raise a divide-by-zero expection):
+
+           multiply_kfunc(box, arr, lambda k:1/k**2, dc=0.0)
+    """
+
+    assert isinstance(box, Box)
+    assert box.is_fourier_space_map(arr)   # check shape, dtype
+    assert callable(f)
+
+    k = box.get_k(regulate = (dc is not None))
+    fk = f(k)
+
+    if fk.shape != box.fourier_space_shape:
+        raise RuntimeError('kszx.lss.multiply_kfunc(): function f(k) returned unexpected shape')
+    if fk.dtype != float:
+        raise RuntimeError('kszx.lss.multiply_kfunc(): function f(k) returned dtype={fk.dtype} (expected float)')
+
+    if dc is not None:
+        fk[(0,)*box.ndim] = dc
+    
+    arr *= fk
+
+
+def multiply_r_component(box, arr, axis):
+    """Multiply real-space map 'arr' in-place by r_j (the j-th Cartesian coordinate, in observer coordinates).
+
+    Args:
+        box: instance of class kszx.Box.
+        arr: numpy array representing a real-space map (i.e. shape=box.real_space_shape, dtype=float)
+        axis (integer): component 0 <= j < box.ndim.
+
+    Returns: None. (The real-space map 'arr' is modified in-place.)
+
+    Note: 
+
+       - Values of r_i will be signed, and in "observer" coordinates, i.e. the observer is at
+         the origin, and the box corners are given by self.lpos, self.rpos.
+    """
+    
+    assert isinstance(box, Box)
+    assert box.is_real_space_map(arr)
+    arr *= box.get_r_component(axis)
+
+    
+def apply_partial_derivative(box, arr, axis):
+    """Multiply Fourier-space map 'arr' in-place by (i k_j). (This is the partial derivative d_j in Fourier space.)
+
+    Args:
+        box: instance of class kszx.Box.
+        arr: numpy array representing a Fourier-space map (i.e. shape=box.fourier_space_shape, dtype=complex)
+        axis (integer): component 0 <= j < box.ndim.
+
+    Returns: None. (The Fourier-space map 'arr' is modified in-place.)
+
+    Notes: 
+    
+       - Values of k_j will be signed, and include the factor (2pi / boxsize).
+
+       - The value of k_j will be taken to be zero at the Nyquist frequency.
+         (I think this is the only sensible choice, since the sign is ambiguous.)
+    """
+
+    assert isinstance(box, Box)
+    assert box.is_fourier_space_map(arr)
+    arr *= (1j * box.get_k_component(axis, zero_nyquist=True))
+
+
+####################################################################################################
+
+
+def _to_float(x, errmsg):
+    try:
+        return float(x)
+    except:
+        raise RuntimeError(errmsg)
+
+
+def _sqrt_pk(box, pk, regulate):
+    """Helper for simulate_gaussian_field()."""
+
+    if callable(pk):
+        k = box.get_k(regulate=regulate)
+        pk = pk(k)
+        
+        if pk.shape != box.fourier_space_shape:
+            raise RuntimeError('kszx.lss.simulate_gaussian_field(): function pk() returned unexpected shape')
+        if pk.dtype != float:
+            raise RuntimeError('kszx.lss.simulate_gaussian_field(): function pk() returned dtype={pk.dtype} (expected float)')
+        if np.min(pk) < 0:
+            raise RuntimeError('kszx.lss.simulate_gaussian_field(): function pk() returned negative values')
+
+        del k
+        pk **= 0.5
+        return pk   # returns sqrt(P(k))
+
+    pk = _to_float(pk, 'kszx.lss.simulate_gaussian_field(): expected pk argument to be either callable, or a real scalar')
+
+    if pk < 0:
+        raise RuntimeError('kszx.lss.simulate_gaussian_field(): expected scalar pk argument to be non-negative')
+    
+    return np.sqrt(pk)
+
+    
+def simulate_white_noise(box, *, fourier):
+    """Simulate white noise, in either real space or Fourier space, normalized to P(k)=1.
+
+    Args:
+
+        box: instance of class kszx.Box.
+        fourier (boolean): determines whether output is real-space or Fourier-space.
+    
+    Returns: numpy array
+
+       - if fourier=False, real-space map is returned 
+            (shape = box.real_space_shape, dtype = float)
+
+       - if fourier=True, Fourier-space map is returned 
+            (shape = box.fourier_space_shape, dtype = complex)
+
+    Intended as a helper for simulate_gaussian_field(), but may be useful on its own.
+
+    Reminder: our Fourier conventions imply
+    
+        <f(k) f(k')^*> = (box volume) P(k) delta_{kk'}  [ morally P(k) (2pi)^n delta^n(k-k') ]
+
+    Note units.
+    """
+
+    if not fourier:
+        rms = 1.0 / np.sqrt(box.pixel_volume)
+        return np.random.normal(size=box.real_space_shape, scale=rms)
+        
+    # Simulate white noise in Fourier space.
+    nd = box.ndim
+    rms = np.sqrt(0.5 * box.box_volume)
+    ret = np.zeros(box.fourier_space_shape, dtype=complex)        
+    ret.real = np.random.normal(size=box.fourier_space_shape, scale=rms)
+    ret.imag = np.random.normal(size=box.fourier_space_shape, scale=rms)
+
+    # The rest of this function imposes the reality condition f(-k) = f(k)^*.
+    
+    # t = modes where k_{nd-1} is self-conjugate
+    n = box.npix[nd-1]
+    s1 = (slice(None),) * (nd-1)
+    s2 = slice(0,1) if (n % 2) else slice(0, (n//2)+1, (n//2))
+    tview = ret[s1+(s2,)] 
+    tcopy = np.conj(tview)   # copy and complex conjugate
+
+    # Apply parity operation k -> (-k) to 'tcopy'.
+    for axis in range(nd-1):
+        n = box.npix[axis]
+        s1 = (slice(None),) * axis
+        s2fwd = (slice(1,n),)
+        s2rev = (slice(n-1,0,-1),)
+        s3 = (slice(None),) * (nd-axis-1)
+        u = np.copy(tcopy[s1+s2rev+s3])
+        tcopy[s1+s2fwd+s3] = u
+
+    # Replace f(k) by (f(k) - f(-k)^*) / sqrt(2)
+    tview += tcopy
+    tview *= np.sqrt(0.5)   # preserve variance
+    return ret
+
+
+def simulate_gaussian_field(box, pk, pk0=None):
+    """
+    Args:
+        pk (either callable, or a scalar). Must be real-valued.
+        pk0 (either scalar, or None)
+
+    Note division by zero.
+    Note units.
+
+    Reminder: our Fourier conventions imply
+    
+        <f(k) f(k')^*> = (box volume) P(k) delta_{kk'}  [ morally P(k) (2pi)^n delta^n(k-k') ]
+    """
+
+    assert isinstance(box, Box)
+
+    sqrt_pk = _sqrt_pk(box, pk, regulate = (pk0 is not None))
+    ret = simulate_white_noise(box, fourier=True)
+
+    dc = ret[(0,)*box.ndim]   # must precede multiplying by sqrt_pk
+    ret *= sqrt_pk
+
+    if pk0 is not None:
+        pk0 = _to_float(pk0, 'kszx.lss.simulate_gaussian_field(): expected pk0 argument to be a real scalar')
+        if pk0 < 0:
+            raise RuntimeError('kszx.lss.simulate_gaussian_field(): expected pk0 argument to be non-negative')
+        ret[(0,)*box.ndim] = np.sqrt(pk0) * dc
+    
+    return ret
+
+
+####################################################################################################
+
+
+def _parse_map_or_maps(box, map_or_maps):
+    """Helper for estimate_power_spectrum().
+    Returns (map_list, multi_map_flag)."""
+
+    if box.is_fourier_space_map(map_or_maps):
+        return ([map_or_maps], False)  # single map
+
+    try:
+        map_list = list(map_or_maps)
+    except:
+        return ([], False)
+
+    for x in map_list:
+        if not box.is_fourier_space_map(x):
+            return ([], False)
+
+    return (map_list, True)
+    
+
+def estimate_power_spectrum(box, map_or_maps, kbin_delim, *, use_dc=False, allow_empty_bins=False, return_counts=False):
+    """
+    Args:
+
+        box: instance of class kszx.Box.
+
+        map_or_maps: single or multiple Fourier-space maps
+          - single map: numpy array of shape (box.fourier_space_shape) and dtype=complex.
+          - multiple maps: iterable object returning numpy arrays of shape (box.fourier_space_shape)
+              and dtype=complex. (Could be a list, tuple, or a numpy array with an extra axis.)
+
+        kbin_delim: 1-d array of length (nkbins+1)
+
+    Returns: 
+
+       - if return_counts=False (the default), then return value is an array 'pk'.
+            - if input is a single map, then pk.shape = (nkbins,)
+            - if input is multiple maps, then pk.shape = (nmaps, nmaps, nkbins)
+
+       - if return_counts=True, then return value is a pair (pk, bin_counts).
+
+    Notes:
+
+        - Note on kbin_delim[0] 
+
+        - Reminder: our Fourier conventions imply
+            <f(k) f(k')^*> = (box volume) P(k) delta_{kk'}
+    """
+
+    kbin_delim = np.ascontiguousarray(kbin_delim, dtype=float)
+    
+    assert kbin_delim.ndim == 1
+    assert len(kbin_delim) >= 2    
+    assert isinstance(box, Box)
+
+    map_list, multi_map_flag = _parse_map_or_maps(box, map_or_maps)
+    
+    if len(map_list) == 0:
+        raise RuntimeError("kszx.lss.estimate_power_spectrum(): expected 'map_or_maps' arg to be either"
+                           + "a Fourier-space map, or an iterable returning Fourier-space maps")
+
+    
+    if len(map_list) > 2:
+        # Note: If the C++ code is modified to allow larger numbers of maps,,
+        # make sure to update the unit test too (test_estimate_power_spectrum()).
+        raise RuntimeError("kszx.lss.estimate_power_spectrum(): we currently only support nmaps <= 2."
+                           + " This is a temporary problem that I'll fix later. It needs minor changes"
+                           + " to the C++ code.")
+
+    
+    assert kbin_delim[0] >= 0.
+    assert utils.is_sorted(kbin_delim)
+    
+    if (not use_dc) and (kbin_delim[0] == 0):
+        kbin_delim = np.copy(kbin_delim)
+        kbin_delim[0] = min(np.min(box.kfund), kbin_delim[1]) / 2.
+
+    pk, bin_counts = cpp_kernels.estimate_power_spectrum(map_list, kbin_delim, box.npix, box.kfund, box.box_volume)
+
+    if (not allow_empty_bins) and (np.min(bin_counts) == 0):
+        raise RuntimeError('kszx.lss.estimate_power_spectrum(): some k-bins were empty')
+    
+    if not multi_map_flag:
+        pk = pk[0,0,:]   # shape (1,1,nkbins) -> shape (nkbins,)
+
+    return (pk, bin_counts) if return_counts else pk

@@ -33,7 +33,7 @@ if __name__ == '__main__':
         io_utils.show_file(args.filename)
     elif args.command == 'test':
         from . import tests
-        tests.run_all_tests()
+        tests.run_all_tests()   # defined in kszx/tests/__init__.py
     else:
         parser.print_help()
         sys.exit(2)
