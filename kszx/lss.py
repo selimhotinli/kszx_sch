@@ -156,13 +156,37 @@ def grid_points(box, grid, points, kernel, weights=None):
 ####################################################################################################
 
 
-def multiply_rfunc(box, arr, f, regulate=False, eps=1.0e-6):
+def _multiply(src, x, dest, in_place):
+    """Helper for functions which take 'dest' and 'in_place' arguments.
+        (multiply_rfunc(), multiply_kfunc(), multiply_r_component(), apply_partial_derivative()."""
+    
+    if (dest is not None) and in_place:
+        raise RuntimeError("Specifying both 'dest' and 'in_place' arguments is not allowed")
+    if (dest is not None) and (dest.shape != src.shape):
+        raise RuntimeError("'dest' array has wrong shape")
+    if (dest is not None) and (dest.shape != src.dtype):
+        raise RuntimeError("'dest' array has wrong dtype")
+
+    if (dest is src) or in_place:
+        src *= x
+        return src
+    elif (dest is not None):
+        dest[:] = src[:]
+        dest *= x
+        return dest
+    else:
+        return src * x
+
+
+def multiply_rfunc(box, arr, f, dest=None, in_place=False, regulate=False, eps=1.0e-6):
     """Multiply real-space map 'arr' by a function f(r), where r is scalar radial coordinate.
 
     Args:
         box: instance of class kszx.Box.
         arr: numpy array representing a real-space map (i.e. shape=box.real_space_shape, dtype=float)
         f: function (or callable object) representing the function r -> f(r).
+        dest: real-space map where output will be written (if None, then new array will be allocated)
+        in_place: setting this to True is equivalent to dest=arr.
         regulate (boolean): if True, then replace r = max(r,eps*pixsize) before calling f().
         eps (float): only used if regulate=True.
 
@@ -188,16 +212,18 @@ def multiply_rfunc(box, arr, f, regulate=False, eps=1.0e-6):
     if not box.is_real_space_map(fr):
         raise RuntimeError('kszx.lss.multiply_rfunc(): function f(r) returned unexpected shape/dtype')
 
-    arr *= fr
+    return _multiply(arr, fr, dest, in_place)
     
     
-def multiply_kfunc(box, arr, f, dc=None):
+def multiply_kfunc(box, arr, f, dest=None, in_place=False, dc=None):
     """Multiply Fourier-space map 'arr' in-place by a real-valued function f(k), where k=|k| is scalar wavenumber.
 
     Args:
         box: instance of class kszx.Box.
         arr: numpy array representing a Fourier-space map (i.e. shape=box.fourier_space_shape, dtype=complex)
         f: function (or callable object) representing the function k -> f(k).
+        dest: real-space map where output will be written (if None, then new array will be allocated)
+        in_place: setting this to True is equivalent to dest=arr.
         dc (float): if True, then f() is not evaluated at k=0, and the value of 'dc' is used instead of f(0).
 
     Returns: None. (The Fourier-space map 'arr' is modified in-place.)
@@ -229,16 +255,18 @@ def multiply_kfunc(box, arr, f, dc=None):
 
     if dc is not None:
         fk[(0,)*box.ndim] = dc
-    
-    arr *= fk
+
+    return _multiply(arr, fk, dest, in_place)
 
 
-def multiply_r_component(box, arr, axis):
+def multiply_r_component(box, arr, axis, dest=None, in_place=True):
     """Multiply real-space map 'arr' in-place by r_j (the j-th Cartesian coordinate, in observer coordinates).
 
     Args:
         box: instance of class kszx.Box.
         arr: numpy array representing a real-space map (i.e. shape=box.real_space_shape, dtype=float)
+        dest: real-space map where output will be written (if None, then new array will be allocated)
+        in_place: setting this to True is equivalent to dest=arr.
         axis (integer): component 0 <= j < box.ndim.
 
     Returns: None. (The real-space map 'arr' is modified in-place.)
@@ -251,15 +279,19 @@ def multiply_r_component(box, arr, axis):
     
     assert isinstance(box, Box)
     assert box.is_real_space_map(arr)
-    arr *= box.get_r_component(axis)
+
+    ri = box.get_r_component(axis)
+    return _multiply(arr, ri, dest, in_place)
 
     
-def apply_partial_derivative(box, arr, axis):
+def apply_partial_derivative(box, arr, axis, dest=None, in_place=True):
     """Multiply Fourier-space map 'arr' in-place by (i k_j). (This is the partial derivative d_j in Fourier space.)
 
     Args:
         box: instance of class kszx.Box.
         arr: numpy array representing a Fourier-space map (i.e. shape=box.fourier_space_shape, dtype=complex)
+        dest: real-space map where output will be written (if None, then new array will be allocated)
+        in_place: setting this to True is equivalent to dest=arr.
         axis (integer): component 0 <= j < box.ndim.
 
     Returns: None. (The Fourier-space map 'arr' is modified in-place.)
@@ -274,7 +306,9 @@ def apply_partial_derivative(box, arr, axis):
 
     assert isinstance(box, Box)
     assert box.is_fourier_space_map(arr)
-    arr *= (1j * box.get_k_component(axis, zero_nyquist=True))
+
+    ki = 1j * box.get_k_component(axis, zero_nyquist=True)
+    return _multiply(arr, ki, dest, in_place)
 
 
 ####################################################################################################
