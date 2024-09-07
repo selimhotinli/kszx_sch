@@ -268,7 +268,7 @@ class Cosmology:
         Slightly faster than calling Plin(k,z) with z=0, and in most 
         situations, calling Plin(k,z) is not necessary, since:
 
-           Plin(k,z) \approx Plin(k,z=0) * D(z,normz0=True)
+           Plin(k,z) ~ Plin(k,z=0) * D(z,normz0=True)
 
         This approximation slightly breaks down (at the ~0.5% level!)
         on large scales k <~ 10^(-3) and small scales k >~ 0.1.

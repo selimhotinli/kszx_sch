@@ -248,6 +248,6 @@ def test_estimate_power_spectrum():
         kbin_delim += np.linspace(0.0, 1.0e-10 * kmax, nbins+1)
         kbin_delim[0] = kbin_delim[0] if (np.random.uniform() < 0.5) else 0.0
 
-        _test_estimate_power_spectrum(box, kbin_delim, nmaps=1, use_dc=use_dc)
+        _test_estimate_power_spectrum(box, kbin_delim, nmaps=nmaps, use_dc=use_dc)
         
     print('test_estimate_power_spectrum(): pass')

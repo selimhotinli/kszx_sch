@@ -196,7 +196,7 @@ template<> inline void pse_1d<3> (const pse_args &args, double curr_k2, int curr
 	out_pk[6*curr_bin+1] += m * mult_zz(z0,z1);
 	out_pk[6*curr_bin+2] += m * mult_zz(z1,z1);
 	out_pk[6*curr_bin+3] += m * mult_zz(z0,z2);
-	out_pk[6*curr_bin+4] += m * mult_zz(z1,z1);
+	out_pk[6*curr_bin+4] += m * mult_zz(z1,z2);
 	out_pk[6*curr_bin+5] += m * mult_zz(z2,z2);
 	out_bcounts[curr_bin] += m;
     }
@@ -245,7 +245,7 @@ template<> inline void pse_1d<4> (const pse_args &args, double curr_k2, int curr
 	out_pk[10*curr_bin+1] += m * mult_zz(z0,z1);
 	out_pk[10*curr_bin+2] += m * mult_zz(z1,z1);
 	out_pk[10*curr_bin+3] += m * mult_zz(z0,z2);
-	out_pk[10*curr_bin+4] += m * mult_zz(z1,z1);
+	out_pk[10*curr_bin+4] += m * mult_zz(z1,z2);
 	out_pk[10*curr_bin+5] += m * mult_zz(z2,z2);
 	out_pk[10*curr_bin+6] += m * mult_zz(z0,z3);
 	out_pk[10*curr_bin+7] += m * mult_zz(z1,z3);
@@ -324,8 +324,8 @@ py::tuple estimate_power_spectrum(py::list map_list, py::array_t<const double> &
 	throw runtime_error("estimate_power_spectrum: expected len(k_delim) >= 2");
     if (nmaps < 1)
 	throw runtime_error("estimate_power_spectrum: expected map_list to be a nonempty list");
-    if (nmaps > 2)
-	throw runtime_error("estimate_power_spectrum: We currently only support nmaps >= 2!"
+    if (nmaps > 4)
+	throw runtime_error("estimate_power_spectrum: We currently only support nmaps <= 4!"
 			    " This is easy to change, but requires minor modifications to the C++ code");
 
     // Allocate some arrays needed by the PSE kernel.
@@ -395,7 +395,7 @@ py::tuple estimate_power_spectrum(py::list map_list, py::array_t<const double> &
     args.nkbins = nkbins;
     args.k2_delim = &k2_delim[0];
 
-    memset(args.out_pk, 0, nkbins * nmaps * nmaps * sizeof(*args.out_pk));
+    memset(args.out_pk, 0, nkbins * M2 * sizeof(*args.out_pk));
     memset(args.out_bcounts, 0, nkbins * sizeof(*args.out_bcounts));
     int curr_bin = (args.k2_delim[0] > 0.) ? -1 : 0;
 
