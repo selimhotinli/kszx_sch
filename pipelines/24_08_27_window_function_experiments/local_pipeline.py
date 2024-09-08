@@ -107,7 +107,7 @@ def run_mc(output_filename):
     map_dSg = rcat_to_map(rcat_dSg)
     map_vfake = rcat_to_map(rcat_vfake)
 
-    pk = kszx.lss.estimate_power_spectrum(box, [map_Sg,map_dSg,map_vfake,map_v1], kbin_delim)
+    pk = kszx.lss.estimate_power_spectrum(box, [map_Sg,map_dSg,map_vfake,map_v1], kbin_delim, use_dc=False)
     kszx.io_utils.write_npy(output_filename, pk)
 
 
