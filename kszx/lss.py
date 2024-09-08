@@ -12,7 +12,7 @@ def fft_r2c(box, arr):
     """Computes the FFT of real-space map 'arr', and returns a Fourier-space map.
 
     Args:
-        box: instance of class kszx.Box.
+        box (kszx.Box): defines pixel size, bounding box size, and location relative to observer.
         arr: numpy array with shape (box.real_space_shape) and real dtype.
 
     Returns:
@@ -36,7 +36,7 @@ def fft_c2r(box, arr):
     """Computes the FFT of Fourier-space map 'arr', and returns a real-space map.
 
     Args:
-        box: instance of class kszx.Box.
+        box (kszx.Box): defines pixel size, bounding box size, and location relative to observer.
         arr: numpy array with shape (box.fourier_space_shape) and complex dtype.
 
     Returns:
@@ -63,7 +63,7 @@ def interpolate_points(box, grid, points, kernel):
     """Interpolates real-space grid at a specified set of points.
 
     Args:
-        box: instance of class kszx.Box.
+        box (kszx.Box): defines pixel size, bounding box size, and location relative to observer.
         grid: numpy array with shape (box.real_space_shape) and real dtype.
         points: numpy array with shape (npoints, box.ndim)
         kernel: currently only 'cic' is supported.
@@ -94,7 +94,7 @@ def grid_points(box, grid, points, kernel, weights=None):
     """Add a sum of delta functions, with specified coefficients or 'weights', to a real-space map.
 
     Args:
-        box: instance of class kszx.Box.
+        box (kszx.Box): defines pixel size, bounding box size, and location relative to observer.
         grid: numpy array with shape (box.real_space_shape) and real dtype.
         points: numpy array with shape (npoints, box.ndim)
         kernel: currently only 'cic' is supported.
@@ -178,11 +178,31 @@ def _multiply(src, x, dest, in_place):
         return src * x
 
 
+def _eval_kfunc(box, f, dc=None):
+    """Helper for multiply_kfunc(), kbin_average()."""
+
+    assert callable(f)
+    assert isinstance(box, Box)
+
+    k = box.get_k(regulate = (dc is not None))
+    fk = f(k)
+
+    if fk.shape != box.fourier_space_shape:
+        raise RuntimeError('kszx.lss.multiply_kfunc(): function f(k) returned unexpected shape')
+    if fk.dtype != float:
+        raise RuntimeError('kszx.lss.multiply_kfunc(): function f(k) returned dtype={fk.dtype} (expected float)')
+
+    if dc is not None:
+        fk[(0,)*box.ndim] = dc
+
+    return fk
+
+
 def multiply_rfunc(box, arr, f, dest=None, in_place=False, regulate=False, eps=1.0e-6):
     """Multiply real-space map 'arr' by a function f(r), where r is scalar radial coordinate.
 
     Args:
-        box: instance of class kszx.Box.
+        box (kszx.Box): defines pixel size, bounding box size, and location relative to observer.
         arr: numpy array representing a real-space map (i.e. shape=box.real_space_shape, dtype=float)
         f: function (or callable object) representing the function r -> f(r).
         dest: real-space map where output will be written (if None, then new array will be allocated)
@@ -219,7 +239,7 @@ def multiply_kfunc(box, arr, f, dest=None, in_place=False, dc=None):
     """Multiply Fourier-space map 'arr' in-place by a real-valued function f(k), where k=|k| is scalar wavenumber.
 
     Args:
-        box: instance of class kszx.Box.
+        box (kszx.Box): defines pixel size, bounding box size, and location relative to observer.
         arr: numpy array representing a Fourier-space map (i.e. shape=box.fourier_space_shape, dtype=complex)
         f: function (or callable object) representing the function k -> f(k).
         dest: real-space map where output will be written (if None, then new array will be allocated)
@@ -231,7 +251,7 @@ def multiply_kfunc(box, arr, f, dest=None, in_place=False, dc=None):
     Notes: 
     
        - The function f() must be vectorized: its argument 'k' will be a 3-dimensional arary,
-         and the return value should be an array with the same shape.
+         and the return value should be a real-valued array with the same shape.
 
        - k-values passed to f() will include the factor (2pi / boxsize).
 
@@ -243,19 +263,8 @@ def multiply_kfunc(box, arr, f, dest=None, in_place=False, dc=None):
 
     assert isinstance(box, Box)
     assert box.is_fourier_space_map(arr)   # check shape, dtype
-    assert callable(f)
 
-    k = box.get_k(regulate = (dc is not None))
-    fk = f(k)
-
-    if fk.shape != box.fourier_space_shape:
-        raise RuntimeError('kszx.lss.multiply_kfunc(): function f(k) returned unexpected shape')
-    if fk.dtype != float:
-        raise RuntimeError('kszx.lss.multiply_kfunc(): function f(k) returned dtype={fk.dtype} (expected float)')
-
-    if dc is not None:
-        fk[(0,)*box.ndim] = dc
-
+    fk = _eval_kfunc(box, f)
     return _multiply(arr, fk, dest, in_place)
 
 
@@ -263,7 +272,7 @@ def multiply_r_component(box, arr, axis, dest=None, in_place=True):
     """Multiply real-space map 'arr' in-place by r_j (the j-th Cartesian coordinate, in observer coordinates).
 
     Args:
-        box: instance of class kszx.Box.
+        box (kszx.Box): defines pixel size, bounding box size, and location relative to observer.
         arr: numpy array representing a real-space map (i.e. shape=box.real_space_shape, dtype=float)
         dest: real-space map where output will be written (if None, then new array will be allocated)
         in_place: setting this to True is equivalent to dest=arr.
@@ -288,7 +297,7 @@ def apply_partial_derivative(box, arr, axis, dest=None, in_place=True):
     """Multiply Fourier-space map 'arr' in-place by (i k_j). (This is the partial derivative d_j in Fourier space.)
 
     Args:
-        box: instance of class kszx.Box.
+        box (kszx.Box): defines pixel size, bounding box size, and location relative to observer.
         arr: numpy array representing a Fourier-space map (i.e. shape=box.fourier_space_shape, dtype=complex)
         dest: real-space map where output will be written (if None, then new array will be allocated)
         in_place: setting this to True is equivalent to dest=arr.
@@ -351,8 +360,7 @@ def simulate_white_noise(box, *, fourier):
     """Simulate white noise, in either real space or Fourier space, normalized to P(k)=1.
 
     Args:
-
-        box: instance of class kszx.Box.
+        box (kszx.Box): defines pixel size, bounding box size, and location relative to observer.
         fourier (boolean): determines whether output is real-space or Fourier-space.
     
     Returns: numpy array
@@ -411,6 +419,7 @@ def simulate_white_noise(box, *, fourier):
 def simulate_gaussian_field(box, pk, pk0=None):
     """
     Args:
+        box (kszx.Box): defines pixel size, bounding box size, and location relative to observer.
         pk (either callable, or a scalar). Must be real-valued.
         pk0 (either scalar, or None)
 
@@ -442,9 +451,26 @@ def simulate_gaussian_field(box, pk, pk0=None):
 ####################################################################################################
 
 
+def _check_kbin_delim(box, kbin_delim, use_dc):
+    """Helper for estimate_power_spectrum() and kbin_average(). Returns new kbin_delim."""
+
+    kbin_delim = np.asarray(kbin_delim, dtype=float)
+    
+    assert isinstance(box, Box)
+    assert kbin_delim.ndim == 1
+    assert len(kbin_delim) >= 2    
+    assert kbin_delim[0] >= 0.
+    assert utils.is_sorted(kbin_delim)
+        
+    if (not use_dc) and (kbin_delim[0] == 0):
+        kbin_delim = np.copy(kbin_delim)
+        kbin_delim[0] = min(np.min(box.kfund), kbin_delim[1]) / 2.
+
+    return kbin_delim
+    
+    
 def _parse_map_or_maps(box, map_or_maps):
-    """Helper for estimate_power_spectrum().
-    Returns (map_list, multi_map_flag)."""
+    """Helper for estimate_power_spectrum(). Returns (map_list, multi_map_flag)."""
 
     if box.is_fourier_space_map(map_or_maps):
         return ([map_or_maps], False)  # single map
@@ -462,17 +488,25 @@ def _parse_map_or_maps(box, map_or_maps):
     
 
 def estimate_power_spectrum(box, map_or_maps, kbin_delim, *, use_dc=False, allow_empty_bins=False, return_counts=False):
-    """
+    """Computes windowed power spectrum P(k) for one or more maps (including cross-spectra).
+
     Args:
 
-        box: instance of class kszx.Box.
+        box (kszx.Box): defines pixel size, bounding box size, and location relative to observer.
 
         map_or_maps: single or multiple Fourier-space maps
           - single map: numpy array of shape (box.fourier_space_shape) and dtype=complex.
           - multiple maps: iterable object returning numpy arrays of shape (box.fourier_space_shape)
               and dtype=complex. (Could be a list, tuple, or a numpy array with an extra axis.)
 
-        kbin_delim: 1-d array of length (nkbins+1)
+        kbin_delim: 1-d array of length (nkbins+1) defining bin endpoints.
+          The i-th bin covers k-range kbin_delim[i] <= k < kbin_delim[i+1].
+
+        use_dc: if False (the default), then k=0 mode will not be used.
+
+        allow_empty_bins: if False (the default), then an execption is thrown if a k-bin is empty.
+
+        return_counts (boolean): See below.
 
     Returns: 
 
@@ -483,19 +517,19 @@ def estimate_power_spectrum(box, map_or_maps, kbin_delim, *, use_dc=False, allow
        - if return_counts=True, then return value is a pair (pk, bin_counts).
 
     Notes:
+    
+       - The normalization of the estimated power spectrum P(k) assumes that the maps fill the
+         entire box volume. If this is not the case (i.e. there is a survey window) then you'll
+         need to renormalize P(k) or deconvolve the window function.
 
-        - Note on kbin_delim[0] 
+       - Our Fourier conventions imply
 
-        - Reminder: our Fourier conventions imply
             <f(k) f(k')^*> = (box volume) P(k) delta_{kk'}
+
+         Therefore, estimate_power_s applies a factor 1 / (box volume).
     """
 
-    kbin_delim = np.asarray(kbin_delim, dtype=float)
-    
-    assert kbin_delim.ndim == 1
-    assert len(kbin_delim) >= 2    
-    assert isinstance(box, Box)
-
+    kbin_delim = _check_kbin_delim(box, kbin_delim, use_dc)
     map_list, multi_map_flag = _parse_map_or_maps(box, map_or_maps)
     
     if len(map_list) == 0:
@@ -509,14 +543,6 @@ def estimate_power_spectrum(box, map_or_maps, kbin_delim, *, use_dc=False, allow
         raise RuntimeError("kszx.lss.estimate_power_spectrum(): we currently only support nmaps <= 4."
                            + " This is a temporary problem that I'll fix later. It needs minor changes"
                            + " to the C++ code.")
-
-    
-    assert kbin_delim[0] >= 0.
-    assert utils.is_sorted(kbin_delim)
-    
-    if (not use_dc) and (kbin_delim[0] == 0):
-        kbin_delim = np.copy(kbin_delim)
-        kbin_delim[0] = min(np.min(box.kfund), kbin_delim[1]) / 2.
     
     pk, bin_counts = cpp_kernels.estimate_power_spectrum(map_list, kbin_delim, box.npix, box.kfund, box.box_volume)
 
@@ -527,3 +553,50 @@ def estimate_power_spectrum(box, map_or_maps, kbin_delim, *, use_dc=False, allow
         pk = pk[0,0,:]   # shape (1,1,nkbins) -> shape (nkbins,)
 
     return (pk, bin_counts) if return_counts else pk
+
+
+def kbin_average(box, f, kbin_delim, *, use_dc=False, allow_empty_bins=False, return_counts=False):
+    """Averages a real-valued function f(k) in k-bins.
+
+    Args:
+
+        box (kszx.Box): defines pixel size, bounding box size, and location relative to observer.
+
+        f: function (or callable object) representing the function k -> f(k).
+
+        kbin_delim: 1-d array of length (nkbins+1) defining bin endpoints.
+          The i-th bin covers k-range kbin_delim[i] <= k < kbin_delim[i+1].
+
+        use_dc: if False (the default), then skip k=0, and don't evaluate f(k) at k=0.
+
+        allow_empty_bins: if False (the default), then an execption is thrown if a k-bin is empty.
+
+        return_counts (boolean): See below.
+
+    Returns: 
+
+       - if return_counts=False (the default), then return value is a length-nkbins array 'fk_mean'.
+       - if return_counts=True, then return value is a pair (fk_mean, bin_counts).
+
+    Notes: 
+
+       - This function is intended to be used in situations where we want to compare the
+         output of estimate_power_spectrum() to a "theory" power spectrum, such as CAMB Plin().
+         To remove binning artifacts, you may want to bin-average the theory power spectrum
+         over the same k-bins used in estimate_power_spectrum().
+    
+       - The function f() must be vectorized: its argument 'k' will be a 3-dimensional arary,
+         and the return value should be a real-valued array with the same shape.
+
+       - k-values passed to f() will include the factor (2pi / boxsize).
+    """
+
+    kbin_delim = _check_kbin_delim(box, kbin_delim, use_dc)
+    fk = _eval_kfunc(box, f, dc = (None if use_dc else 0.))
+
+    fk_mean, bin_counts = cpp_kernels.kbin_average(fk, kbin_delim, box.npix, box.kfund)
+
+    if (not allow_empty_bins) and (np.min(bin_counts) == 0):
+        raise RuntimeError('kszx.lss.kbin_average(): some k-bins were empty')
+
+    return (fk_mean, bin_counts) if return_counts else fk_mean

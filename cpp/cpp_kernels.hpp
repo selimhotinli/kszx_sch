@@ -24,6 +24,9 @@ extern py::tuple estimate_power_spectrum(py::list map_list, py::array_t<const do
 					 py::array_t<const long> &npix, py::array_t<const double> &kf,
 					 double box_volume);
 
+extern py::tuple kbin_average(py::array_t<const double> &fk, py::array_t<const double> &k_delim,
+			      py::array_t<const long> &npix, py::array_t<const double> &kf);
+
 
 // -------------------------------------------------------------------------------------------------
 //

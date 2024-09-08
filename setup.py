@@ -5,7 +5,7 @@ from setuptools import setup
 
 ext_module = Pybind11Extension(
     "kszx.cpp_kernels",
-    ["cpp/cpp_kernels.cpp", "cpp/cic.cpp", "cpp/estimate_power_spectrum.cpp"],
+    ["cpp/cpp_kernels.cpp", "cpp/cic.cpp", "cpp/estimate_power_spectrum.cpp", "cpp/kbin_average.cpp"],
     extra_compile_args = ['-O3']
 )
 

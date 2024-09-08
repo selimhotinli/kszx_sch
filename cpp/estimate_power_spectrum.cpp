@@ -257,7 +257,7 @@ template<> inline void pse_1d<4> (const pse_args &args, double curr_k2, int curr
 
 
 template<int M>
-void pse(const pse_args &args, double curr_k2, int curr_bin, int ndim, const int *np, const double *kf, const cplx **maps, const int *strides)
+static void pse(const pse_args &args, double curr_k2, int curr_bin, int ndim, const int *np, const double *kf, const cplx **maps, const int *strides)
 {
     int np0 = np[0];
     double kf0 = kf[0];
