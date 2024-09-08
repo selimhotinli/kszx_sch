@@ -156,4 +156,16 @@ plt.legend(loc='upper right')
 plt.xlabel(r'$k$')
 plt.show()
 
+# %% [markdown]
+# ### Just curious: how good is the approximation P(k) ~ k at low k?
+
+# %%
+plt.semilogx(cosmo._plin_k, cosmo._plin_pzk[0]/cosmo._plin_k, marker='+', 
+             markersize=5, ls='none', color='red', label='P(k) points from CAMB')
+plt.semilogx(klgvec, cosmo.Plin_z0(klgvec)/klgvec, label='interpolation')
+plt.legend(loc='upper right')
+plt.xlabel(r'$k$')
+plt.ylabel(r'$P(k)/k$')
+plt.show()
+
 # %%

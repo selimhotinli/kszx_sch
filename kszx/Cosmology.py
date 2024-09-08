@@ -164,18 +164,16 @@ class Cosmology:
         camb_results = camb.get_results(camb_params)
         camb_timer = time.time() - camb_timer
 
-        # Currently, these arrays are only used for testing.
-        #   self._sigma8_z = 1-d array of redshifts (ordered from highest to lowest)
-        #   self._sigma8 = sigma8 value at each redshift
-
+        # self._sigma8_z = 1-d array of redshifts (ordered from highest to lowest)
+        # self._sigma8 = sigma8 value at each redshift
         self._sigma8_z = z_pk
         self._sigma8 = camb_results.get_sigma8()
 
         # CMB power spectra
         
-        lmax = self.lmax
         powers = camb_results.get_cmb_power_spectra(camb_params, CMB_unit='muK', raw_cl=True)
-
+        
+        lmax = self.lmax
         self.cltt_unl = powers['unlensed_total'][:(lmax+1),0].copy()
         self.cltt_len = powers['total'][:(lmax+1),0].copy()
         self.clphi = powers['lens_potential'][:(lmax+1),0].copy()
@@ -183,6 +181,9 @@ class Cosmology:
         # Large-scale structure power spectra
         
         k, z, pzk = camb_results.get_linear_matter_power_spectrum(var1=None, var2=None, hubble_units=False, k_hunit=False, nonlinear=False)
+        self._plin_k = k
+        self._plin_z = z
+        self._plin_pzk = pzk
         print(f'Done running CAMB [{camb_timer} seconds]')
 
         assert utils.is_sorted(k)
@@ -196,19 +197,19 @@ class Cosmology:
         # Q(k,z) = log(P(k,z)/k). Note that we transpose the (k,z) axes relative to pzk.
         Q = np.log(pzk.T / k.reshape((-1,1)))
         
-        self.pk_kmin = k[0]
-        self.pk0_interp = utils.spline1d(np.log(k), np.copy(Q[:,0]))  # interpolate log(k) -> Q
-        self.pkz_interp = utils.spline2d(np.log(k), z, Q)             # interpolate (log(k),z) -> Q
+        self._pk_kmin = k[0]
+        self._pk0_interp = utils.spline1d(np.log(k), np.copy(Q[:,0]))  # interpolate log(k) -> Q
+        self._pkz_interp = utils.spline2d(np.log(k), z, Q)             # interpolate (log(k),z) -> Q
 
         # Growth function.
-        self.Dfit_z0 = self.Dfit(z=0, z0norm=False)
-        self.Dfit_zhi = self.Dfit(z=z[-1], z0norm=False)
+        self._Dfit_z0 = self.Dfit(z=0, z0norm=False)
+        self._Dfit_zhi = self.Dfit(z=z[-1], z0norm=False)
         ik = np.searchsorted(k, 0.1)
         # print(f'Inferring growth function D(z) from P(k,z) at k={k[ik]}')
         logD = 0.5 * np.log(pzk[:,ik])
         logD -= logD[0]
-        self.logD_interp = utils.spline1d(z, logD)           # interpolate z -> log(D(z)), normalized so that D(0)=1.
-        self.logD_shift = np.log(self.Dfit_zhi) - logD[-1]   # log(D) shift to normalize so that D(z) -> 1/(1+z) at high z.
+        self._logD_interp = utils.spline1d(z, logD)           # interpolate z -> log(D(z)), normalized so that D(0)=1.
+        self._logD_shift = np.log(self._Dfit_zhi) - logD[-1]  # log(D) shift to normalize so that D(z) -> 1/(1+z) at high z.
 
         # Background expansion
         
@@ -223,9 +224,9 @@ class Cosmology:
         Rvec[0] = 1.0 / Hvec[0]
 
         self.chimax = chivec[-1]
-        self.Hz_interp = utils.spline1d(zvec, Hvec)           # interpolate zvec -> Hvec
-        self.Rz_interp = utils.spline1d(zvec, Rvec)           # interpolate z -> (chi/z)
-        self.Rchi_interp = utils.spline1d(chivec, 1.0/Rvec)   # interpolate chi -> (z/chi)
+        self._Hz_interp = utils.spline1d(zvec, Hvec)           # interpolate zvec -> Hvec
+        self._Rz_interp = utils.spline1d(zvec, Rvec)           # interpolate z -> (chi/z)
+        self._Rchi_interp = utils.spline1d(chivec, 1.0/Rvec)   # interpolate chi -> (z/chi)
         
 
     def H(self, *, z, check=True):
@@ -235,7 +236,7 @@ class Cosmology:
             assert np.all(z >= 0.0)
             assert np.all(z <= self.zmax * (1.0+1.0e-8))
         
-        return self.Hz_interp(z)   # Hz_interp interpolates z -> H(z)
+        return self._Hz_interp(z)   # Hz_interp interpolates z -> H(z)
 
 
     def chi(self, *, z, check=True):
@@ -247,7 +248,7 @@ class Cosmology:
             assert np.all(z >= 0.0)
             assert np.all(z <= self.zmax * (1.0+1.0e-8))
         
-        return z * self.Rz_interp(z)   # Rz_interp interpolates z -> (chi/z)
+        return z * self._Rz_interp(z)   # Rz_interp interpolates z -> (chi/z)
 
     
     def z(self, *, chi, check=True):
@@ -259,21 +260,20 @@ class Cosmology:
             assert np.all(chi >= 0.0)
             assert np.all(chi <= self.chimax * (1.0+1.0e-8))
         
-        return chi * self.Rchi_interp(chi)   # Rchi_interp interpolates chi -> (z/chi)
+        return chi * self._Rchi_interp(chi)   # Rchi_interp interpolates chi -> (z/chi)
 
 
-    def Plin_z0(self, *, k, check=True):
+    def Plin_z0(self, k, check=True):
         """Returns linear power spectrum P(k,z=0). 
 
-        Slightly faster than calling Plin(k,z) with z=0, and in most 
-        situations, calling Plin(k,z) is not necessary, since:
+        Calling Plin_z0() is slightly faster than calling Plin(k,z) with k=0,
+        and in most situations, calling Plin(k,z) is not necessary, since:
 
            Plin(k,z) ~ Plin(k,z=0) * D(z,normz0=True)
 
         This approximation slightly breaks down (at the ~0.5% level!)
         on large scales k <~ 10^(-3) and small scales k >~ 0.1.
         """
-        
 
         k = np.asarray(k)
         
@@ -281,8 +281,8 @@ class Cosmology:
             assert np.all(k >= 0.0)
             assert np.all(k <= self.kmax * (1.0+1.0e-8))
 
-        kk = np.maximum(k, self.pk_kmin)
-        Q = self.pk0_interp(np.log(kk))   # Q = log(P(k)/k)
+        kk = np.maximum(k, self._pk_kmin)
+        Q = self._pk0_interp(np.log(kk))   # Q = log(P(k)/k)
         return k * np.exp(Q)
 
 
@@ -310,8 +310,8 @@ class Cosmology:
         # Note: the 'grid' argument to scipy.interpolate.RectBivariateSpline.__call__()
         # has the semantics as our 'kzgrid'.
         
-        kk = np.maximum(k, self.pk_kmin)
-        Q = self.pkz_interp(np.log(kk), z, grid=kzgrid)   # Q = log(P(k)/k)
+        kk = np.maximum(k, self._pk_kmin)
+        Q = self._pkz_interp(np.log(kk), z, grid=kzgrid)   # Q = log(P(k)/k)
 
         if kzgrid:
             k = k.reshape(k.shape + ((-1,)*z.ndim))
@@ -330,9 +330,9 @@ class Cosmology:
             assert np.all(z >= 0.0)
             assert np.all(z <= self.zmax * (1.0+1.0e-8))
 
-        logD = self.logD_interp(z)
+        logD = self._logD_interp(z)
         if not z0norm:
-            logD += self.logD_shift
+            logD += self._logD_shift
         
         return np.exp(logD)
     
@@ -351,7 +351,7 @@ class Cosmology:
         omlz = oml0 / (oml0 + omm0 * (1+z)**3)
         ommz = 1.0 - omlz
         D = 2.5 * ommz / (ommz**(4.0/7.0) - omlz + (1.0+ommz/2.0)*(1.0+omlz/70.0)) / (1.0+z)
-        return (D / self.Dfit_z0) if z0norm else D
+        return (D / self._Dfit_z0) if z0norm else D
 
     
     def frsd(self, *, z, check=True):
@@ -369,11 +369,10 @@ class Cosmology:
         ommz = omm0 / (omm0 + oml0 * (1+z)**(-3.))
         return ommz**(5./9.)
 
-
+    
     def alpha(self, *, k, z, kzgrid=False, check=True):
         """Defined by delta_m(k,z) = alpha(k,z) (3/5) zeta(k).
-        The 'kzgrid' argument has the same meaning as in Plin() -- see Plin docstring.
-        
+
         The function alpha(k,z) arises in non-Gaussian halo bias as:
 
           b(k,z) = b_g + 2 b_{ng} fNL / alpha(k,z)
@@ -382,6 +381,14 @@ class Cosmology:
 
         Note that for fixed k, alpha(k,z) is proportional to D(z), to an excellent
         approximation.
+
+        The 'kzgrid' argument has the following meaning:
+
+          kzgrid=False  means "broadcast k,z to get a set of points"
+          kzgrid=True   means "take the Cartesian product of k,z to get a kzgrid"
+
+        (If kzgrid=True, then the returned array has shape (nk,nz) -- note that this
+        convention is transposed relative to CAMB or hmvec.)
         """
 
         kpiv = self.params.kpivot
@@ -396,8 +403,8 @@ class Cosmology:
         #  1/Pzeta(k) = (kpiv^3 / (2 pi^2 Delta^2)) * (k/kpiv)**(4-ns)
         
         k, z = np.asarray(k), np.asarray(z)
-        Pm = self.Plin(k=k, z=z, kzgrid=kzgrid)
-        Pz_rec = (kpiv**3 / (2 * np.pi**2 * Delta2)) * (k/kpiv)**(4-ns)
+        Pm = self.Plin(k=k, z=z, kzgrid=kzgrid, check=check)
+        Pz_rec = (kpiv**3 / (2 * np.pi**2 * Delta2)) * (k/kpiv)**(4-ns)   # okay for k=0 (provided ns < 4!)
         
         if kzgrid:
             Pz_rec = Pz_rec.reshape(Pz_rec.shape + (-1,)*z.ndim)

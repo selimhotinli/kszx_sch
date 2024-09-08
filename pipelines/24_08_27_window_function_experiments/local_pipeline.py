@@ -52,7 +52,7 @@ def run_mc(output_filename):
     rcat_r = cosmo.chi(z=rcat.z)
     rcat_xyz = kszx.utils.ra_dec_to_xyz(rcat.ra_deg, rcat.dec_deg, r=rcat_r)
 
-    delta0 = kszx.lss.simulate_gaussian_field(box, lambda k:cosmo.Plin_z0(k=k))
+    delta0 = kszx.lss.simulate_gaussian_field(box, cosmo.Plin_z0)
 
     # Catalog representation of Sg
     t = kszx.lss.fft_c2r(box, delta0)                                # real-space delta0
@@ -66,12 +66,12 @@ def run_mc(output_filename):
     t = kszx.lss.interpolate_points(box, t, rcat_xyz, kernel='cic')  # catalog delta0/alpha0
     rcat_dSg = 2 * deltac * (bg-1) * t                    # catalog d(deltag)/dfNL (note no factor D(z))
 
-    # Catalog representation of vscal (scalar field with same power spectrum as v)
+    # Catalog representation of vfake (scalar field with same power spectrum as v)
     t = kszx.lss.multiply_kfunc(box, delta0, lambda k:1/k, dc=0)     # Fourier-space delta0/k
     t = kszx.lss.fft_c2r(box, t)                                     # real-space delta0/k
     t = kszx.lss.interpolate_points(box, t, rcat_xyz, kernel='cic')  # catalog delta0/k
-    rcat_vscal = t * rcat_f * rcat_H * rcat_D / (1+rcat.z)            # catalog v = faHD/k delta0
-    rcat_vscal *= rcat.act_ivar
+    rcat_vfake = t * rcat_f * rcat_H * rcat_D / (1+rcat.z)            # catalog v = faHD/k delta0
+    rcat_vfake *= rcat.act_ivar
 
     # Catalog representation of vr
     rcat_vr = np.zeros(rcat.size)
@@ -105,9 +105,9 @@ def run_mc(output_filename):
 
     map_Sg = rcat_to_map(rcat_Sg)
     map_dSg = rcat_to_map(rcat_dSg)
-    map_vscal = rcat_to_map(rcat_vscal)
+    map_vfake = rcat_to_map(rcat_vfake)
 
-    pk = kszx.lss.estimate_power_spectrum(box, [map_Sg,map_dSg,map_vscal,map_v1], kbin_delim)
+    pk = kszx.lss.estimate_power_spectrum(box, [map_Sg,map_dSg,map_vfake,map_v1], kbin_delim)
     kszx.io_utils.write_npy(output_filename, pk)
 
 
