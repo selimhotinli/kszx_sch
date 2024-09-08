@@ -146,11 +146,11 @@ def show_file(filename, file_type=None, file=None):
         file_type = b[(i+1):]
 
     if file_type == 'pkl':
-        x = io_utils.read_pickle(filename)
+        x = read_pickle(filename)
         print(x, file=file)
 
     elif file_type == 'npy':
-        x = io_utils.read_npy(filename)
+        x = read_npy(filename)
         print('Shape:', x.shape)
         print(x, file=file)
 
@@ -175,7 +175,7 @@ def _show_npz(x, file=None, indent='  '):
     """
 
     if isinstance(x, str):
-        x = io_utils.read_npz(x)
+        x = read_npz(x)
 
     if not isinstance(x, np.lib.npyio.NpzFile):
         raise RuntimeError('kszx._show_npz(): argument must be either string or NpzFile')
