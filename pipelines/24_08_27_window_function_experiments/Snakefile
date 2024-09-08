@@ -1,6 +1,12 @@
 rule all:
     input:
-        "01_plot_surveys.ipynb"
+        "01_plot_surveys.ipynb",
+        "data/pk_mcs.npy"
+
+# 'snakemake -f -U one_mc' is useful for debugging
+rule one_mc:
+    input:
+        "data/mcs/pk_0.npy"
 
 
 rule download_act:
@@ -56,3 +62,22 @@ rule plot_surveys:
         "01_plot_surveys.ipynb"
     shell:
         "jupytext --to notebook --execute 01_plot_surveys.py"
+
+
+
+rule run_mc:
+    output:
+        "data/mcs/pk_{imc}.npy"
+    run:
+        import local_pipeline
+        local_pipeline.run_mc(output[0])
+    
+    
+rule aggregate_mcs:
+    input:
+        expand("data/mcs/pk_{imc}.npy", imc=range(1000))
+    output:
+        "data/pk_mcs.npy"
+    run:
+        import local_pipeline
+        local_pipeline.aggregate_mcs()
