@@ -275,7 +275,7 @@ def multiply_kfunc(box, arr, f, dest=None, in_place=False, dc=None):
     assert isinstance(box, Box)
     assert box.is_fourier_space_map(arr)   # check shape, dtype
 
-    fk = _eval_kfunc(box, f)
+    fk = _eval_kfunc(box, f, dc=dc)
     return _multiply(arr, fk, dest, in_place)
 
 
