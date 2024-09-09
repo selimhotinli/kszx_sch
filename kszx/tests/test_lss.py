@@ -7,6 +7,52 @@ import itertools
 import numpy as np
 
 
+####################################################################################################
+
+
+def test_fft_inverses():
+    """Tests that fft_r2c() and fft_c2r() are inverses (spin-0 only)."""
+
+    print('test_fft_inverses(): start')
+    
+    for iouter in range(100):
+        box = helpers.random_box()
+        x = lss.simulate_white_noise(box, fourier=False)
+        Fx = lss.fft_r2c(box, x)
+        FFx = lss.fft_c2r(box, Fx)
+        eps = np.max(np.abs(x-FFx)) * np.sqrt(box.pixel_volume)
+        assert eps < 1.0e-13
+        
+    print('test_fft_inverses(): pass')
+
+
+def test_fft_transposes():
+    """Tests that fft_r2c() and fft_c2r() are transposes (for arbitrary spin)."""
+    
+    print('test_fft_transposes(): start')
+
+    for iouter in range(100):
+        box = helpers.random_box()
+        spin = 0 if np.all(box.npix <= 2) else np.random.randint(0,2)
+
+        x = lss.simulate_white_noise(box, fourier=False)
+        y = lss.simulate_white_noise(box, fourier=True)
+        Fx = lss.fft_r2c(box, x, spin=spin)
+        Fy = lss.fft_c2r(box, y, spin=spin)
+
+        mdot = lambda v,w: helpers.map_dot_product(box,v,w)
+        dot1 = mdot(y,Fx)
+        dot2 = mdot(Fy,x)
+        den = mdot(y,y)*mdot(Fx,Fx) + mdot(Fx,Fx)*mdot(y,y)
+        epsilon = np.abs(dot1-dot2) / den**0.5
+        assert epsilon < 1.0e-12
+        
+    print('test_fft_transposes(): pass')
+    
+
+####################################################################################################
+
+
 class RandomPoly:
     def __init__(self, degree, lpos, rpos):
         assert lpos.shape == rpos.shape

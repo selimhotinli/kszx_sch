@@ -8,52 +8,116 @@ from . import utils
 ####################################################################################################
 
 
-def fft_r2c(box, arr):
+def fft_r2c(box, arr, spin=0):
     """Computes the FFT of real-space map 'arr', and returns a Fourier-space map.
 
     Args:
         box (kszx.Box): defines pixel size, bounding box size, and location relative to observer.
         arr: numpy array with shape (box.real_space_shape) and real dtype.
+        spin: currently only spin=0 and spin=1 are supported.
 
     Returns:
         numpy array with shape (box.fourier_space_shape) and complex dtype.
 
-    Reminder: our Fourier conventions are
+    Notes:
 
-        f(k) = (pixel volume) sum_x f(x) e^{-ik.x}     [ morally int d^nx f(x) e^{-ik.x} ]
-        f(x) = (box volume)^{-1} sum_k f(k) e^{ik.x}   [ morally int d^nk/(2pi)^n f(k) e^{ik.x} ]        
+       - Our spin-0 Fourier conventions are (see Box docstring):
+
+           f(k) = (pixel volume) sum_x f(x) e^{-ik.x}     [ morally int d^nx f(x) e^{-ik.x} ]
+           f(x) = (box volume)^{-1} sum_k f(k) e^{ik.x}   [ morally int d^nk/(2pi)^n f(k) e^{ik.x} ]
+
+       - In the spin-1 case, we include an extra factor (+i khat . rhat) in the c2r transform,
+         and (-i khat . rhat) in the r2c transform. Here, khat = (\vec k)/|k| and rhat = (\vec r)/|r|.
+
+         With this sign convention, the radial velocity field is given by (schematically):
+          
+            v_r(x) = faHD(x) * fft_c2r(delta(k)/k, spin=1)     # no minus sign
+
+         and if fft_r2c() is applied to the radial velocity field (or a kSZ velocity 
+         reconstruction), the result is positively correlated with delta(k).
     """
 
     assert isinstance(box, Box)
     assert box.is_real_space_map(arr)   # check shape and dtype of input array
+
+    if spin == 0:
+        ret = np.fft.rfftn(arr)
+        ret *= box.pixel_volume   # see Fourier conventions in docstring
+        return ret                # numpy array with shape=box.fourier_space_shape and dtype=complex.
+
+    if spin != 1:
+        raise RuntimeError('fft_r2c(): currently we support only spin=0 and spin=1')
+
+    # Spin-1 FFT follows.
     
-    ret = np.fft.rfftn(arr)
-    ret *= box.pixel_volume   # see Fourier conventions in docstring
-    return ret                # numpy array with shape=box.fourier_space_shape and dtype=complex.
+    ret = np.zeros(box.fourier_space_shape, dtype=complex)
+    
+    for axis in range(box.ndim):
+        t = multiply_rfunc(box, arr, lambda r: 1./r, regulate=True)
+        t *= box.get_r_component(axis)
+        t = fft_r2c(box, t, spin=0)
+        t *= -1j * box.get_k_component(axis, zero_nyquist=True)  # note minus sign here
+        ret += t
+        del t
 
+    multiply_kfunc(box, ret, lambda k: 1./k, dc=0, in_place=True)
+    return ret
+    
 
-def fft_c2r(box, arr):
+def fft_c2r(box, arr, spin=0):
     """Computes the FFT of Fourier-space map 'arr', and returns a real-space map.
 
     Args:
         box (kszx.Box): defines pixel size, bounding box size, and location relative to observer.
         arr: numpy array with shape (box.fourier_space_shape) and complex dtype.
+        spin: currently only spin=0 and spin=1 are supported.
 
     Returns:
         numpy array with shape (box.real_space_shape) and real dtype.
 
-    Reminder: our Fourier conventions are
+    Notes:
 
-        f(k) = (pixel volume) sum_x f(x) e^{-ik.x}     [ morally int d^nx f(x) e^{-ik.x} ]
-        f(x) = (box volume)^{-1} sum_k f(k) e^{ik.x}   [ morally int d^nk/(2pi)^n f(k) e^{ik.x} ]        
+       - Our spin-0 Fourier conventions are (see Box docstring):
+
+           f(k) = (pixel volume) sum_x f(x) e^{-ik.x}     [ morally int d^nx f(x) e^{-ik.x} ]
+           f(x) = (box volume)^{-1} sum_k f(k) e^{ik.x}   [ morally int d^nk/(2pi)^n f(k) e^{ik.x} ]
+
+       - In the spin-1 case, we include an extra factor (+i khat . rhat) in the c2r transform,
+         and (-i khat . rhat) in the r2c transform. Here, khat = (\vec k)/|k| and rhat = (\vec r)/|r|.
+
+         With this sign convention, the radial velocity field is given by (schematically):
+          
+            v_r(x) = faHD(x) * fft_c2r(delta(k)/k, spin=1)     # no minus sign
+
+         and if fft_r2c() is applied to the radial velocity field (or a kSZ velocity 
+         reconstruction), the result is positively correlated with delta(k).
     """
     
     assert isinstance(box, Box)
     assert box.is_fourier_space_map(arr)   # check shape and dtype of input array
+
+    if spin == 0:
+        ret = np.fft.irfftn(arr, box.npix)
+        ret *= (1.0 / box.pixel_volume)    # see Fourier conventions in docstring
+        return ret                         # numpy array with shape=box.real_space shape and dtype=complex.
+
+    if spin != 1:
+        raise RuntimeError('fft_c2r(): currently we support only spin=0 and spin=1')
+
+    # Spin-1 FFT follows.
     
-    ret = np.fft.irfftn(arr, box.npix)
-    ret *= (1.0 / box.pixel_volume)    # see Fourier conventions in docstring
-    return ret                         # numpy array with shape=box.real_space shape and dtype=complex.
+    ret = np.zeros(box.real_space_shape, dtype=float)
+    
+    for axis in range(box.ndim):
+        t = multiply_kfunc(box, arr, lambda k: 1./k, dc=0.)
+        t *= 1j * box.get_k_component(axis, zero_nyquist=True)
+        t = fft_c2r(box, t, spin=0)
+        t *= box.get_r_component(axis)
+        ret += t
+        del t
+
+    multiply_rfunc(box, ret, lambda r: 1./r, regulate=True, in_place=True)
+    return ret
 
 
 ####################################################################################################

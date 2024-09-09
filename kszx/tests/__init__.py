@@ -5,6 +5,8 @@ def run_all_tests():
     test_box.test_k_component()
     test_box.test_r_component()
     test_box.test_smallest_r()
+    test_lss.test_fft_inverses()
+    test_lss.test_fft_transposes()
     test_lss.test_interpolation()
     test_lss.test_interpolation_gridding_consistency()
     test_lss.test_simulate_gaussian()
