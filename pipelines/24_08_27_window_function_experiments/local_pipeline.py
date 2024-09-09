@@ -8,6 +8,9 @@ kmax = 0.1
 nkbins = 20
 kbin_delim = np.linspace(0,kmax,nkbins+1)
 nmc = 1000
+kernel = 'cubic'
+pixsize = 10.0
+rpad = 200.0
 
 
 ####################################################################################################
@@ -23,7 +26,7 @@ def make_bounding_box():
     rcat = kszx.sdss.read_randoms('CMASS_North')
     rcat.apply_redshift_cut(0.43, 0.7)
 
-    bb = kszx.BoundingBox(rcat, cosmo, pixsize=15, rpad=200)
+    bb = kszx.BoundingBox(rcat, cosmo, pixsize=pixsize, rpad=rpad)
     kszx.io_utils.write_pickle('data/bounding_box.pkl', bb)
     
 
@@ -55,21 +58,21 @@ def run_mc(output_filename):
     delta0 = kszx.lss.simulate_gaussian_field(box, cosmo.Plin_z0)
 
     # Catalog representation of Sg
-    t = kszx.lss.fft_c2r(box, delta0)                                # real-space delta0
-    t = kszx.lss.interpolate_points(box, t, rcat_xyz, kernel='cic')  # catalog delta0
-    rcat_Sg = bg * rcat_D * t                                        # catalog delta_g
+    t = kszx.lss.fft_c2r(box, delta0)                                 # real-space delta0
+    t = kszx.lss.interpolate_points(box, t, rcat_xyz, kernel=kernel)  # catalog delta0
+    rcat_Sg = bg * rcat_D * t                                         # catalog delta_g
 
     # Catalog representation of dSg/dfNL
     fk = lambda k: 1.0 / cosmo.alpha(k=k,z=0)
     t = kszx.lss.multiply_kfunc(box, delta0, fk, dc=0)    # Fourier-space delta0/alpha0
     t = kszx.lss.fft_c2r(box, t)                          # real-space delta0/alpha0
-    t = kszx.lss.interpolate_points(box, t, rcat_xyz, kernel='cic')  # catalog delta0/alpha0
+    t = kszx.lss.interpolate_points(box, t, rcat_xyz, kernel=kernel)  # catalog delta0/alpha0
     rcat_dSg = 2 * deltac * (bg-1) * t                    # catalog d(deltag)/dfNL (note no factor D(z))
 
     # Catalog representation of vfake (scalar field with same power spectrum as v)
     t = kszx.lss.multiply_kfunc(box, delta0, lambda k:1/k, dc=0)     # Fourier-space delta0/k
     t = kszx.lss.fft_c2r(box, t)                                     # real-space delta0/k
-    t = kszx.lss.interpolate_points(box, t, rcat_xyz, kernel='cic')  # catalog delta0/k
+    t = kszx.lss.interpolate_points(box, t, rcat_xyz, kernel=kernel)  # catalog delta0/k
     rcat_vfake = t * rcat_f * rcat_H * rcat_D / (1+rcat.z)            # catalog v = faHD/k delta0
     rcat_vfake *= rcat.act_ivar
 
@@ -80,7 +83,7 @@ def run_mc(output_filename):
     for axis in range(3):
         t = kszx.lss.apply_partial_derivative(box, u, axis=axis)
         t = kszx.lss.fft_c2r(box, t)
-        t = kszx.lss.interpolate_points(box, t, rcat_xyz, kernel='cic')  # catalog delta0/k
+        t = kszx.lss.interpolate_points(box, t, rcat_xyz, kernel=kernel)  # catalog delta0/k
         rcat_vr += t * rcat_xyz[:,axis] / rcat_r
         
     rcat_vr *= rcat_f * rcat_H * rcat_D / (1+rcat.z)         # catalog v = faHD/k delta0
@@ -91,7 +94,7 @@ def run_mc(output_filename):
 
     for axis in range(3):
         t = np.zeros(box.real_space_shape, dtype=float)
-        kszx.lss.grid_points(box, t, rcat_xyz, 'cic', weights = rcat_vr * rcat_xyz[:,axis] / rcat_r)
+        kszx.lss.grid_points(box, t, rcat_xyz, weights = rcat_vr * rcat_xyz[:,axis] / rcat_r, kernel=kernel)
         t = kszx.lss.fft_r2c(box, t)
         map_v1 += kszx.lss.apply_partial_derivative(box, t, axis, in_place=True)  # still need to divide by k
 
@@ -100,7 +103,7 @@ def run_mc(output_filename):
 
     def rcat_to_map(w):
         t = np.zeros(box.real_space_shape, dtype=float)
-        kszx.lss.grid_points(box, t, rcat_xyz, 'cic', weights=w)
+        kszx.lss.grid_points(box, t, rcat_xyz, weights=w, kernel=kernel)
         return kszx.lss.fft_r2c(box, t)
 
     map_Sg = rcat_to_map(rcat_Sg)

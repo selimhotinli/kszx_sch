@@ -66,6 +66,9 @@ rule plot_surveys:
 
 
 rule run_mc:
+    input:
+        "data/bounding_box.pkl",
+        "data/randoms_with_act_ivar.h5"
     output:
         "data/mcs/pk_{imc}.npy"
     run:
@@ -81,3 +84,6 @@ rule aggregate_mcs:
     run:
         import local_pipeline
         local_pipeline.aggregate_mcs()
+
+
+# postprocess_mcs (jupyter notebook)
