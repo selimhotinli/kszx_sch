@@ -3,11 +3,15 @@
 from pybind11.setup_helpers import Pybind11Extension, build_ext
 from setuptools import setup
 
-ext_module = Pybind11Extension(
-    "kszx.cpp_kernels",
-    ["cpp/cpp_kernels.cpp", "cpp/cic.cpp", "cpp/estimate_power_spectrum.cpp", "cpp/kbin_average.cpp"],
-    extra_compile_args = ['-O3']
-)
+cpp_source_files = [
+    "cpp/cpp_kernels.cpp",
+    "cpp/cic.cpp",
+    "cpp/cubic.cpp",
+    "cpp/estimate_power_spectrum.cpp",
+    "cpp/kbin_average.cpp"
+]
+
+ext_module = Pybind11Extension("kszx.cpp_kernels", cpp_source_files, extra_compile_args = ['-O3'])
 
 setup(
     name = 'kszx',

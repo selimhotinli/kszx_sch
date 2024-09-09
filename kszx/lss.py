@@ -65,8 +65,8 @@ def interpolate_points(box, grid, points, kernel):
     Args:
         box (kszx.Box): defines pixel size, bounding box size, and location relative to observer.
         grid: numpy array with shape (box.real_space_shape) and real dtype.
-        points: numpy array with shape (npoints, box.ndim)
-        kernel: currently only 'cic' is supported.
+        points: numpy array with shape (npoints, box.ndim).
+        kernel: either 'cic' or 'cubic' (more to come).
 
     Returns:
         1-d numpy array with length npoints.
@@ -78,16 +78,22 @@ def interpolate_points(box, grid, points, kernel):
     """
 
     assert isinstance(box, Box)
+    assert isinstance(kernel, str)
     assert box.is_real_space_map(grid)   # check grid shape, dtype
     assert points.ndim == 2
     assert points.shape[1] == box.ndim
 
     if box.ndim != 3:
         raise RuntimeError('kszx.interpolate_points(): currently only ndim==3 is supported')
-    if (kernel != 'cic') and (kernel != 'CIC'):
-        raise RuntimeError('kszx.interpolate_points(): currently only kernel=="cic" is supported')
 
-    return cpp_kernels.cic_interpolate_3d(grid, points, box.lpos[0], box.lpos[1], box.lpos[2], box.pixsize)
+    kernel = kernel.lower()
+    
+    if kernel == 'cic':
+        return cpp_kernels.cic_interpolate_3d(grid, points, box.lpos[0], box.lpos[1], box.lpos[2], box.pixsize)
+    elif kernel == 'cubic':
+        return cpp_kernels.cubic_interpolate_3d(grid, points, box.lpos[0], box.lpos[1], box.lpos[2], box.pixsize)
+    else:
+        raise RuntimeError('kszx.interpolate_points(): {kernel=} is not supported')
 
 
 def grid_points(box, grid, points, kernel, weights=None):
@@ -97,7 +103,7 @@ def grid_points(box, grid, points, kernel, weights=None):
         box (kszx.Box): defines pixel size, bounding box size, and location relative to observer.
         grid: numpy array with shape (box.real_space_shape) and real dtype.
         points: numpy array with shape (npoints, box.ndim)
-        kernel: currently only 'cic' is supported.
+        kernel: either 'cic' or 'cubic' (more to come).
         weights: either scalar, None, or 1-d array with length npoints.
            - if 'weights' is a scalar, then all delta functions have equal weight.
            - if 'weights' is None, then all delta functions have weight 1.
@@ -130,27 +136,32 @@ def grid_points(box, grid, points, kernel, weights=None):
     """
     
     assert isinstance(box, Box)
+    assert isinstance(kernel, str)
     assert box.is_real_space_map(grid)   # check grid shape, dtype
     assert points.ndim == 2
     assert points.shape[1] == box.ndim
+    
     npoints = points.shape[0]
-
+    kernel = kernel.lower()
+    
+    if box.ndim != 3:
+        raise RuntimeError('kszx.grid_points(): currently only ndim==3 is supported')
     if weights is None:
         weights = np.ones(npoints)
 
     weights = np.asarray(weights, dtype=float)
-
+    
     if weights.ndim == 0:
         weights = np.full(npoints, fill_value=float(weights))
     if weights.shape != (npoints,):
         raise RuntimeError("kszx.grid_points(): 'points' and 'weights' arrays don't have consistent shapes")
-        
-    if box.ndim != 3:
-        raise RuntimeError('kszx.grid_points(): currently only ndim==3 is supported')
-    if (kernel != 'cic') and (kernel != 'CIC'):
-        raise RuntimeError('kszx.grid_points(): currently only kernel=="cic" is supported')
     
-    cpp_kernels.cic_grid_3d(grid, points, weights, box.lpos[0], box.lpos[1], box.lpos[2], box.pixsize)
+    if kernel == 'cic':
+        cpp_kernels.cic_grid_3d(grid, points, weights, box.lpos[0], box.lpos[1], box.lpos[2], box.pixsize)
+    elif kernel == 'cubic':
+        cpp_kernels.cubic_grid_3d(grid, points, weights, box.lpos[0], box.lpos[1], box.lpos[2], box.pixsize)
+    else:
+        raise RuntimeError('kszx.grid_points(): {kernel=} is not supported')
 
 
 ####################################################################################################

@@ -10,7 +10,17 @@ PYBIND11_MODULE(cpp_kernels, m)
 	  py::arg("lpos0"), py::arg("lpos1"), py::arg("lpos2"),
 	  py::arg("pixsize"));
 
+    m.def("cubic_interpolate_3d", cubic_interpolate_3d,
+	  py::arg("grid"), py::arg("points"),
+	  py::arg("lpos0"), py::arg("lpos1"), py::arg("lpos2"),
+	  py::arg("pixsize"));
+
     m.def("cic_grid_3d", cic_grid_3d,
+	  py::arg("grid"), py::arg("points"), py::arg("weights"),
+	  py::arg("lpos0"), py::arg("lpos1"), py::arg("lpos2"),
+	  py::arg("pixsize"));
+
+    m.def("cubic_grid_3d", cubic_grid_3d,
 	  py::arg("grid"), py::arg("points"), py::arg("weights"),
 	  py::arg("lpos0"), py::arg("lpos1"), py::arg("lpos2"),
 	  py::arg("pixsize"));

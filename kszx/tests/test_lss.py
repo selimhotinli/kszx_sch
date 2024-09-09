@@ -14,7 +14,7 @@ class RandomPoly:
         assert degree >= 1
 
         self.ndim = len(lpos)
-        self.degree = 1
+        self.degree = degree
         self.lpos = lpos
         self.rpos = rpos
         self.cpos = (rpos + lpos) / 2.
@@ -69,10 +69,10 @@ class RandomPoly:
 
 def test_interpolation():
     print('test_interpolation(): start')
-    
+
     for _ in range(100):
-        # Currently, lss.interpolate_points() only supports CIC.
-        kernel, degree = ('cic', 1)
+        # Currently, lss.interpolate_points() supports CIC and cubic.
+        kernel, degree = ('cic',1) if (np.random.uniform() < 0.5) else ('cubic',3)
 
         # Currently, lss.interpolate_point() only supports ndim=3.
         box = helpers.random_box(ndim=3, nmin=degree+1)
@@ -97,8 +97,8 @@ def test_interpolation_gridding_consistency():
     print('test_interpolation_gridding_consistency(): start')
     
     for _ in range(100):
-        # Currently, lss.interpolate_points() only supports CIC.
-        kernel, degree = ('cic', 1)
+        # Currently, lss.interpolate_points() supports CIC and cubic.
+        kernel, degree = ('cic',1) if (np.random.uniform() < 0.5) else ('cubic',3)
 
         # Currently, lss.interpolate_point() only supports ndim=3.
         box = helpers.random_box(ndim=3, nmin=degree+1)

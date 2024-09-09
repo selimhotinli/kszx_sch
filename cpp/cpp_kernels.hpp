@@ -17,8 +17,16 @@ namespace py = pybind11;
 extern py::array_t<double> cic_interpolate_3d(py::array_t<const double> &grid, py::array_t<const double> &points,
 					      double lpos0, double lpos1, double lpos2, double pixsize);
 
+extern py::array_t<double> cubic_interpolate_3d(py::array_t<const double> &grid, py::array_t<const double> &points,
+						double lpos0, double lpos1, double lpos2, double pixsize);
+
+
 extern void cic_grid_3d(py::array_t<double> &grid, py::array_t<const double> &points, py::array_t<const double> &weights,
 			double lpos0, double lpos1, double lpos2, double pixsize);
+
+extern void cubic_grid_3d(py::array_t<double> &grid, py::array_t<const double> &points, py::array_t<const double> &weights,
+			  double lpos0, double lpos1, double lpos2, double pixsize);
+
 
 extern py::tuple estimate_power_spectrum(py::list map_list, py::array_t<const double> &k_delim,
 					 py::array_t<const long> &npix, py::array_t<const double> &kf,
