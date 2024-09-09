@@ -211,7 +211,7 @@ def _test_estimate_power_spectrum(box, kbin_delim, nmaps=None, use_dc=False):
 
     for b in range(nbins):
         if ref_bc[b] > 0:
-            ref_pk[:,:,b] = (ref_pk[:,:,b] / ref_bc[b] / box.box_volume)
+            ref_pk[:,:,b] /= (ref_bc[b] * box.box_volume)
 
     if nmaps is None:
         ref_pk = ref_pk[0,0,:]
@@ -233,21 +233,90 @@ def test_estimate_power_spectrum():
     
     for iouter in range(100):
         box = helpers.random_box()
+        kbin_delim = helpers.random_kbin_delim(box)
         use_dc = (np.random.uniform() < 0.5)
 
         # Note! Currently assuming nmaps=4 is max value supported by kernel.
         # If the kernel changes in the future, make sure to update the line below.
         nmaps = np.random.randint(1,5) if (np.random.uniform() < 0.95) else None
         # print(f'{nmaps=}')
-        
-        # Generate random kbin_delim
-        nbins = np.random.randint(2, 11)
-        kmax = 1.1 * np.sqrt(box.ndim) * box.knyq
-        kbin_delim = np.random.uniform(0.0, kmax, nbins+1)
-        kbin_delim = np.sort(kbin_delim)
-        kbin_delim += np.linspace(0.0, 1.0e-10 * kmax, nbins+1)
-        kbin_delim[0] = kbin_delim[0] if (np.random.uniform() < 0.5) else 0.0
 
         _test_estimate_power_spectrum(box, kbin_delim, nmaps=nmaps, use_dc=use_dc)
         
     print('test_estimate_power_spectrum(): pass')
+
+
+####################################################################################################
+
+
+def _test_kbin_average(box, kbin_delim, use_dc=False):
+    """Compares lss.kbin_average() to a reference implementation.
+    
+    In principle, there is a small chance that this test can fail, if kbin_average() 
+    and the reference implementation put a k-mode in different bins, due to roundoff error. 
+    """
+
+    # Random function f(k) = sum_i coeffs[i] * cos(rvals[i]*k)
+    ncoeffs = 5
+    rmax = 2.0 / np.min(box.kfund)
+    rvals = np.random.uniform(low=0, high=rmax, size=ncoeffs)
+    coeffs = np.random.normal(size=ncoeffs)
+
+    def f(k):
+        ret = np.zeros_like(k)
+        for i in range(ncoeffs):
+            ret += coeffs[i] * np.cos(rvals[i]*k)
+        return ret
+
+    fmean, bc = lss.kbin_average(box, f, kbin_delim, use_dc=use_dc, allow_empty_bins=True, return_counts=True)
+
+    nbins = len(kbin_delim) - 1
+    ref_fk = f(box.get_k())
+    ref_fmean = np.zeros(nbins)
+    ref_bc = np.zeros(nbins, dtype=int)
+
+    for ix in helpers.generate_indices(box.fourier_space_shape):
+        i = np.array(ix, dtype=int)
+            
+        if (not use_dc) and np.all(i==0):
+            continue
+
+        k = np.array(i, dtype=float)
+        k = np.minimum(k, box.npix - k)
+        k *= (2*np.pi) / box.boxsize
+        k = np.dot(k,k)**0.5
+        b = np.searchsorted(kbin_delim, k, side='right')-1
+        
+        if (b < 0) or (b >= nbins):
+            continue
+
+        t = 1 if ((ix[-1]==0) or (2*ix[-1] == box.npix[-1])) else 2
+        ref_fmean[b] += t * ref_fk[ix]
+        ref_bc[b] += t
+
+    for b in range(nbins):
+        if ref_bc[b] > 0:
+            ref_fmean[b] /= ref_bc[b]
+
+    eps = np.max(np.abs(fmean - ref_fmean))
+    # print(f'{eps=}')
+    assert np.all(bc == ref_bc)
+    assert eps < 1.0e-12
+    
+
+def test_kbin_average():
+    """Compares lss.kbin_average() to a reference implementation.
+    
+    In principle, there is a small chance that this test can fail, if kbin_average() 
+    and the reference implementation put a k-mode in different bins, due to roundoff error. 
+    """
+
+    print('test_kbin_average(): start')
+    
+    for iouter in range(100):
+        box = helpers.random_box()
+        kbin_delim = helpers.random_kbin_delim(box)
+        use_dc = (np.random.uniform() < 0.5)
+        _test_kbin_average(box, kbin_delim, use_dc=use_dc)
+        
+    print('test_kbin_average(): pass')

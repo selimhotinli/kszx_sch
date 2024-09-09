@@ -9,6 +9,7 @@ def run_all_tests():
     test_lss.test_interpolation_gridding_consistency()
     test_lss.test_simulate_gaussian()
     test_lss.test_estimate_power_spectrum()
+    test_lss.test_kbin_average()
 
     #test_lss.monte_carlo_simulate_gaussian([4,6,1], 10.0)
     #test_lss.monte_carlo_simulate_gaussian([5,4,6], 10.0)

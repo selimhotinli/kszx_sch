@@ -350,7 +350,7 @@ py::tuple estimate_power_spectrum(py::list map_list, py::array_t<const double> &
 	    throw runtime_error("estimate_power_spectrum: expected k_delim array to be sorted");
 
     for (int b = 0; b < nkbins+1; b++)
-	k2_delim[b] = kd[b*ks] * kd[b*ks];
+	k2_delim[b] = square(kd[b*ks]);
     
     // Error-check 'npix' argument, and populate 'np' vector (converting long -> int).
     

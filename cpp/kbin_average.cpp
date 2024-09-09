@@ -51,7 +51,7 @@ static void _kbin_average(double *out_fk, long *out_bcounts,
 	    if (curr_bin < nkbins)
 		_kbin_average(out_fk, out_bcounts,
 			      in_fk + ik0*s0, fk_strides+1,
-			      nkbins, k2_delim, curr_k2, curr_bin,
+			      nkbins, k2_delim, k2, curr_bin,
 			      ndim-1, np+1, kf+1);
 	}
     }
@@ -98,7 +98,7 @@ py::tuple kbin_average(py::array_t<const double> &fk, py::array_t<const double> 
 	    throw runtime_error("kbin_average: expected k_delim array to be sorted");
 
     for (int b = 0; b < nkbins+1; b++)
-	k2_delim[b] = kd[b*ks] * kd[b*ks];
+	k2_delim[b] = square(kd[b*ks]);
     
     // Error-check 'npix' argument, and populate 'np' vector (converting long -> int).
     

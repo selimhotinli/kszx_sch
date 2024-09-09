@@ -52,6 +52,19 @@ def random_box(ndim=None, nmin=2):
     return Box(npix, pixsize, cpos)
 
 
+def random_kbin_delim(box, nbins=None):
+    if nbins is None:
+        nbins = np.random.randint(2, 11)
+    
+    kmax = 1.1 * np.sqrt(box.ndim) * box.knyq
+    kbin_delim = np.random.uniform(0.0, kmax, nbins+1)
+    kbin_delim = np.sort(kbin_delim)
+    kbin_delim += np.linspace(0.0, 1.0e-10 * kmax, nbins+1)
+    kbin_delim[0] = kbin_delim[0] if (np.random.uniform() < 0.5) else 0.0
+    
+    return kbin_delim
+
+
 def map_dot_product(box, arr1, arr2, normalize=True):
     """Returns dot product of two maps (maps can be either Fourier or real space).
     

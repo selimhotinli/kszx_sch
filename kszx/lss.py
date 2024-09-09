@@ -600,6 +600,9 @@ def kbin_average(box, f, kbin_delim, *, use_dc=False, allow_empty_bins=False, re
          and the return value should be a real-valued array with the same shape.
 
        - k-values passed to f() will include the factor (2pi / boxsize).
+
+       - The output of kbin_average() does not include any normalization factors (such as the
+         box or pixel size). It is just a straightforward average of f() values over each k-bin.
     """
 
     kbin_delim = _check_kbin_delim(box, kbin_delim, use_dc)
