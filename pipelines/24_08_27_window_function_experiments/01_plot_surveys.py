@@ -37,7 +37,7 @@ kszx.pixell_utils.plot_map(ivar, downgrade=40)
 # This defines the survey geometry for windowed power spectra, in later pipeline stages.
 
 # %%
-rmap = rcat.to_pixell(ivar.shape, ivar.wcs, weights=rcat.act_ivar)
+rmap = kszx.pixell_utils.map_from_catalog(ivar.shape, ivar.wcs, rcat, weights=rcat.act_ivar)
 kszx.pixell_utils.plot_map(rmap, downgrade=40)
 
 # %% [markdown]

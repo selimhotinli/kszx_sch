@@ -3,19 +3,8 @@ import scipy.integrate
 import scipy.interpolate
 
 
-def asarray(x, caller, arg, dtype=None, allow_none=False):
-    if allow_none and (x is None):
-        return x
-    
-    try:
-        assert x is not None
-        return np.asarray(x, dtype)
-    except:
-        pass
+####################################################################################################
 
-    s = f' with dtype {dtype}' if (dtype is not None) else ''
-    raise RuntimeError(f"{caller}: couldn't convert {arg} to array{s} (value={x})")
-    
 
 def ra_dec_to_xyz(ra_deg, dec_deg, r=None):
     """Returns shape s+(3,) array, where ra_deg.shape == dec_deg.shape == s."""
@@ -41,6 +30,69 @@ def ra_dec_to_xyz(ra_deg, dec_deg, r=None):
         ret *= np.reshape(r, r.shape + (1,))
     
     return ret
+
+
+####################################################################################################
+
+
+def asarray(x, caller, arg, dtype=None, allow_none=False):
+    if allow_none and (x is None):
+        return x
+    
+    try:
+        assert x is not None
+        return np.asarray(x, dtype)
+    except:
+        pass
+
+    s = f' with dtype {dtype}' if (dtype is not None) else ''
+    raise RuntimeError(f"{caller}: couldn't convert {arg} to array{s} (value={x})")
+    
+
+def scattered_add(lhs, ix, rhs, normalize_sum = None):
+    """Returns sum of RHS values (before applying 'normalize_sum').
+    FIXME: Is there a numpy function that does this? If not, write a C++ kernel.
+    """
+    
+    assert lhs.ndim == 1
+    assert ix.ndim == 1
+
+    n = len(ix)
+    rhs = np.asarray(rhs) if (rhs is not None) else None
+
+    # Split lhs into (scalar, vector) components (the vector can be None).
+    if rhs is None:
+        rs, rv = 1.0, None
+    elif rhs.ndim == 0:
+        rs, rv = float(rhs), None
+    elif rhs.shape == (n,):
+        rs, rv = 1.0, rhs
+    else:
+        raise RuntimeError("kszx.utils.scattered_add(): 'rhs' and 'ix' have inconsistent shapes")
+
+    rsum = (rs*np.sum(rv)) if (rv is not None) else (rs*n)
+    
+    if normalize_sum:
+        assert rsum > 0.0
+        rs *= (normalize_sum / rsum)
+        
+    # FIXME slow non-vectorized loops, write C++ helper function at some point.
+    # (I don't think there is a numpy function that helps.)
+
+    if rv is None:
+        for i in range(n):
+            lhs[ix[i]] += rs
+    elif rs == 1.0:
+        for i in range(n):
+            lhs[ix[i]] += rv[i]
+    else:
+        for i in range(n):
+            lhs[ix[i]] += rs * rv[i]
+
+    return rsum
+            
+
+####################################################################################################
 
 
 def quad(f, xmin, xmax, epsabs=0.0, epsrel=1.0e-4, points=None):

@@ -11,6 +11,11 @@ nmc = 1000
 kernel = 'cubic'
 pixsize = 10.0
 rpad = 200.0
+sdss_survey = 'CMASS_North'
+sdss_zmin = 0.43
+sdss_zmax = 0.7
+act_freq = 150
+act_dr = 5
 
 
 ####################################################################################################
@@ -24,17 +29,17 @@ def run_camb():
 def make_bounding_box():
     cosmo = kszx.io_utils.read_pickle('data/cosmology.pkl')
     rcat = kszx.sdss.read_randoms('CMASS_North')
-    rcat.apply_redshift_cut(0.43, 0.7)
+    rcat.apply_redshift_cut(sdss_zmin, sdss_zmax)
 
-    bb = kszx.BoundingBox(rcat, cosmo, pixsize=pixsize, rpad=rpad)
+    bb = kszx.BoundingBox(rcat.get_xyz(cosmo), pixsize=pixsize, rpad=rpad)
     kszx.io_utils.write_pickle('data/bounding_box.pkl', bb)
     
 
 def eval_act_ivar_on_sdss_randoms():
     rcat = kszx.sdss.read_randoms('CMASS_North')
-    rcat.apply_redshift_cut(0.43, 0.7)
+    rcat.apply_redshift_cut(sdss_zmin, sdss_zmax)
     
-    ivar = kszx.act.read_ivar(freq=150, dr=5)
+    ivar = kszx.act.read_ivar(freq=act_freq, dr=act_dr)
     idec, ira, mask = kszx.pixell_utils.ang2pix(ivar.shape, ivar.wcs, rcat.ra_deg, rcat.dec_deg, allow_outliers=True)
     rcat_ivar = np.where(mask, ivar[idec,ira], 0)
     rcat.add_column('act_ivar', rcat_ivar)
@@ -52,8 +57,7 @@ def run_mc(output_filename):
     rcat_D = cosmo.D(z=rcat.z, z0norm=True)
     rcat_f = cosmo.frsd(z=rcat.z)
     rcat_H = cosmo.H(z=rcat.z)
-    rcat_r = cosmo.chi(z=rcat.z)
-    rcat_xyz = kszx.utils.ra_dec_to_xyz(rcat.ra_deg, rcat.dec_deg, r=rcat_r)
+    rcat_xyz = rcat.get_xyz(cosmo)
 
     delta0 = kszx.lss.simulate_gaussian_field(box, cosmo.Plin_z0)
 

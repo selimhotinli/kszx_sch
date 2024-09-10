@@ -8,7 +8,7 @@ conda create -n kszx -c conda-forge \
 
 conda activate kszx
 
-pip install pixell   # not in conda
+pip install pymangle pixell   # not in conda
 ```
 
 ### Jupyterlab:

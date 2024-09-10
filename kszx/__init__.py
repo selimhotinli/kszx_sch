@@ -1,7 +1,9 @@
+from . import cpp_kernels
+
 from . import utils
 from . import io_utils
+from . import healpix_utils
 from . import pixell_utils
-from . import cpp_kernels
 
 from .Box import Box
 from .BoundingBox import BoundingBox

@@ -71,7 +71,9 @@ class Box:
         assert npix.ndim == 1
         assert npix.dtype.kind in ['i','u']    # integer-valued
         assert np.all(npix > 0)
-        assert len(npix) > 0
+
+        ndim = len(npix)
+        assert 1 <= ndim <= 3
 
         pixsize = float(pixsize)
         assert(pixsize > 0)
@@ -81,7 +83,7 @@ class Box:
             assert cpos.shape == npix.shape
 
         # Real-space shape
-        self.ndim = len(npix)
+        self.ndim = ndim
         self.npix = np.array(npix, dtype=int)
         self.real_space_shape = tuple(self.npix)
 
@@ -96,7 +98,7 @@ class Box:
         self.kfund = 2*np.pi / self.boxsize
         self.knyq = np.pi / self.pixsize
         self.box_volume = np.prod(self.boxsize)
-        self.pixel_volume = (self.pixsize)**(self.ndim)
+        self.pixel_volume = (self.pixsize)**ndim
 
         # Box location in observer coordinates.
         t = 0.5 * (self.npix - 1) * self.pixsize

@@ -1,11 +1,10 @@
 import h5py
 import copy
-import healpy
 import numpy as np
 import pixell.enmap
 
-from . import io_utils       # mkdir_containing()
-from . import pixell_utils   # ang2pix()
+from . import utils
+from . import io_utils
 
 
 class Catalog:
@@ -27,6 +26,12 @@ class Catalog:
        z           redshift
        zerr        redshift error (if photometric)
        rmag        r-band magnitude (and similarly for g-band, z-band, etc.)
+
+    Note: here are some functions which make maps from catalogs:
+
+       kszx.healpix_utils.map_from_catalog()   # catalog -> 2d healpix map
+       kszx.pixell_utils.map_from_catalog()    # catalog -> 2d pixell maps
+       kszx.lss.grid_points()                  # catalog -> 3d map
     """
     
     def __init__(self, cols=None, name=None, filename=None, size=0):
@@ -108,65 +113,26 @@ class Catalog:
             self.apply_boolean_mask(self.z <= zmax, name=f'z <= {zmax}')
 
 
-    def to_healpix(self, nside, weights=None):
-        """Returns 1-d float64 array with length 12*nside^2."""
+    def get_xyz(self, cosmo):
+        """Returns shape (N,3) array. The 'cosmo' arg should be an instance of kszx.Cosmology.
+
+        Can be used as 'points' array in kszx.lss.interpolate_points(), kszx.lss.grid_points(),
+        or kszx.BoundingBox constructor.
         
-        npix = healpy.nside2npix(nside)
-        ipix = healpy.ang2pix(nside, self.ra_deg, self.dec_deg, lonlat=True)
-        ret = np.zeros(npix)
+        Implementation: just a wrapper around:
 
-        if weights is not None:
-            weights = np.asarray(weights)
-            assert weights.shape == (self.size,)
-            
-        # FIXME slow non-vectorized loop, write C++ helper function?
-        # (I don't think there is a numpy function that helps.)
+           kszx.Cosmology.chi()         computes radial distance chi from 'z' column of catalog
+           kszx.utils.ra_dec_to_xyz()   computes xyz coords from chi + ('ra_deg','dec_deg') cols
+        """
 
-        if weights is None:
-            for p in ipix:
-                ret[p] += 1.0
-        else:
-            for i in range(self.size):
-                ret[ipix[i]] += weights[i]
-                
-        return ret
-
-
-    def to_pixell(self, shape, wcs, weights=None, allow_outliers=False):
-        """Returns a pixell.enmap.ndmap.
+        assert 'ra_deg' in self.col_names
+        assert 'dec_deg' in self.col_names
+        assert 'z' in self.col_names
         
-        If 'allow_outliers' is True, then "out-of-bounds" galaxies (i.e. galaxies outside 
-        the boundaries of the pixell map) will be silently discarded. If 'allow_outliers'
-        is False, then out-of-bounds galaxies will raise an exception."""
-
-        # Returns (idec,ira) if allow_outliers is False, or (idec,ira,mask) if allow_outliers is True.
-        
-        if weights is not None:
-            weights = np.asarray(weights)
-            assert weights.shape == (self.size,)
-
-        if not allow_outliers:
-            idec, ira = pixell_utils.ang2pix(shape, wcs, self.ra_deg, self.dec_deg, allow_outliers=False)
-            ra_deg, dec_deg = self.ra_deg, self.dec_deg
-        else:
-            idec, ira, mask = pixell_utils.ang2pix(shape, wcs, self.ra_deg, self.dec_deg, allow_outliers=True)
-            idec, ira, ra_deg, dec_deg = idec[mask], ira[mask], self.ra_deg[mask], self.dec_deg[mask]
-            weights = weights[mask] if (weights is not None) else None
-            
-        # FIXME slow non-vectorized loop, write C++ helper function?
-        # (I don't think there is a numpy function that helps.)
-
-        ret = np.zeros(shape)
-
-        if weights is None:
-            for i in range(len(idec)):
-                ret[idec[i],ira[i]] += 1.0
-        else:
-            for i in range(len(idec)):
-                ret[idec[i],ira[i]] += weights[i]
-                
-        return pixell.enmap.enmap(ret, wcs=wcs)
-
+        chi = cosmo.chi(z=self.z)
+        xyz = utils.ra_dec_to_xyz(self.ra_deg, self.dec_deg, r=chi)
+        return xyz
+    
 
     def generate_batches(self, batchsize, verbose=True):
         """

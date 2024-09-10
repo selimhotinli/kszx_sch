@@ -8,19 +8,47 @@ from . import io_utils
 
 
 def read_galaxies(survey, download=False):
+    """Returns SDSS galaxy catalog (instance of type kszx.Catalog).
+
+    Example usage:
+
+         gcat = kszx.sdss.read_galaxies('CMASS_North')   # returns kszx.Catalog
+         gcat.apply_redshift_cut(0.43, 0.7)              # suggest applying redshift cut
+    """
     filename = _galaxy_filename(survey, download)
     return read_fits_catalog(filename, is_randcat=False)
 
 
 def read_randoms(survey, download=False):
+    """Returns SDSS galaxy catalog (instance of type kszx.Catalog).
+
+    Example usage:
+
+         rcat = kszx.sdss.read_randoms('CMASS_North')   # returns kszx.Catalog
+         rcat.apply_redshift_cut(0.43, 0.7)             # suggest applying redshift cut
+    """
     filenames = _random_filenames(survey, download)
     catalogs = [ read_fits_catalog(f, is_randcat=True) for f in filenames ]
     return Catalog.concatenate(catalogs, name=f'{survey} randoms', destructive=True)
 
 
-def download(survey):
+def read_mask(survey, download=False):
+    """Not sure what this is used for!
+
+    Returns a pymangle object that can be evaluated with mask.weight(ra_deg, dec_deg).
+    The return value is either 0, or close to 1 (e.g. 0.98). For a plot, see
+    scripts/sdss_exploratory_plots.ipynb.
+    """
+    import pymangle
+    filename = _mask_filename(survey, download)
+    print(f'Reading {filename}')
+    return pymangle.Mangle(filename)
+
+
+def download(survey, mask=False):
     _galaxy_filename(survey, download=True)
     _random_filenames(survey, download=True)
+    _mask_filename(survey, download=mask)
 
 
 ####################################################################################################
@@ -75,7 +103,7 @@ def _check_survey(survey):
         if survey.upper() == s.upper():
             return s
 
-    raise RuntimeError(f"SDSS survey '{survey}' not recognized")
+    raise RuntimeError(f"SDSS survey '{survey}' not recognized (must be one of: {survey_list})")
         
     
 def _sdss_path(relpath, download=False, gz=False):
@@ -114,3 +142,9 @@ def _galaxy_filename(survey, download=False):
 def _random_filenames(survey, download=False):
     s = _check_survey(survey)
     return [ _sdss_path(f'random{n}_DR12v5_{s}.fits', download, gz=True) for n in [0,1] ]
+
+
+def _mask_filename(survey, download=False):
+    s = _check_survey(survey)
+    return _sdss_path(f'mask_DR12v5_{s}.ply', download)
+

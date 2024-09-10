@@ -3,7 +3,10 @@ import pixell.enmap
 import pixell.enplot
 import pixell.curvedsky
 
+from . import utils
 from . import io_utils
+
+from .Catalog import Catalog
 
 
 def read_map(filename):
@@ -51,6 +54,64 @@ def plot_map(m, downgrade, nolabels=True, filename=None, **kwds):
         pixell.enplot.write(filename[:-4], bunch)
 
 
+def _accum_catalog(ret, shape, wcs, catalog, weights, allow_outliers, normalize_sum=None):
+    """Helper for map_from_catalog(). Returns sum of weights."""
+
+    if not allow_outliers:
+        # Note: if allow_outliers is False, then pixell_utils.ang2pix() returns (idec, ira).
+        idec, ira = ang2pix(shape, wcs, catalog.ra_deg, catalog.dec_deg, allow_outliers=False)
+    else:
+        # Note: if allow_outliers is True, then pixell_utils.ang2pix() returns (idec, ira, mask).
+        idec, ira, mask = ang2pix(shape, wcs, catalog.ra_deg, catalog.dec_deg, allow_outliers=True)
+        idec, ira = idec[mask], ira[mask]
+        wvec_flag = (weights is not None) and (weights.ndim > 0)
+        weights = weights[mask] if wvec_flag else weights
+
+    ret_1d = np.reshape(ret, (-1,))
+    ix_1d = idec*shape[1] + ira
+
+    # Return sum of weights, after applying outlier mask, but before applying 'normalize_sum'.
+    return utils.scattered_add(ret_1d, ix_1d, weights, normalize_sum=normalize_sum)
+    
+
+def map_from_catalog(shape, wcs, gcat, weights=None, rcat=None, rweights=None, normalized=True, allow_outliers=True):
+    """Returns a pixell.enmap.ndmap.
+        
+    The (rcat, rweights) arguments represent "randoms" to be subtracted.
+    NOTE: the rweights are renormalized so that sum(rweights) = -sum(weights)!
+
+    If 'allow_outliers' is True, then "out-of-bounds" galaxies (i.e. galaxies outside 
+    the boundaries of the pixell map) will be silently discarded. If 'allow_outliers'
+    is False, then out-of-bounds galaxies will raise an exception.
+
+    If normalized=True, then the output map includes a factor 1 / (pixel area).
+    This normalization best represents a sum of delta functions f(x) = sum_j w_j delta^2(th_j).
+    """
+
+    assert isinstance(gcat, Catalog)
+    assert isinstance(rcat, Catalog) or (rcat is None)
+
+    if (rcat is None) and (rweights is not None):
+        raise RuntimeError("kszx.healpix_utils.map_from_catalog(): 'rcat' arg is None, but 'rweights' arg is not None")
+
+    weights = utils.asarray(weights, 'kszx.healpix_utils.map_from_catalog', 'weights', dtype=float, allow_none=True)
+    rweights = utils.asarray(rweights, 'kszx.healpix_utils.map_from_catalog', 'rweights', dtype=float, allow_none=True)
+
+    assert (weights is None) or (weights.ndim == 0) or (weights.shape == (gcat.size,))
+    assert (rweights is None) or (rweights.ndim == 0) or (rweights.shape == (rcat.size,))
+
+    ret = np.zeros(shape)
+    wsum = _accum_catalog(ret, shape, wcs, gcat, weights, allow_outliers)
+
+    if rcat is not None:
+        _accum_catalog(ret, shape, wcs, rcat, rweights, normalize_sum = -wsum)
+
+    if normalized:
+        ret /= pixell.enmap.pixsizemap(shape, wcs)
+    
+    return pixell.enmap.enmap(ret, wcs=wcs)
+
+    
 ####################################################################################################
 
 

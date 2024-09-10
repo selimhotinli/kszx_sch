@@ -95,6 +95,8 @@ def get_data_dir(name):
 
 
 def mkdir_containing(filename):
+    assert isinstance(filename, str)
+    
     d = os.path.dirname(filename)
     if (d == '') or os.path.exists(d):
         return
