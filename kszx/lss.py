@@ -27,7 +27,9 @@ def fft_r2c(box, arr, spin=0):
            f(x) = (box volume)^{-1} sum_k f(k) e^{ik.x}   [ morally int d^nk/(2pi)^n f(k) e^{ik.x} ]
 
        - In the spin-1 case, we include an extra factor (+i khat . rhat) in the c2r transform,
-         and (-i khat . rhat) in the r2c transform. Here, khat = (\vec k)/|k| and rhat = (\vec r)/|r|.
+         and (-i khat . rhat) in the r2c transform. Here, khat = (\vec k)/|k| and rhat = (\vec r)/|r|,
+         where r is spatial location in "observer" coordinates (observer is at origin, corners of
+         box are at box.{lpos,rpos}).
 
          With this sign convention, the radial velocity field is given by (schematically):
           
@@ -83,7 +85,9 @@ def fft_c2r(box, arr, spin=0):
            f(x) = (box volume)^{-1} sum_k f(k) e^{ik.x}   [ morally int d^nk/(2pi)^n f(k) e^{ik.x} ]
 
        - In the spin-1 case, we include an extra factor (+i khat . rhat) in the c2r transform,
-         and (-i khat . rhat) in the r2c transform. Here, khat = (\vec k)/|k| and rhat = (\vec r)/|r|.
+         and (-i khat . rhat) in the r2c transform. Here, khat = (\vec k)/|k| and rhat = (\vec r)/|r|,
+         where r is spatial location in observer coordinates (observer is at origin, corners of
+         the box are at box.{lpos,rpos}).
 
          With this sign convention, the radial velocity field is given by (schematically):
           
@@ -123,109 +127,163 @@ def fft_c2r(box, arr, spin=0):
 ####################################################################################################
 
 
-def interpolate_points(box, grid, points, kernel):
+def interpolate_points(box, arr, points, kernel, fft=False, spin=0):
     """Interpolates real-space grid at a specified set of points.
 
     Args:
         box (kszx.Box): defines pixel size, bounding box size, and location relative to observer.
-        grid: numpy array with shape (box.real_space_shape) and real dtype.
+        arr: numpy array representing either a real-space (fft=False) or Fourier-space (fft=True) map.
+          - if fft=False, then (arr.shape, arr.dtype) = (box.real_space_shape, float)
+          - if fft=True, then (arr.shape, arr.dtype) = (box.fourier_space_shape, complex)
         points: numpy array with shape (npoints, box.ndim).
-        kernel: either 'cic' or 'cubic' (more to come).
+        kernel: either 'cic' or 'cubic' (for now).
+        fft: if True, then fft2_c2r(..., spin) will be applied to the input map before interpolating.
+        spin: passed as 'spin' argument to fft_c2r(). (Only used if fft=True.)
 
     Returns:
         1-d numpy array with length npoints.
  
-    Note: the 'points' array contains coordinates in a coordinate system where the observer is
-    at the origin. That is, the translation between the 'points' array and pixel indices is:
-    
-        (pixel indices) = (points - box.lpos) / box.pixsize.
+    Note: 
+
+       - The 'points' array should be specified in observer coordinates, not 'grid' coordinates.          
+         (Reminder: in observer coordinates, the observer is at the origin, coordinates have units
+          of distance, and the corners of the box are at box.{lpos,rpos}.)
     """
 
-    assert isinstance(box, Box)
-    assert isinstance(kernel, str)
-    assert box.is_real_space_map(grid)   # check grid shape, dtype
-    assert points.ndim == 2
-    assert points.shape[1] == box.ndim
-
+    if not isinstance(box, Box):
+        raise RuntimeError("kszx.interpolate_points(): expected 'box' arg to be kszx.Box object, got {box = }")
+    if kernel is None:
+        raise RuntimeError("kszx.interpolate_points(): 'kernel' arg must be specified")
     if box.ndim != 3:
         raise RuntimeError('kszx.interpolate_points(): currently only ndim==3 is supported')
 
+    arr = utils.asarray(arr, 'kszx.interpolate_points()', 'arr')
+    points = utils.asarray(points, 'kszx.interpolate_points()', 'points', dtype=float)
     kernel = kernel.lower()
     
+    if (points.ndim != 2) or (points.shape[1] != box.ndim):
+        raise RuntimeError(f"kszx.interpolate_points(): expected points.shape=(N,{box.ndim}), got shape {points.shape}")
+
+    is_real_space = box.is_real_space_map(arr)
+    is_fourier_space = box.is_fourier_space_map(arr)
+
+    if (not is_real_space) and (not is_fourier_space):
+        raise RuntimeError("kszx.interpolate_points(): 'arr' argument has wrong shape/dtype")
+    if fft and is_real_space:
+        raise RuntimeError("kszx.interpolate_points(): 'arr' argument is real-space map, but fft=True was specified")
+    if (not fft) and is_fourier_space:
+        raise RuntimeError("kszx.interpolate_points(): 'arr' argument is Fourier-space map, you probably want to specify fft=True")
+
+    if fft:
+        arr = fft_c2r(box, arr, spin=spin)
+        
     if kernel == 'cic':
-        return cpp_kernels.cic_interpolate_3d(grid, points, box.lpos[0], box.lpos[1], box.lpos[2], box.pixsize)
+        return cpp_kernels.cic_interpolate_3d(arr, points, box.lpos[0], box.lpos[1], box.lpos[2], box.pixsize)
     elif kernel == 'cubic':
-        return cpp_kernels.cubic_interpolate_3d(grid, points, box.lpos[0], box.lpos[1], box.lpos[2], box.pixsize)
+        return cpp_kernels.cubic_interpolate_3d(arr, points, box.lpos[0], box.lpos[1], box.lpos[2], box.pixsize)
     else:
         raise RuntimeError('kszx.interpolate_points(): {kernel=} is not supported')
 
 
-def grid_points(box, grid, points, kernel, weights=None):
+def _check_weights(box, points, weights, prefix='', target_sum=None):
+    """Helper for grid_points(), used to parse (points,weights) and (rpoints,rweights) args."""
+
+    if (points.ndim != 2) or (points.shape[1] != box.ndim):
+        raise RuntimeError(f"kszx.grid_points(): expected {prefix}points.shape=(N,{box.ndim}), got shape {points.shape}")
+    
+    npoints = points.shape[0]
+    
+    if weights is None:
+        weights = np.ones(npoints)
+    elif weights.ndim == 0:
+        weights = np.full(npoints, fill_value=float(weights))
+    elif weights.shape != (npoints,):
+        raise RuntimeError(f"kszx.grid_points(): {prefix}points and {prefix}weights arrays don't have consistent shapes")
+
+    if target_sum is not None:
+        rweight_sum = np.sum(weights)
+        assert rweight_sum > 0.0
+        weights *= (target_sum / rweight_sum)
+        
+    return weights
+
+
+def grid_points(box, points, weights=None, rpoints=None, rweights=None, kernel=None, fft=False, spin=0):
     """Add a sum of delta functions, with specified coefficients or 'weights', to a real-space map.
 
     Args:
+
         box (kszx.Box): defines pixel size, bounding box size, and location relative to observer.
-        grid: numpy array with shape (box.real_space_shape) and real dtype.
-        points: numpy array with shape (npoints, box.ndim)
-        kernel: either 'cic' or 'cubic' (more to come).
+
+        points: numpy array with shape (npoints, box.ndim).
         weights: either scalar, None, or 1-d array with length npoints.
            - if 'weights' is a scalar, then all delta functions have equal weight.
            - if 'weights' is None, then all delta functions have weight 1.
+
+        rpoints: either None, or numpy array with shape (nrpoints, box.ndim).
+        rweights: either scalar, None, or 1-d array with length nrpoints.
+           The (rpoints, rweights) arrays represent "randoms" to be subtracted.
+           NOTE: the rweights are renormalized so that sum(rweights) = -sum(weights)!
+
+        kernel: either 'cic' or 'cubic' (for now).
+           This argument is required, even though its default is None!
+
+        fft: if True, then fft2_r2c(..., spin) will be applied to the output map after gridding.
+        spin: passed as 'spin' argument to fft_r2c(). (Only used if fft=True.)
     
-    Returns: None.
+    Returns: a numpy array representing a real-space (fft=False) or Fourier-space (fft=True) map.
 
-    A note on normalization: 
+      - if fft=False, then returned array has (shape, dtype) = (box.real_space_shape, float)
+      - if fft=True, then returned array has (shape, dtype) = (box.fourier_space_shape, complex)
 
-    The normalization of the output map includes a factor (1 / pixel volume). (That is, the sum of
-    the output array is np.sum(weights) / box.pixel_volume, not np.sum(weights).) This normalization 
-    best represents a weighted sum of delta functions f(x) = sum_j w_j delta^3(x-x_j). For example:
+    Notes:
 
-       - If we integrate the output array over volume:
-           integral = np.sum(grid) * box.pixel_volume
-         then we get np.sum(weights), as expected for a sum of delta functions sum_j w_j delta^3(x-x_j).
+       - The 'points' array should be specified in observer coordinates, not 'grid' coordinates.
+         (Reminder: in observer coordinates, the observer is at the origin, coordinates have units
+          of distance, and the corners of the box are at box.{lpos,rpos}.)
 
-       - If we FFT the output array with ksz.lss.fft_r2c(), the result is a weighted sum of plane waves:
-           sum_j w_j exp(-ik.x_j)   
-         with no factor of box or pixel volume.
+       - The normalization of the output map includes a factor (1 / pixel volume). 
+         (That is, the sum of the output array is np.sum(weights) / box.pixel_volume, not np.sum(weights).) 
 
-    More notes:
+         This normalization best represents a weighted sum of delta functions f(x) = sum_j w_j delta^3(x-x_j). 
+         For example, if we FFT the output array with ksz.lss.fft_r2c(), the result is a weighted sum of 
+         plane waves:
 
-      - The weighted sum of delta functions will be added to the current contents of 'grid'. 
-        (If this is not desired, you should zero the 'grid' array before calling grid_points().)
-    
-      - The 'points' array contains coordinates in a coordinate system where the observer is
-        at the origin. That is, the translation between the 'points' array and pixel indices is:
-    
-             (pixel indices) = (points - box.lpos) / box.pixsize.
+            f(k) = sum_j w_j exp(-ik.x_j)     [ with no factor of box or pixel volume ]
     """
-    
-    assert isinstance(box, Box)
-    assert isinstance(kernel, str)
-    assert box.is_real_space_map(grid)   # check grid shape, dtype
-    assert points.ndim == 2
-    assert points.shape[1] == box.ndim
-    
-    npoints = points.shape[0]
-    kernel = kernel.lower()
-    
+
+    if not isinstance(box, Box):
+        raise RuntimeError("kszx.grid_points(): expected 'box' arg to be kszx.Box object, got {box = }")
+    if kernel is None:
+        raise RuntimeError("kszx.grid_points(): 'kernel' arg must be specified")
+    if (rpoints is None) and (rweights is not None):
+        raise RuntimeError("kszx.grid_points(): 'rpoints' arg is None, but 'rweights' arg is not None")
     if box.ndim != 3:
         raise RuntimeError('kszx.grid_points(): currently only ndim==3 is supported')
-    if weights is None:
-        weights = np.ones(npoints)
 
-    weights = np.asarray(weights, dtype=float)
-    
-    if weights.ndim == 0:
-        weights = np.full(npoints, fill_value=float(weights))
-    if weights.shape != (npoints,):
-        raise RuntimeError("kszx.grid_points(): 'points' and 'weights' arrays don't have consistent shapes")
+    points = utils.asarray(points, 'kszx.grid_points()', 'points', dtype=float)
+    weights = utils.asarray(weights, 'kszx.grid_points()', 'weights', dtype=float, allow_none=True)
+    rpoints = utils.asarray(rpoints, 'kszx.grid_points()', 'rpoints', dtype=float, allow_none=True)
+    rweights = utils.asarray(rweights, 'kszx.grid_points()', 'rweights', dtype=float, allow_none=True)
+    kernel = kernel.lower()
     
     if kernel == 'cic':
-        cpp_kernels.cic_grid_3d(grid, points, weights, box.lpos[0], box.lpos[1], box.lpos[2], box.pixsize)
+        cpp_kernel = cpp_kernels.cic_grid_3d
     elif kernel == 'cubic':
-        cpp_kernels.cubic_grid_3d(grid, points, weights, box.lpos[0], box.lpos[1], box.lpos[2], box.pixsize)
+        cpp_kernel = cpp_kernels.cubic_grid_3d
     else:
-        raise RuntimeError('kszx.grid_points(): {kernel=} is not supported')
+        raise RuntimeError('kszx.grid_points(): {kernel=} is not supported')        
+        
+    grid = np.zeros(box.real_space_shape, dtype=float)
+    weights = _check_weights(box, points, weights)  # also checks 'points' arg
+    cpp_kernel(grid, points, weights, box.lpos[0], box.lpos[1], box.lpos[2], box.pixsize)
+
+    if rpoints is not None:
+        wsum = np.sum(weights)
+        rweights = _check_weights(box, rpoints, rweights, prefix='r', target_sum = -wsum)
+        cpp_kernel(grid, rpoints, rweights, box.lpos[0], box.lpos[1], box.lpos[2], box.pixsize)        
+
+    return fft_r2c(box,grid,spin=spin) if fft else grid
 
 
 ####################################################################################################

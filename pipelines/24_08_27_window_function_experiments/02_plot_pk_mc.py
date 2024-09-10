@@ -45,8 +45,8 @@ pgg_mcs = pk_mcs[:,0,0,:]
 pgg_ng_mcs = pk_mcs[:,0,0,:] + 2*fnl*pk_mcs[:,0,1,:]
 pgvfake_mcs = pk_mcs[:,0,2,:]
 pgvfake_ng_mcs = pk_mcs[:,0,2,:] + fnl*pk_mcs[:,1,2,:]
-pgv_mcs = -pk_mcs[:,0,3,:]
-pgv_ng_mcs = -pk_mcs[:,0,3,:] - fnl*pk_mcs[:,1,3,:]
+pgv_mcs = pk_mcs[:,0,3,:]
+pgv_ng_mcs = pk_mcs[:,0,3,:] + fnl*pk_mcs[:,1,3,:]
 
 pgg = np.mean(pgg_mcs, axis=0)
 pgg_ng = np.mean(pgg_ng_mcs, axis=0)
@@ -113,7 +113,7 @@ plt.show()
 # %%
 # FIXME: adjusted by eye to make curves agree!
 # Figure out how to compute normalization properly.
-ad_hoc_normalization = 2.0e-9
+ad_hoc_normalization = 3.3e-9
 
 plt.plot(kmid, pgv, marker='o', markersize=5, label='fNL=0')
 plt.plot(kmid, pgv_ng, marker='o', markersize=5, label='fNL=250')

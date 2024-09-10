@@ -131,7 +131,7 @@ def test_interpolation():
         
         grid = poly.eval_grid(box.npix)
         exact_vals = poly.eval_points(points)
-        interpolated_vals = lss.interpolate_points(box, grid, points, kernel)
+        interpolated_vals = lss.interpolate_points(box, grid, points, kernel=kernel)
 
         epsilon = helpers.compare_arrays(exact_vals, interpolated_vals)
         assert epsilon < 1.0e-12
@@ -157,9 +157,8 @@ def test_interpolation_gridding_consistency():
         g = np.random.normal(size=box.npix)  # random grid
         w = np.random.normal(size=npoints)   # random weights
         
-        Ag = lss.interpolate_points(box, g, points, kernel)
-        Aw = np.zeros(shape=box.npix)
-        lss.grid_points(box, Aw, points, kernel, weights=w)
+        Ag = lss.interpolate_points(box, g, points, kernel=kernel)
+        Aw = lss.grid_points(box, points, weights=w, kernel=kernel)
 
         dot1 = np.dot(w,Ag)
         dot2 = helpers.map_dot_product(box,Aw,g)

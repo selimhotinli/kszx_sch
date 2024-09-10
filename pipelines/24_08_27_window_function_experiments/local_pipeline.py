@@ -58,57 +58,30 @@ def run_mc(output_filename):
     delta0 = kszx.lss.simulate_gaussian_field(box, cosmo.Plin_z0)
 
     # Catalog representation of Sg
-    t = kszx.lss.fft_c2r(box, delta0)                                 # real-space delta0
-    t = kszx.lss.interpolate_points(box, t, rcat_xyz, kernel=kernel)  # catalog delta0
-    rcat_Sg = bg * rcat_D * t                                         # catalog delta_g
+    rcat_Sg = kszx.lss.interpolate_points(box, delta0, rcat_xyz, kernel=kernel, fft=True)
+    rcat_Sg *= bg * rcat_D 
 
     # Catalog representation of dSg/dfNL
     fk = lambda k: 1.0 / cosmo.alpha(k=k,z=0)
     t = kszx.lss.multiply_kfunc(box, delta0, fk, dc=0)    # Fourier-space delta0/alpha0
-    t = kszx.lss.fft_c2r(box, t)                          # real-space delta0/alpha0
-    t = kszx.lss.interpolate_points(box, t, rcat_xyz, kernel=kernel)  # catalog delta0/alpha0
-    rcat_dSg = 2 * deltac * (bg-1) * t                    # catalog d(deltag)/dfNL (note no factor D(z))
+    rcat_dSg = kszx.lss.interpolate_points(box, t, rcat_xyz, kernel=kernel, fft=True)
+    rcat_dSg *= 2 * deltac * (bg-1)                       # note no factor D(z)
 
     # Catalog representation of vfake (scalar field with same power spectrum as v)
     t = kszx.lss.multiply_kfunc(box, delta0, lambda k:1/k, dc=0)     # Fourier-space delta0/k
-    t = kszx.lss.fft_c2r(box, t)                                     # real-space delta0/k
-    t = kszx.lss.interpolate_points(box, t, rcat_xyz, kernel=kernel)  # catalog delta0/k
-    rcat_vfake = t * rcat_f * rcat_H * rcat_D / (1+rcat.z)            # catalog v = faHD/k delta0
+    rcat_vfake = kszx.lss.interpolate_points(box, t, rcat_xyz, kernel=kernel, fft=True)
+    rcat_vfake *= rcat_f * rcat_H * rcat_D / (1+rcat.z)             # catalog v = faHD/k delta0
     rcat_vfake *= rcat.act_ivar
 
     # Catalog representation of vr
-    rcat_vr = np.zeros(rcat.size)
-    u = kszx.lss.multiply_kfunc(box, delta0, lambda k:1/k**2, dc=0)  # Fourier-space delta0/k^2
-    
-    for axis in range(3):
-        t = kszx.lss.apply_partial_derivative(box, u, axis=axis)
-        t = kszx.lss.fft_c2r(box, t)
-        t = kszx.lss.interpolate_points(box, t, rcat_xyz, kernel=kernel)  # catalog delta0/k
-        rcat_vr += t * rcat_xyz[:,axis] / rcat_r
-        
+    rcat_vr = kszx.lss.interpolate_points(box, t, rcat_xyz, kernel=kernel, fft=True, spin=1)
     rcat_vr *= rcat_f * rcat_H * rcat_D / (1+rcat.z)         # catalog v = faHD/k delta0
     rcat_vr *= rcat.act_ivar
 
-    # vr -> v1
-    map_v1 = np.zeros(box.fourier_space_shape, dtype=complex)
-
-    for axis in range(3):
-        t = np.zeros(box.real_space_shape, dtype=float)
-        kszx.lss.grid_points(box, t, rcat_xyz, weights = rcat_vr * rcat_xyz[:,axis] / rcat_r, kernel=kernel)
-        t = kszx.lss.fft_r2c(box, t)
-        map_v1 += kszx.lss.apply_partial_derivative(box, t, axis, in_place=True)  # still need to divide by k
-
-    # Divide by k
-    map_v1 = kszx.lss.multiply_kfunc(box, map_v1, lambda k:1.0/k, dc=0., in_place=True)
-
-    def rcat_to_map(w):
-        t = np.zeros(box.real_space_shape, dtype=float)
-        kszx.lss.grid_points(box, t, rcat_xyz, weights=w, kernel=kernel)
-        return kszx.lss.fft_r2c(box, t)
-
-    map_Sg = rcat_to_map(rcat_Sg)
-    map_dSg = rcat_to_map(rcat_dSg)
-    map_vfake = rcat_to_map(rcat_vfake)
+    map_v1 = kszx.lss.grid_points(box, rcat_xyz, weights=rcat_vr, kernel=kernel, fft=True, spin=1)
+    map_Sg = kszx.lss.grid_points(box, rcat_xyz, weights=rcat_Sg, kernel=kernel, fft=True)
+    map_dSg = kszx.lss.grid_points(box, rcat_xyz, weights=rcat_dSg, kernel=kernel, fft=True)
+    map_vfake = kszx.lss.grid_points(box, rcat_xyz, weights=rcat_vfake, kernel=kernel, fft=True)
 
     pk = kszx.lss.estimate_power_spectrum(box, [map_Sg,map_dSg,map_vfake,map_v1], kbin_delim, use_dc=False)
     kszx.io_utils.write_npy(output_filename, pk)

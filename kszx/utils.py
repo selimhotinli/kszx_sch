@@ -3,6 +3,20 @@ import scipy.integrate
 import scipy.interpolate
 
 
+def asarray(x, caller, arg, dtype=None, allow_none=False):
+    if allow_none and (x is None):
+        return x
+    
+    try:
+        assert x is not None
+        return np.asarray(x, dtype)
+    except:
+        pass
+
+    s = f' with dtype {dtype}' if (dtype is not None) else ''
+    raise RuntimeError(f"{caller}: couldn't convert {arg} to array{s} (value={x})")
+    
+
 def ra_dec_to_xyz(ra_deg, dec_deg, r=None):
     """Returns shape s+(3,) array, where ra_deg.shape == dec_deg.shape == s."""
     
@@ -27,9 +41,6 @@ def ra_dec_to_xyz(ra_deg, dec_deg, r=None):
         ret *= np.reshape(r, r.shape + (1,))
     
     return ret
-
-
-####################################################################################################
 
 
 def quad(f, xmin, xmax, epsabs=0.0, epsrel=1.0e-4, points=None):
