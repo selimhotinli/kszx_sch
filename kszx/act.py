@@ -23,7 +23,7 @@ def read_ivar(freq, dr, download=False):
 def read_beam(freq, dr, lmax=None, download=False):
     """Returns a 1-d numpy array of length (lmax+1). We currently only support DR5 daynight beams."""
 
-    filename = _beam_filename(freq, dr, downalod)
+    filename = _beam_filename(freq, dr, download)
         
     print(f'Reading {filename}')
             
@@ -99,7 +99,7 @@ def _ivar_filename(freq, dr, download=False):
 
 def _beam_filename(freq, dr, download=False):
     assert dr == 5   # currently, only support DR5
-    return _act_path(f'act_dr5.01_auxilliary.zip', dr, download, is_aux=True)
+    return _act_path(f'beams/act_planck_dr5.01_s08s18_f{freq:03d}_daynight_beam.txt', dr, download, is_aux=True)
 
 
 def _read_map(filename):

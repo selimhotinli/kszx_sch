@@ -12,6 +12,7 @@ from .Cosmology import Cosmology
 
 from . import act
 from . import desils
+from . import planck
 from . import sdss
 
 from . import lss

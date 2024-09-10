@@ -23,7 +23,7 @@ def write_map(filename, m):
     
     print(f'Writing {filename}')
     assert filename.endswith('.fits')
-    io_utils.mkdir_contaning(filename)
+    io_utils.mkdir_containing(filename)
     pixell.enmap.write_map(filename, m)
 
 
