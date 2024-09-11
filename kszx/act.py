@@ -40,6 +40,12 @@ def read_beam(freq, dr, lmax=None, download=False):
     return a
 
 
+def read_cluster_mask(download=False):
+    filename = _cluster_mask_filename(download)
+    print(f'Reading {filename}')
+    return pixell.enmap.read_map(filename)
+
+
 def download(dr, freq_list=None, cmb=True, ivar=True, beams=True):
     if freq_list is None:
         freq_list = [ 90, 150, 220 ]
@@ -54,8 +60,9 @@ def download(dr, freq_list=None, cmb=True, ivar=True, beams=True):
 
 
 def _act_path(relpath, dr, download=False, is_aux=False):
-    """
-    Intended to be called through wrapper such as _cmb_filename(), _ivar_filename(), etc.
+    """Intended to be called through wrapper such as _cmb_filename(), _ivar_filename(), etc.
+
+    For files which are downloaded here: https://lambda.gsfc.nasa.gov/data/suborbital/ACT
     If is_aux=True, then the file is contained in 'act_dr5.01_auxilliary.zip' (only matters if download=True)
     """
 
@@ -67,11 +74,12 @@ def _act_path(relpath, dr, download=False, is_aux=False):
         return abspath
 
     if not is_aux:
+        # Typical case: file is not part of act_dr5.01_auxilliary.zip.
         url = f'https://lambda.gsfc.nasa.gov/data/suborbital/ACT/ACT_dr5/maps/{relpath}'
         io_utils.wget(abspath, url)   # calls assert os.path.exists(...) after downloading
         return abspath
 
-    # Special logic for is_aux=True.
+    # Special case: file is part of act_dr5.01_auxilliary.zip.
     # Download the zipfile (by calling _act_path() recursively) and unpack.
 
     zip_filename = _act_path('act_dr5.01_auxilliary.zip', dr=5, download=True, is_aux=False)
@@ -85,6 +93,20 @@ def _act_path(relpath, dr, download=False, is_aux=False):
     
     return abspath
 
+
+def _act_nersc_path(relpath, download=False):
+    """Intended to be called through wrapper such as _cluster_mask_filename().
+    For files which are downloaded here: https://portal.nersc.gov/project/act
+    """
+
+    act_base_dir = io_utils.get_data_dir('act')
+    abspath = os.path.join(act_base_dir, relpath)
+
+    if download and not os.path.exists(abspath):
+        url = f'https://portal.nersc.gov/project/act/{relpath}'
+        io_utils.wget(abspath, url)   # calls assert os.path.exists(...) after downloading
+
+    return abspath
     
 
 def _cmb_filename(freq, dr, download=False):
@@ -100,6 +122,10 @@ def _ivar_filename(freq, dr, download=False):
 def _beam_filename(freq, dr, download=False):
     assert dr == 5   # currently, only support DR5
     return _act_path(f'beams/act_planck_dr5.01_s08s18_f{freq:03d}_daynight_beam.txt', dr, download, is_aux=True)
+
+
+def _cluster_mask_filename(download=False):
+    return _act_nersc_path('dr6_nilc/ymaps_20230220/masks/cluster_mask.fits', download)
 
 
 def _read_map(filename):

@@ -15,5 +15,6 @@ from . import desils
 from . import planck
 from . import sdss
 
+from . import cmb
 from . import lss
 from . import tests

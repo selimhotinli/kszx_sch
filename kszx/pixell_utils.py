@@ -54,6 +54,9 @@ def plot_map(m, downgrade, nolabels=True, filename=None, **kwds):
         pixell.enplot.write(filename[:-4], bunch)
 
 
+####################################################################################################
+
+
 def _accum_catalog(ret, shape, wcs, catalog, weights, allow_outliers, normalize_sum=None):
     """Helper for map_from_catalog(). Returns sum of weights."""
 
@@ -104,7 +107,7 @@ def map_from_catalog(shape, wcs, gcat, weights=None, rcat=None, rweights=None, n
     wsum = _accum_catalog(ret, shape, wcs, gcat, weights, allow_outliers)
 
     if rcat is not None:
-        _accum_catalog(ret, shape, wcs, rcat, rweights, normalize_sum = -wsum)
+        _accum_catalog(ret, shape, wcs, rcat, rweights, allow_outliers, normalize_sum = -wsum)
 
     if normalized:
         ret /= pixell.enmap.pixsizemap(shape, wcs)
@@ -128,26 +131,10 @@ def alm2map(alm, shape, wcs):
     return m
     
 
-def map2alm(m, lmax, *, weight):
-    """The 'weight' argument can be either 'ring', 'area', or 'unit'."""
-    
+def map2alm(m, lmax):
     assert isinstance(m, pixell.enmap.ndmap)
     assert lmax >= 0
-
-    nalm = ((lmax+1)*(lmax+2)) // 2
-    alm = np.zeros(nalm, dtype=complex)
-
-    if weight == 'ring':
-        pixell.curvedsky.map2alm(m, alm=alm)
-    elif weight == 'area':
-        m = m * pixell.enmap.pixsizemap(m.shape, m.wcs)
-        pixell.curvedsky.alm2map_adjoint(m, alm=alm)
-    elif weight == 'unit':
-        pixell.curvedsky.alm2map_adjoint(m, alm=alm)
-    else:
-        raise RuntimeError(f"kszpipe.pixell_utils.map2alm: {weight=} invalid (expected 'ring', 'area', or 'unit').")
-        
-    return alm
+    return pixell.curvedsky.map2alm(m, lmax=lmax)
 
 
 ####################################################################################################
