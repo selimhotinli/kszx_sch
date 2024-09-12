@@ -59,7 +59,7 @@ def estimate_cl(alm_or_alms, lbin_delim):
     If 'alm_or_alms' is a 2-d array (multiple alms), returns a 3-d array of shape (nalm,nalm,nlbins).
     """
 
-    alm_or_alms = utils.asarray(alm_or_alms, 'kszx.estimate_cl()', 'alm_or_alms', dtype=complex)    
+    alm_or_alms = utils.asarray(alm_or_alms, 'kszx.estimate_cl()', 'alm_or_alms')
     lbin_delim = utils.asarray(lbin_delim, 'kszx.estimate_cl()', 'lbin_delim', dtype=int)
     multi_flag = True
 
@@ -73,13 +73,16 @@ def estimate_cl(alm_or_alms, lbin_delim):
     if lbin_delim[0] < 0:
         raise RuntimeError("kszx.estimate_cl(): expected 'lbin_delim' elements to be >= 0")
     
-    # Convert to 2-d.
+    # Check 'alm_or_alms' arg and convert to 2-d.
+    if (alm_or_alms.dtype != complex) and (alm_or_alms.dtype != np.complex64):
+        raise RuntimeError("kszx.estimate_cl(): 'alm_or_alms' array did not have complex dtype")
     if alm_or_alms.ndim == 1:
         alm_or_alms = np.reshape(alm_or_alms, (1,-1))
         multi_flag = False
     elif alm_or_alms.ndim != 2:
         raise RuntimeError("kszx.estimate_cl(): 'alm_or_alms' array did not have expected shape")
 
+    alm_or_alms = np.asarray(alm_or_alms, dtype=complex)   # convert complex64 -> complex128
     nalm, nlm = alm_or_alms.shape
     lmax = int(np.sqrt(2*nlm) - 1)
 
@@ -105,6 +108,3 @@ def estimate_cl(alm_or_alms, lbin_delim):
         ret = ret[0,0,:]
 
     return ret
-
-        
-    
