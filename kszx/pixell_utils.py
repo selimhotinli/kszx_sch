@@ -114,7 +114,27 @@ def map_from_catalog(shape, wcs, gcat, weights=None, rcat=None, rweights=None, n
     
     return pixell.enmap.enmap(ret, wcs=wcs)
 
+
+def eval_map_on_catalog(m, catalog, allow_outliers=True):
+    """Returns 1-d array of map_vals if allow_outliers is False, or (map_vals, mask) if allow_outliers is True."""
+
+    assert isinstance(m, pixell.enmap.ndmap)
+
+    # pixell_utils.ang2pix() is defined later in this file.
+    # It returns (idec,ira) if allow_outliers is False, or (idec,ira,mask) if allow_outliers is True.
     
+    t = ang2pix(m.shape, m.wcs, catalog.ra_deg, catalog.dec_deg, allow_outliers=allow_outliers)
+    idec, ira = t[0], t[1]
+    map_vals = m[idec,ira]
+
+    if allow_outliers:
+        mask = t[2]
+        map_vals = np.where(mask, map_vals, 0.)
+        return map_vals, mask
+    else:
+        return map_vals
+    
+
 ####################################################################################################
 
 

@@ -42,7 +42,11 @@ def read_beam(freq, dr, lmax=None, download=False):
 
 def read_cluster_mask(download=False):
     filename = _cluster_mask_filename(download)
-    print(f'Reading {filename}')
+    return pixell.enmap.read_map(filename)
+
+
+def read_nilc_wide_mask(download=False):
+    filename = _nilc_wide_mask_filename(download)
     return pixell.enmap.read_map(filename)
 
 
@@ -113,19 +117,19 @@ def _cmb_filename(freq, dr, download=False):
     assert dr == 5   # currently, only support DR5
     return _act_path(f'act_planck_dr5.01_s08s18_AA_f{freq:03d}_daynight_map_srcfree.fits', dr, download)
 
-
 def _ivar_filename(freq, dr, download=False):
     assert dr == 5   # currently, only support DR5
     return _act_path(f'act_planck_dr5.01_s08s18_AA_f{freq:03d}_daynight_ivar.fits', dr, download)
-
 
 def _beam_filename(freq, dr, download=False):
     assert dr == 5   # currently, only support DR5
     return _act_path(f'beams/act_planck_dr5.01_s08s18_f{freq:03d}_daynight_beam.txt', dr, download, is_aux=True)
 
-
 def _cluster_mask_filename(download=False):
     return _act_nersc_path('dr6_nilc/ymaps_20230220/masks/cluster_mask.fits', download)
+
+def _nilc_wide_mask_filename(download=False):
+    return _act_nersc_path('dr6_nilc/ymaps_20230220/masks/wide_mask_GAL070_apod_1.50_deg_wExtended.fits', download)
 
 
 def _read_map(filename):

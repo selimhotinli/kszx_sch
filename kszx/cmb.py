@@ -8,7 +8,7 @@ from . import utils
 def fkp_from_ivar(ivar, cl0, normalize=True, return_wvar=False):
     """
     The 'ivar' argument is an inverse noise varaiance map (i.e. pixell.enmap) in (uK)^{-2},
-    for example the return value of act.DataRelease.read_ivar().
+    for example the return value of act.read_ivar().
 
     The 'cl0' argument parameterizes the FKP weight function.
       - cl0=0 corresponds to inverse noise weighting.
@@ -48,6 +48,18 @@ def fkp_from_ivar(ivar, cl0, normalize=True, return_wvar=False):
         ret /= wmax
 
     return ret
+
+
+def ivar_combine(ivar1, ivar2):
+    assert isinstance(ivar1, pixell.enmap.ndmap)
+    assert isinstance(ivar2, pixell.enmap.ndmap)
+
+    den = ivar1 + ivar2    
+    den = np.where(den > 0, den, 1.0)
+    num = ivar1 * ivar2
+    
+    num /= den
+    return num
 
 
 def estimate_cl(alm_or_alms, lbin_delim):

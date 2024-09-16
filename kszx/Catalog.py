@@ -1,5 +1,6 @@
 import h5py
 import copy
+import fitsio
 import numpy as np
 import pixell.enmap
 
@@ -80,8 +81,8 @@ class Catalog:
         delattr(self, col_name)
 
 
-    def apply_boolean_mask(self, mask, name=None, inplace=True):
-        if not inplace:
+    def apply_boolean_mask(self, mask, name=None, in_place=True):
+        if not in_place:
             self = self.shallow_copy()
                 
         mask = np.asarray(mask)
@@ -104,13 +105,15 @@ class Catalog:
         return self
 
 
-    def apply_redshift_cut(self, zmin, zmax):
+    def apply_redshift_cut(self, zmin, zmax, in_place=True):
         assert 'z' in self.col_names
+
+        mask1 = (self.z >= zmin) if (zmin is not None) else np.ones(self.size)
+        mask2 = (self.z <= zmax) if (zmax is not None) else np.ones(self.size)
         
-        if zmin is not None:
-            self.apply_boolean_mask(self.z >= zmin, name=f'z >= {zmin}')
-        if zmax is not None:
-            self.apply_boolean_mask(self.z <= zmax, name=f'z <= {zmax}')
+        mask = np.logical_and(mask1, mask2)
+        name = f'Redshift cut: {zmin=} {zmax=}'
+        return self.apply_boolean_mask(mask, name=name, in_place=in_place)
 
 
     def get_xyz(self, cosmo):
@@ -235,32 +238,28 @@ class Catalog:
 
         self._announce_file_write(filename)
 
+        
+    @staticmethod
+    def from_fits(filename, col_name_pairs, name=None):
+        """Returns a Catalog object. Used to read SDSS, DESILS catalogs.
+        
+        The 'col_name_pairs' arg should be a list of pairs (col_name, fits_col_name).
+        See sdss.py and desils_lry.py for examples."""
 
-    def write_txt(self, filename):
-        """Write catalog in an ad hoc text format, intended for human readability."""
-
-        io_utils.mkdir_containing(filename)
-        print(f'Writing {filename}')
+        if name is None:
+            name = filename
             
-        cols = [ getattr(self,col_name) for col_name in self.col_names ]
-        ncols = len(cols)
-                         
-        with open(filename,'w') as f:
-            if self.name is not None:
-                print(f'# Catalog name: {self.name}', file=f)
-            
-            print(f'# Columns are as follows:', file=f)
-            for i, col_name in enumerate(col_names):
-                print(f'# Column {i}: {col_name}')
+        print(f'Reading {filename}')
+        catalog = Catalog(name=name, filename=filename)
+        
+        with fitsio.FITS(filename) as f:
+            for (col_name, fits_col_name) in col_name_pairs:
+                catalog.add_column(col_name, f[1].read(fits_col_name))
+                
+        catalog._announce_file_read()
+        return catalog
 
-            for i in range(self.size):
-                for j in range(ncols):
-                    print('  ', cols[j][i], end=None, file=f)
-                print(file=f)
-
-        self._announce_file_write(filename)
-            
-
+    
     def _announce_file_read(self):
         s1 = '' if (self.name is None) else f'{self.name}: '
         s2 = '' if (self.filename is None) else f' from {self.filename}'
