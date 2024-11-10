@@ -32,7 +32,7 @@ class Catalog:
 
        kszx.healpix_utils.map_from_catalog()   # catalog -> 2d healpix map
        kszx.pixell_utils.map_from_catalog()    # catalog -> 2d pixell maps
-       kszx.lss.grid_points()                  # catalog -> 3d map
+       kszx.grid_points()                      # catalog -> 3d map
     """
     
     def __init__(self, cols=None, name=None, filename=None, size=0):
@@ -119,8 +119,8 @@ class Catalog:
     def get_xyz(self, cosmo):
         """Returns shape (N,3) array. The 'cosmo' arg should be an instance of kszx.Cosmology.
 
-        Can be used as 'points' array in kszx.lss.interpolate_points(), kszx.lss.grid_points(),
-        or kszx.BoundingBox constructor.
+        Can be used as 'points' array in kszx.interpolate_points(), kszx.grid_points(), or
+        kszx.BoundingBox constructor.
         
         Implementation: just a wrapper around:
 

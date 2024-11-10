@@ -40,9 +40,6 @@ class Box:
              pairs (box,arr)). I might revisit this decision later. (Currently, 'arr' must be 
              a numpy array, but in the future we might also support cupy/jax/dask arrays.)
 
-           - Most functions which manipulate (box,map) pairs (e.g. FFTs, interpolation, gridding)
-             can be found in the ksx.lss subpackage.
-
         Members:
         
            ndim           number of dimensions N

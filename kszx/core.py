@@ -248,7 +248,7 @@ def grid_points(box, points, weights=None, rpoints=None, rweights=None, kernel=N
          (That is, the sum of the output array is np.sum(weights) / box.pixel_volume, not np.sum(weights).) 
 
          This normalization best represents a weighted sum of delta functions f(x) = sum_j w_j delta^3(x-x_j). 
-         For example, if we FFT the output array with ksz.lss.fft_r2c(), the result is a weighted sum of 
+         For example, if we FFT the output array with ksz.fft_r2c(), the result is a weighted sum of 
          plane waves:
 
             f(k) = sum_j w_j exp(-ik.x_j)     [ with no factor of box or pixel volume ]
@@ -323,9 +323,9 @@ def _eval_kfunc(box, f, dc=None):
     fk = f(k)
 
     if fk.shape != box.fourier_space_shape:
-        raise RuntimeError('kszx.lss.multiply_kfunc(): function f(k) returned unexpected shape')
+        raise RuntimeError('kszx.multiply_kfunc(): function f(k) returned unexpected shape')
     if fk.dtype != float:
-        raise RuntimeError('kszx.lss.multiply_kfunc(): function f(k) returned dtype={fk.dtype} (expected float)')
+        raise RuntimeError('kszx.multiply_kfunc(): function f(k) returned dtype={fk.dtype} (expected float)')
 
     if dc is not None:
         fk[(0,)*box.ndim] = dc
@@ -365,7 +365,7 @@ def multiply_rfunc(box, arr, f, dest=None, in_place=False, regulate=False, eps=1
     fr = f(r)
     
     if not box.is_real_space_map(fr):
-        raise RuntimeError('kszx.lss.multiply_rfunc(): function f(r) returned unexpected shape/dtype')
+        raise RuntimeError('kszx.multiply_rfunc(): function f(r) returned unexpected shape/dtype')
 
     return _multiply(arr, fr, dest, in_place)
     
@@ -473,20 +473,20 @@ def _sqrt_pk(box, pk, regulate):
         pk = pk(k)
         
         if pk.shape != box.fourier_space_shape:
-            raise RuntimeError('kszx.lss.simulate_gaussian_field(): function pk() returned unexpected shape')
+            raise RuntimeError('kszx.simulate_gaussian_field(): function pk() returned unexpected shape')
         if pk.dtype != float:
-            raise RuntimeError('kszx.lss.simulate_gaussian_field(): function pk() returned dtype={pk.dtype} (expected float)')
+            raise RuntimeError('kszx.simulate_gaussian_field(): function pk() returned dtype={pk.dtype} (expected float)')
         if np.min(pk) < 0:
-            raise RuntimeError('kszx.lss.simulate_gaussian_field(): function pk() returned negative values')
+            raise RuntimeError('kszx.simulate_gaussian_field(): function pk() returned negative values')
 
         del k
         pk **= 0.5
         return pk   # returns sqrt(P(k))
 
-    pk = _to_float(pk, 'kszx.lss.simulate_gaussian_field(): expected pk argument to be either callable, or a real scalar')
+    pk = _to_float(pk, 'kszx.simulate_gaussian_field(): expected pk argument to be either callable, or a real scalar')
 
     if pk < 0:
-        raise RuntimeError('kszx.lss.simulate_gaussian_field(): expected scalar pk argument to be non-negative')
+        raise RuntimeError('kszx.simulate_gaussian_field(): expected scalar pk argument to be non-negative')
     
     return np.sqrt(pk)
 
@@ -575,9 +575,9 @@ def simulate_gaussian_field(box, pk, pk0=None):
     ret *= sqrt_pk
 
     if pk0 is not None:
-        pk0 = _to_float(pk0, 'kszx.lss.simulate_gaussian_field(): expected pk0 argument to be a real scalar')
+        pk0 = _to_float(pk0, 'kszx.simulate_gaussian_field(): expected pk0 argument to be a real scalar')
         if pk0 < 0:
-            raise RuntimeError('kszx.lss.simulate_gaussian_field(): expected pk0 argument to be non-negative')
+            raise RuntimeError('kszx.simulate_gaussian_field(): expected pk0 argument to be non-negative')
         ret[(0,)*box.ndim] = np.sqrt(pk0) * dc
     
     return ret
@@ -668,21 +668,21 @@ def estimate_power_spectrum(box, map_or_maps, kbin_delim, *, use_dc=False, allow
     map_list, multi_map_flag = _parse_map_or_maps(box, map_or_maps)
     
     if len(map_list) == 0:
-        raise RuntimeError("kszx.lss.estimate_power_spectrum(): expected 'map_or_maps' arg to be either"
+        raise RuntimeError("kszx.estimate_power_spectrum(): expected 'map_or_maps' arg to be either"
                            + "a Fourier-space map, or an iterable returning Fourier-space maps")
 
     
     if len(map_list) > 4:
         # Note: If the C++ code is modified to allow larger numbers of maps,,
         # make sure to update the unit test too (test_estimate_power_spectrum()).
-        raise RuntimeError("kszx.lss.estimate_power_spectrum(): we currently only support nmaps <= 4."
+        raise RuntimeError("kszx.estimate_power_spectrum(): we currently only support nmaps <= 4."
                            + " This is a temporary problem that I'll fix later. It needs minor changes"
                            + " to the C++ code.")
     
     pk, bin_counts = cpp_kernels.estimate_power_spectrum(map_list, kbin_delim, box.npix, box.kfund, box.box_volume)
 
     if (not allow_empty_bins) and (np.min(bin_counts) == 0):
-        raise RuntimeError('kszx.lss.estimate_power_spectrum(): some k-bins were empty')
+        raise RuntimeError('kszx.estimate_power_spectrum(): some k-bins were empty')
     
     if not multi_map_flag:
         pk = pk[0,0,:]   # shape (1,1,nkbins) -> shape (nkbins,)
@@ -735,7 +735,7 @@ def kbin_average(box, f, kbin_delim, *, use_dc=False, allow_empty_bins=False, re
     fk_mean, bin_counts = cpp_kernels.kbin_average(fk, kbin_delim, box.npix, box.kfund)
 
     if (not allow_empty_bins) and (np.min(bin_counts) == 0):
-        raise RuntimeError('kszx.lss.kbin_average(): some k-bins were empty')
+        raise RuntimeError('kszx.kbin_average(): some k-bins were empty')
 
     return (fk_mean, bin_counts) if return_counts else fk_mean
 
@@ -804,7 +804,7 @@ def ivar_combine(ivar1, ivar2):
 
 
 def estimate_cl(alm_or_alms, lbin_delim):
-    """Similar interface to lss.estimate_power_spectrum().
+    """Similar interface to estimate_power_spectrum(), but for all-sky alms.
 
     It's okay if lbin_delim is a float array (it will be converted to int).
 

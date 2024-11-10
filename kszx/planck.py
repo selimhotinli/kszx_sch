@@ -23,7 +23,7 @@ def read_hfi_galmask(sky_percentage, apodization=0, dtype=None, download=False):
     To apply a Planck mask to ACT data, you'll need to rotate/pixellize the mask:
 
        pixell_mask = pixell.reproject.healpix2map(
-          healpix_mask, shape, cmb.wcs, 
+          healpix_mask, shape, wcs, 
           rot='gal,equ',                # NOTE coordinate rotation!!
           method='spline', order=0)     # NOTE method='spline', not method='harm'!
 
