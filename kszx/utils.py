@@ -1,4 +1,5 @@
 import numpy as np
+import scipy.special
 import scipy.integrate
 import scipy.interpolate
 
@@ -7,7 +8,24 @@ import scipy.interpolate
 
 
 def ra_dec_to_xyz(ra_deg, dec_deg, r=None):
-    """Returns shape s+(3,) array, where ra_deg.shape == dec_deg.shape == s."""
+    """Converts spherical polar coordinates (ra_deg, dec_deg) to cartesian coords (x,y,z).
+    
+    Args:
+       - ra_deg: numpy array containing ra in degrees (not radians!)
+       - dec_deg: numpy array containing dec in degrees (not radians!)
+       - r (optional): numpy array containing radial coordinates
+
+    Returns:
+
+       - xyz: new array with a length-3 axis appended.
+         (E.g. if ra_deg and dec_deg have shape (m,n), then xyz has shape (m,n,3)).
+
+    The coordinate systems are related by:
+
+        x = r * cos(dec) * cos(ra)
+        y = r * cos(dec) * sin(ra)
+        z = r * sin(dec)
+    """
     
     ra_deg = np.asarray(ra_deg)
     dec_deg = np.asarray(dec_deg)
@@ -30,6 +48,66 @@ def ra_dec_to_xyz(ra_deg, dec_deg, r=None):
         ret *= np.reshape(r, r.shape + (1,))
     
     return ret
+
+
+def xyz_to_ra_dec(xyz, return_r=False):
+    """Converts cartesian coords (x,y,z) to spherical polar coordinates (ra_deg, dec_deg).
+
+    Args:
+       - xyz: array whose last axis has length 3.
+
+    Returns:
+       - ra_deg: numpy array containing ra in degrees (not radians!)
+       - dec_deg: numpy array containing dec in degrees (not radians!)
+       - r (only returned if return_r=True): numpy array containing radial coordinates
+
+    The returned arrays have one lower dimension than 'xyz'. (E.g., if xyz has shape (m,n,3)
+    then ra_deg,dec_deg,r all have shape (m,n).)
+
+    The coordinate systems are related by:
+
+        x = r * cos(dec) * cos(ra)
+        y = r * cos(dec) * sin(ra)
+        z = r * sin(dec)
+    """
+
+    xyz = np.asarray(xyz)
+    assert xyz.shape[-1] == 3
+
+    x = xyz[...,0]
+    y = xyz[...,1]
+    z = xyz[...,2]
+
+    ra_deg = np.arctan2(y, x)
+    ra_deg *= (180./np.pi)
+    
+    dec_deg = np.arctan2(z, np.sqrt(x*x + y*y))
+    dec_deg *= (180./np.pi)
+
+    if return_r:
+        r = np.sqrt(x*x + y*y + z*z)
+        return ra_deg, dec_deg, r
+    else:
+        return ra_deg, dec_deg
+    
+
+####################################################################################################
+
+
+def W_tophat(x):
+    """Returns Fourier transform of a 3-d tophat W(x), where x=kR. Vectorized.
+    
+    W(x) is given by any of the equivalent forms:
+
+       W(x) = 3/x^3 (sin(x) - x cos(x))
+            = 3 j1(x) / x
+            = j0(x) + j2(x)
+    """
+
+    # Timing showed that this implementation was fastest.
+    mask = (x != 0)   # to regulate division by zero
+    ret = 3 * scipy.special.spherical_jn(1,x) / np.where(mask,x,1.0)
+    return np.where(mask, ret, 1.0)
 
 
 ####################################################################################################
