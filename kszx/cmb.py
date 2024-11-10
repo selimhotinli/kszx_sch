@@ -5,8 +5,9 @@ import numpy as np
 from . import utils
 
 
-def fkp_from_ivar(ivar, cl0, normalize=True, return_wvar=False):
-    """
+def fkp_from_ivar_2d(ivar, cl0, normalize=True, return_wvar=False):
+    """Makes a 2-d pixell FKP map (intended for CMB) from a pixell inverse variance map.
+
     The 'ivar' argument is an inverse noise varaiance map (i.e. pixell.enmap) in (uK)^{-2},
     for example the return value of act.read_ivar().
 
@@ -51,6 +52,8 @@ def fkp_from_ivar(ivar, cl0, normalize=True, return_wvar=False):
 
 
 def ivar_combine(ivar1, ivar2):
+    """Given two 2-d pixell ivar maps, return the 'combined' ivar map (1/ivar1 + 1/ivar2)^{-1}."""
+    
     assert isinstance(ivar1, pixell.enmap.ndmap)
     assert isinstance(ivar2, pixell.enmap.ndmap)
 
