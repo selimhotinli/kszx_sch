@@ -2,7 +2,7 @@ import healpy
 import pixell.enmap
 import numpy as np
 
-from . import Box
+from .Box import Box
 from . import cpp_kernels
 from . import utils
     
@@ -379,7 +379,7 @@ def multiply_kfunc(box, arr, f, dest=None, in_place=False, dc=None):
         f: function (or callable object) representing the function k -> f(k).
         dest: real-space map where output will be written (if None, then new array will be allocated)
         in_place: setting this to True is equivalent to dest=arr.
-        dc (float): if True, then f() is not evaluated at k=0, and the value of 'dc' is used instead of f(0).
+        dc (float): if specified, then f() is not evaluated at k=0, and the value of 'dc' is used instead of f(0).
 
     Returns: None. (The Fourier-space map 'arr' is modified in-place.)
 
