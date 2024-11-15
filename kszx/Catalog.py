@@ -9,36 +9,47 @@ from . import io_utils
 
 
 class Catalog:
-    """
-    A Catalog contains the following members:
-
-       self.size        (integer)
-       self.col_names   (list of strings)
-       self.name        (string or None)
-       self.filename    (string or None)
-
-    Additionally, for each column name (in self.col_names), the Catalog
-    contains a member with the corresponding name, whose value is a 1-d array
-    of length self.size.
-
-    Some standard column names:
-       ra_deg      right ascension (degrees)
-       dec_deg     declination (degrees)
-       z           redshift
-       zerr        redshift error (if photometric)
-       rmag        r-band magnitude (and similarly for g-band, z-band, etc.)
-
-    Note: here are some functions which make maps from catalogs:
-
-       kszx.healpix_utils.map_from_catalog()   # catalog -> 2d healpix map
-       kszx.pixell_utils.map_from_catalog()    # catalog -> 2d pixell maps
-       kszx.grid_points()                      # catalog -> 3d map
-    """
-    
     def __init__(self, cols=None, name=None, filename=None, size=0):
-        """
-        The 'cols' argument should be a dictionary col_name -> col_data.
-        The 'name' argument is an optional string.
+        r"""Represents a galaxy catalog, with one "row" per galaxy, and user-defined "columns" for RA, DEC, etc.
+
+        Constructor args:
+          - cols: dictionary (string col_name) -> (1-d numpy array).
+            Optional, since you can add columns later with add_column().
+          - name: catalog name (optional)
+          - filename: filename, if catalog is stored on disk (optional)
+          - size: number of galaxies in catalog (optional, can be inferred from array dimensions instead).
+
+        Members:
+
+          - ``self.size`` (integer): Number of galaxies in catalog.
+          - ``self.col_names`` (list of strings): List of user-defined columns.
+          - ``self.name`` (string or None): Catalog name (optional).
+          - ``self.filename`` (string or None): Filename, if Catalog is stored on disk (optional).
+
+        Additionally, for each column name (in ``self.col_names``), the Catalog contains 
+        a member with the corresponding name, whose value is a 1-d array of length self.size.
+
+        Column names are user-defined, but here are some frequently-occuring column names:
+
+          - ``self.ra_deg``: right ascension (degrees)
+          - ``self.dec_deg``: declination (degrees)
+          - ``self.z``: redshift
+          - ``self.zerr``: redshift error (if photometric)
+          - ``self.rmag``: r-band magnitude (and similarly for g-band, z-band, etc.)
+
+        Here are some functions which return Catalogs::
+
+          kszx.sdss.read_galaxies()
+          kszx.sdss.read_randoms()
+          kszx.desils_lrg.read_galaxies()
+          kszx.desils_lrg.read_randoms()
+          kszx.Catalog.from_h5()    # static method
+        
+        Here are some functions which make maps from catalogs::
+
+          kszx.healpix_utils.map_from_catalog()   # catalog -> 2d healpix map
+          kszx.pixell_utils.map_from_catalog()    # catalog -> 2d pixell maps
+          kszx.grid_points()                      # catalog -> 3d map
         """
 
         self.size = size
@@ -52,6 +63,12 @@ class Catalog:
 
     
     def add_column(self, col_name, col_data):        
+        r""" Adds a new column to the catalog.
+
+          - col_name (string)
+          - col_data (1-d numpy array)
+        """
+        
         assert isinstance(col_name, str)
         assert len(col_name) > 0
         assert not col_name.startswith('_')
@@ -71,6 +88,8 @@ class Catalog:
 
 
     def remove_column(self, col_name):
+        r"""Removes an existing column from the catalog."""
+        
         assert isinstance(col_name, str)
         assert len(col_name) > 0
         assert not col_name.startswith('_')
@@ -82,6 +101,19 @@ class Catalog:
 
 
     def apply_boolean_mask(self, mask, name=None, in_place=True):
+        r"""Reduces the size of the Catalog, by applying a caller-specified boolean mask.
+        
+        This can be used to implement color cuts, redshift cuts, etc.
+
+           - mask (1-d boolean array). Elements should be True for galaxies which are kept,
+             False for galaxies which are discarded.
+        
+           - name (string or None). If specified, the mask fraction will be printed.
+
+           - in_place (booelan). If False, the original Catalog is unmodified, and a
+             new Catalog is returned.
+        """
+        
         if not in_place:
             self = self.shallow_copy()
                 
@@ -106,6 +138,16 @@ class Catalog:
 
 
     def apply_redshift_cut(self, zmin, zmax, in_place=True):
+        r"""Reduces the size of the catalog, by keeping objects in redshift range $z_{min} \le z \le z_{max}$.
+
+        This is a special case of ``apply_boolean_mask()``.
+
+           - zmin (float or None). If None, then no lower redshift limit is imposed.
+           - zmax (float or None). If None, then no upper redshift limit is imposed.
+           - in_place (booelan). If False, the original Catalog is unmodified, and a
+             new Catalog is returned.
+        """
+        
         assert 'z' in self.col_names
 
         mask1 = (self.z >= zmin) if (zmin is not None) else np.ones(self.size)
@@ -117,15 +159,29 @@ class Catalog:
 
 
     def get_xyz(self, cosmo):
-        """Returns shape (N,3) array. The 'cosmo' arg should be an instance of kszx.Cosmology.
+        r"""Returns shape (N,3) array containing galaxy locations in Cartesian coords (observer at origin). 
 
-        Can be used as 'points' array in kszx.interpolate_points(), kszx.grid_points(), or
-        kszx.BoundingBox constructor.
+        The Catalog must define columns named ``ra_deg``, ``dec_deg``, and ``z``.
+        The constructor arg is:
+
+           - cosmo (:class:`~kszx.Cosmology`). Used to convert redshifts to distances.
+
+        This function is super useful -- here are some use cases for the ``points`` array that it returns:
         
-        Implementation: just a wrapper around:
+           - To "grid" the galaxy field, pass the ``points`` array to :func:`kszx.grid_points`.
+           - To interpolate a real-space field to the galaxy locations, pass the ``points`` array 
+             to :func:`kszx.interpolate_points`
+           - To create a bounding box for the galaxy field, pass the ``points`` array to
+             the :class:`~kszx.BoundingBox` constructor.
+        
+        This function is roughly equivalent to::
 
-           kszx.Cosmology.chi()         computes radial distance chi from 'z' column of catalog
-           kszx.utils.ra_dec_to_xyz()   computes xyz coords from chi + ('ra_deg','dec_deg') cols
+           # Compute radial distaance from 'z' column of catalog
+           chi = kszx.Cosmology.chi(self.z)
+        
+           # Compute Cartesian coords from 'ra_deg' and 'dec_deg' cols of catalog.
+           points = kszx.utils.ra_dec_to_xyz(self.ra_deg, self.dec_deg, r=chi)
+           return points
         """
 
         assert 'ra_deg' in self.col_names
@@ -138,11 +194,11 @@ class Catalog:
     
 
     def generate_batches(self, batchsize, verbose=True):
-        """
-        Splits catalog into subcatalogs no larger than 'batchsize'.
-        If 'batchsize' is None, the catalog will be "split" into a single subcatalog.
+        r"""Splits catalog into subcatalogs no larger than 'batchsize'.
 
-        If 'verbose' is True, and the catalog is split into more than one batch,
+        If ``batchsize`` is None, the catalog will be "split" into a single subcatalog.
+
+        If ``verbose`` is True, and the catalog is split into more than one batch,
         then a progress indicator will be shown.
         """
 
@@ -186,6 +242,13 @@ class Catalog:
 
     @staticmethod
     def concatenate(catalog_list, name=None, destructive=False):
+        r"""Returns a new Catalog, obtained by concatenating (merging) multiple Catalogs.
+
+           - catalog_list (sequence of Catalogs).
+           - name (string or None). Name of new Catalog (optional).
+           - destructive (boolean). If True, then the input Catalogs will be destroyed to save memory
+        """
+        
         assert len(catalog_list) > 0
         assert all(isinstance(x, Catalog) for x in catalog_list)
 
@@ -207,6 +270,8 @@ class Catalog:
     
     @staticmethod
     def from_h5(filename):
+        r"""Reads FITS file in HDF5 format (written by ``catalog.write_h5()``), and returns a Catalog object."""
+        
         print(f'Reading {filename}')
         
         with h5py.File(filename, 'r') as f:
@@ -222,6 +287,8 @@ class Catalog:
 
 
     def write_h5(self, filename):
+        r"""Writes a Catalog to disk, in an HDF5 file format (readable with ``Catalog.read_h5()``)."""
+        
         io_utils.mkdir_containing(filename)
         print(f'Writing {filename}')
         
@@ -241,9 +308,9 @@ class Catalog:
         
     @staticmethod
     def from_fits(filename, col_name_pairs, name=None):
-        """Returns a Catalog object. Used to read SDSS, DESILS catalogs.
+        """Reads FITS file in SDSS/DESILS format, and returns a Catalog object.
         
-        The 'col_name_pairs' arg should be a list of pairs (col_name, fits_col_name).
+        The ``col_name_pairs`` arg should be a list of pairs (col_name, fits_col_name).
         See sdss.py and desils_lry.py for examples."""
 
         if name is None:

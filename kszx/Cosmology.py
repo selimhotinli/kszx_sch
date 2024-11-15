@@ -12,12 +12,20 @@ from . import utils   # is_sorted(), spline1d(), spline2d()
 
 class CosmologicalParams:
     def __init__(self, name=None):
-        """The following values of 'name' are currently supported:
+        r"""Simple data class containing cosmological params (ombh2, omch2, etc.)
 
-             name='planck18+bao'    https://arxiv.org/abs/1807.06209 (last column of Table 2)
-             name='hmvec'           match defaults in Mat Madhavacheril's hmvec code
+        You probably don't need to use this class -- instead construct a :class:`~kszx.Cosmology`
+        object by name.
 
-        If no name is specified, then caller must set {ombh2,omch2,...} after calling constructor.
+        Constructor args:
+        
+           - name (string or None).
+
+             The following names are supported:
+                 - ``params='planck18+bao'``: https://arxiv.org/abs/1807.06209 (last column of Table 2)
+                 - ``params='hmvec'``: match defaults in Mat's hmvec code (https://github.com/simonsobs/hmvec)
+
+        If no name is specified, then caller must set ombh2, omch2, etc. after calling constructor.
         """
         
         self.ombh2 = None
@@ -85,19 +93,28 @@ class CosmologicalParams:
         
 class Cosmology:
     def __init__(self, params):
-        """The 'params' arg can either be a CosmologicalParams, or a name, e.g. 'planck18+bao' or 'hmvec'.
+        r"""Thin wrapper around CAMB 'results' object, with methods such as H(), Plin(), etc.
 
-        NOTE: no h-units! All distances are Mpc (not h^{-1} Mpc), and all wavenumbers are Mpc^{-1} (not h Mpc^{-1}).
-
-        This is mostly a thin wrapper around CAMB. I like the wrapper for a few reasons:
+        Adding a wrapper around CAMB is not really necessary, but I like it for a few reasons:
 
            - The Cosmology object is pickleable (unlike the camb 'results' object).
            - I find the syntax a little more intuitive.
            - It's a convenient place to add new methods (e.g. frsd(), alpha()).
 
-        Note: methods require caller to specify keywords, e.g. caller must call Cosmology.Plin(k=xx, z=xx) 
-        instead of Plin(xx,xx). This is intentional, to reduce the chances that I'll create a bug by swapping
-        arguments or using the wrong time coordinate (e.g. a instead of z).
+        NOTE: no h-units! All distances are Mpc (not $h^{-1}$ Mpc), and all wavenumbers 
+        are Mpc$^{-1}$ (not h Mpc$^{-1}$).
+
+        Constructor args:
+        
+           - params (:class:`~kszx.CosmologicalParams` object, or string name).
+
+             The following string names are supported:
+                 - ``params='planck18+bao'``: https://arxiv.org/abs/1807.06209 (last column of Table 2)
+                 - ``params='hmvec'``: match defaults in Mat's hmvec code (https://github.com/simonsobs/hmvec)
+
+        Note: methods require caller to specify keywords, e.g. caller must call ``Cosmology.Plin(k=xx, z=xx)``
+        instead of ``Plin(xx,xx)``. This is intentional, to reduce the chances that I'll create a bug by swapping
+        arguments or using the wrong time coordinate (e.g. scale factor `a` instead of redshift `z`).
         """
         
         if isinstance(params, str):
@@ -230,7 +247,7 @@ class Cosmology:
         
 
     def H(self, *, z, check=True):
-        """Returns Hubble expansion rate H(z)."""
+        r"""Returns Hubble expansion rate $H(z)$."""
         
         if check:
             assert np.all(z >= 0.0)
@@ -240,7 +257,7 @@ class Cosmology:
 
 
     def chi(self, *, z, check=True):
-        """Returns comoving distance chi(z)."""
+        r"""Returns comoving distance $\chi(z)$."""
 
         z = np.asarray(z)
         
@@ -252,7 +269,7 @@ class Cosmology:
 
     
     def z(self, *, chi, check=True):
-        """Returns redshift z corresponding to specified comoving distance chi."""
+        r"""Returns redshift $z$ corresponding to specified comoving distance $\chi$."""
 
         chi = np.asarray(chi)
         
@@ -264,15 +281,15 @@ class Cosmology:
 
 
     def Plin_z0(self, k, check=True):
-        """Returns linear power spectrum P(k,z=0). 
+        r"""Returns linear power spectrum $P(k)$ at $z=0$. 
 
-        Calling Plin_z0() is slightly faster than calling Plin(k,z) with k=0,
-        and in most situations, calling Plin(k,z) is not necessary, since:
+        Calling ``Plin_z0()`` is slightly faster than calling ``Plin(k,z)`` with k=0,
+        and in most situations, calling ``Plin(k,z)`` is unnecessary, since:
 
-           Plin(k,z) ~ Plin(k,z=0) * D(z,normz0=True)
+        $$P_{lin}(k,z) \approx P_{lin}(k,0) \frac{D(z)}{D(0)}$$
 
         This approximation slightly breaks down (at the ~0.5% level!)
-        on large scales k <~ 10^(-3) and small scales k >~ 0.1.
+        on large scales $k \lesssim 10^{-3}$ and small scales $k \gtrsim 0.1$.
         """
 
         k = np.asarray(k)
@@ -287,15 +304,14 @@ class Cosmology:
 
 
     def Plin(self, *, k, z, kzgrid=False, check=True):
-        """
-        Returns linear power spectrum P(k,z).
+        r"""Returns linear power spectrum $P(k,z)$.
 
-        The 'kzgrid' argument has the following meaning:
+        The ``kzgrid`` argument has the following meaning:
 
-          kzgrid=False  means "broadcast k,z to get a set of points"
-          kzgrid=True   means "take the Cartesian product of k,z to get a kzgrid"
+          - ``kzgrid=False`` means "broadcast k,z to get a set of points"
+          - ``kzgrid=True``   means "take the Cartesian product of k,z to get a kzgrid"
 
-        (If kzgrid=True, then the returned array has shape (nk,nz) -- note that this
+        (If ``kzgrid=True``, then the returned array has shape (nk,nz) -- note that this
         convention is transposed relative to CAMB or hmvec.)
         """
 
@@ -320,9 +336,11 @@ class Cosmology:
     
 
     def D(self, *, z, z0norm, check=True):
-        """Return the growth function D(z).
-        If z0norm=True, normalize so that D(0)=1. 
-        If z0norm=False, normalize so that D -> 1/(1+z) at high z."""
+        r"""Return the growth function $D(z)$.
+
+        If ``z0norm=True``, normalize so that $D(0)=1$.
+
+        If ``z0norm=False``, normalize so that $D(z) \rightarrow 1/(1+z)$ at high z."""
 
         z = np.asarray(z)
         
@@ -335,10 +353,12 @@ class Cosmology:
             logD += self._logD_shift
         
         return np.exp(logD)
+
     
     def Dfit(self, *, z, z0norm, check=True):
-        """Return the growth function D(z), computed using a popular fitting function.
-        You probably want Cosmology.D(), not Cosmology.Dfit()!"""
+        r"""Return the growth function ``D(z)``, computed using a popular fitting function.
+
+        This is probably not the function you want! You probably want ``D()``, not ``Dfit()``."""
 
         z = np.asarray(z)
         
@@ -355,7 +375,7 @@ class Cosmology:
 
     
     def frsd(self, *, z, check=True):
-        """Return RSD function f(z) = d(log D)/d(log a). Uses a fitting function for now!"""
+        r"""Return RSD function $f(z) = d(\log D)/d(\log a)$. Uses a fitting function for now!"""
 
         z = np.asarray(z)
         
@@ -371,23 +391,23 @@ class Cosmology:
 
     
     def alpha(self, *, k, z, kzgrid=False, check=True):
-        """Defined by delta_m(k,z) = alpha(k,z) (3/5) zeta(k).
+        r"""Return $\alpha(k,z)$, defined by $\delta_m(k,z) = (3/5) \alpha(k,z) \zeta(k)$.
 
-        The function alpha(k,z) arises in non-Gaussian halo bias as:
+        The function $\alpha(k,z)$ arises in non-Gaussian halo bias as:
 
-          b(k,z) = b_g + 2 b_{ng} fNL / alpha(k,z)
+        $$b(k,z) = b_g + 2 b_{ng} \frac{fNL}{\alpha(k,z)}$$
 
-        where b_{ng} = d(log n)/d(log sigma8) ~ delta_c (b_g - 1).
+        where $b_{ng} = d(\log n)/d(\log \sigma_8) \approx \delta_c (b_g - 1)$.
 
-        Note that for fixed k, alpha(k,z) is proportional to D(z), to an excellent
+        Note that for fixed k, $\alpha(k,z)$ is proportional to $D(z)$, to an excellent
         approximation.
 
-        The 'kzgrid' argument has the following meaning:
+        The ``kzgrid`` argument has the following meaning:
 
-          kzgrid=False  means "broadcast k,z to get a set of points"
-          kzgrid=True   means "take the Cartesian product of k,z to get a kzgrid"
+          - ``kzgrid=False`` means "broadcast k,z to get a set of points"
+          - ``kzgrid=True`` means "take the Cartesian product of k,z to get a kzgrid"
 
-        (If kzgrid=True, then the returned array has shape (nk,nz) -- note that this
+        (If ``kzgrid=True``, then the returned array has shape (nk,nz) -- note that this
         convention is transposed relative to CAMB or hmvec.)
         """
 

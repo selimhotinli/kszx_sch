@@ -5,63 +5,69 @@ import numpy as np
 
 class Box:
     def __init__(self, npix, pixsize, cpos=None):
-        """The Box class represents a pixelization of an N-dimensional box.
+        r"""The Box class represents a pixelization of an N-dimensional box.
+
+        The Box class requires the caller to manually choose the box size and observer
+        location. See :class:`~kszx.BoundingBox` for a subclass which automatically 
+        chooses these parameters to match a galaxy survey.
 
         Constructor args:
 
-            npix (tuple or 1-d array): 
-               Grid dimensions, e.g. (512,512,1024).
-            pixsize (float): 
+            - npix (tuple or 1-d array): 
+               Grid dimensions, e.g. (1024,1024,1024)
+               For a non-cubic box, use unequal dimensions, e.g. (512,512,1024).
+
+            - pixsize (float): 
                Pixel side length (caller-specified units, usually Mpc).
-            cpos (tuple, 1-d array, or None):
+               Note that pixsize is a scalar, i.e. pixels are always cubic.
+
+            - cpos (tuple, 1-d array, or None):
                Location of box center, in coordinate system with observer at origin.
-               Defaults to (npix * pixsize) / 2.
 
-        Some notes:
+               Defaults to cpos=(npix*pixsize)/2, i.e. observer at lower-left corner.
+               For a box with observer at the center, use cpos=(0,0,0).
 
-           - Note that 'npix' is a 1-d array, whereas 'pixsize' is a scalar.
-             That is, boxes need not be cubic, but pixels are cubic.
+               The observer location matters in some situations (e.g. gridding a galaxy 
+               catalog, where galaxy locations are specified in observer coordinates),
+               but not others (e.g. taking an FFT).
 
-           - The cpos field specifies the location of the box in the observer's coordinate system.
-             This matters in some situations (e.g. gridding a catalog) but not others (e.g. taking
-             an FFT). When the box position matters, it's noted in the appropriate docsting.
+        Maps and array shapes:
 
-           - A real-space map (e.g. 3-d matter density) is represented by a pair (box, arr),
-             where 'arr' is a numpy array with shape box.real_space_shape and dtype=float.
+             Note that we define a Box class, but not a Map class.
 
-           - A Fourier-space map is represented by a pair (box, arr), where 'arr' is a
-             numpy array with shape box.fourier_space_shape and dtype=complex.
-        
-           - The real-space and Fourier-space shapes are related as follows:
-                if    self.real_space_shape = (n_0, n_1, ..., n_{d-1})
-                then  self.fourier_space_shape = (n_0, n_1, ..., n_{d-1}//2 + 1)
+             Instead, a real-space map is represented by a pair (box, arr), where 'arr' is a 
+             numpy array with dtype=float. Similarly, a Fourier-space map is represented by a 
+             pair (box, arr), where 'arr' is a numpy array with dtype=complex.
 
-           - You'll notice that we don't define a Map class (instead, we represent maps by
-             pairs (box,arr)). I might revisit this decision later. (Currently, 'arr' must be 
-             a numpy array, but in the future we might also support cupy/jax/dask arrays.)
+             The real-space and Fourier-space array shapes are related as follows:
+
+        $$(\mbox{real-space shape}) = (n_0, n_1, \cdots, n_{d-1})$$
+        $$(\mbox{Fourier-space shape})= (n_0, n_1, \cdots, \lfloor n_{d-1}/2 \rfloor + 1)$$
 
         Members:
         
-           ndim           number of dimensions N
-           npix           real-space map shape, represented as length-N array
-           pixsize        pixel side length in user-defined coordinates (scalar, i.e. pixels must be square)
-           boxsize        box side lengths in user-defined coordinates (equal to npix * pixsize)
-           nk             Fourier-space map shape, represented as length-N array
-           kfund          lowest frequency on each axis (length-N array, equal to 2pi/boxsize)
-           knyq           Nyquist frequency (scalar, equal to pi/pixsize)
-           box_volume     scalar box volume (equal to prod(boxsize))
-           pixel_volume   scalar pixel volume (equal to pixsize^N)
-           cpos           location of box center in observer coordinates (length-N array)
-           lpos           location of lower left corner (equal to cpos- (npix-1)*pixsize/2)
-           rpos           location of upper right corner (equal to cpos + (npix-1)*pixsize/2)
-           real_space_shape     same as 'npix', but represented as tuple instead of 1-d array
-           fourier_space_shape  same as 'nk', but represented as tuple instead of 1-d array
+           - ndim (integer): Number of dimensions (usually 3).
+           - pixsize (float): Pixel side length in user-defined coordinates.
+           - boxsize (length-ndim array): Box side lengths in user-defined coordinates (equal to npix * pixsize).
+           - npix (length-ndim array): Real-space map shape, represented as numpy array.
+           - real_space_shape (tuple): same as 'npix', but represented as tuple instead of 1-d array
+           - nk (length-ndim array): Fourier-space map shape, represented as numpy array.
+           - fourier_space_shape (tuple) same as 'nk', but represented as tuple instead of 1-d array
+           - cpos (length-ndim array): location of box center, in observer coordinates
+           - lpos (length-ndim array): location of lower left box corner, in observer coordinates
+           - rpos (length-ndim array): location of upper right box corner, in observer coordinates
+           - kfund (length-ndim array): Lowest frequency on each axis (equal to 2pi/boxsize)
+           - knyq (float): Nyquist frequency (equal to pi/pixsize)
+           - box_volume (float): Box volume (equal to prod(boxsize))
+           - pixel_volume (float): Pixel volume (equal to pixsize^N)
 
-        Our Fourier conventions in a discretized finite volume are:
+        Fourier conventions:
 
-           f(k) = (pixel volume) sum_x f(x) e^{-ik.x}      [ morally int d^nx f(x) e^{-ik.x} ]
-           f(x) = (box volume)^{-1} sum_k f(k) e^{ik.x}    [ morally int d^nk/(2pi)^n f(k) e^{ik.x} ]        
-           <f(k) f(k')^*> = (box volume) P(k) delta_{kk'}  [ morally P(k) (2pi)^n delta^n(k-k') ]
+        $$f(k) = V_{pix} \sum_x f(x) e^{-ik\cdot x}$$
+
+        $$f(x) = V_{box}^{-1} \sum_k f(k) e^{ik\cdot x}$$
+
+        $$\langle f(k) f(k')^* \rangle = V_{box} P(k) \delta_{k,k'}$$
         """
         
         npix = np.asarray(npix)

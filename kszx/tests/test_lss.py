@@ -1,5 +1,5 @@
 from .. import Box
-from .. import lss
+from .. import core
 from .. import utils
 from . import helpers
 
@@ -17,9 +17,9 @@ def test_fft_inverses():
     
     for iouter in range(100):
         box = helpers.random_box()
-        x = lss.simulate_white_noise(box, fourier=False)
-        Fx = lss.fft_r2c(box, x)
-        FFx = lss.fft_c2r(box, Fx)
+        x = core.simulate_white_noise(box, fourier=False)
+        Fx = core.fft_r2c(box, x)
+        FFx = core.fft_c2r(box, Fx)
         eps = np.max(np.abs(x-FFx)) * np.sqrt(box.pixel_volume)
         assert eps < 1.0e-13
         
@@ -35,10 +35,10 @@ def test_fft_transposes():
         box = helpers.random_box()
         spin = 0 if np.all(box.npix <= 2) else np.random.randint(0,2)
 
-        x = lss.simulate_white_noise(box, fourier=False)
-        y = lss.simulate_white_noise(box, fourier=True)
-        Fx = lss.fft_r2c(box, x, spin=spin)
-        Fy = lss.fft_c2r(box, y, spin=spin)
+        x = core.simulate_white_noise(box, fourier=False)
+        y = core.simulate_white_noise(box, fourier=True)
+        Fx = core.fft_r2c(box, x, spin=spin)
+        Fy = core.fft_c2r(box, y, spin=spin)
 
         mdot = lambda v,w: helpers.map_dot_product(box,v,w)
         dot1 = mdot(y,Fx)
@@ -117,10 +117,10 @@ def test_interpolation():
     print('test_interpolation(): start')
 
     for _ in range(100):
-        # Currently, lss.interpolate_points() supports CIC and cubic.
+        # Currently, interpolate_points() supports CIC and cubic.
         kernel, degree = ('cic',1) if (np.random.uniform() < 0.5) else ('cubic',3)
 
-        # Currently, lss.interpolate_point() only supports ndim=3.
+        # Currently, interpolate_points() only supports ndim=3.
         box = helpers.random_box(ndim=3, nmin=degree+1)
         poly = RandomPoly(degree=degree, lpos=box.lpos, rpos=box.rpos)
         ndim = box.ndim
@@ -131,7 +131,7 @@ def test_interpolation():
         
         grid = poly.eval_grid(box.npix)
         exact_vals = poly.eval_points(points)
-        interpolated_vals = lss.interpolate_points(box, grid, points, kernel=kernel)
+        interpolated_vals = core.interpolate_points(box, grid, points, kernel=kernel)
 
         epsilon = helpers.compare_arrays(exact_vals, interpolated_vals)
         assert epsilon < 1.0e-12
@@ -143,10 +143,10 @@ def test_interpolation_gridding_consistency():
     print('test_interpolation_gridding_consistency(): start')
     
     for _ in range(100):
-        # Currently, lss.interpolate_points() supports CIC and cubic.
+        # Currently, interpolate_points() supports CIC and cubic.
         kernel, degree = ('cic',1) if (np.random.uniform() < 0.5) else ('cubic',3)
 
-        # Currently, lss.interpolate_point() only supports ndim=3.
+        # Currently, interpolate_points() only supports ndim=3.
         box = helpers.random_box(ndim=3, nmin=degree+1)
         ndim = box.ndim
 
@@ -157,8 +157,8 @@ def test_interpolation_gridding_consistency():
         g = np.random.normal(size=box.npix)  # random grid
         w = np.random.normal(size=npoints)   # random weights
         
-        Ag = lss.interpolate_points(box, g, points, kernel=kernel)
-        Aw = lss.grid_points(box, points, weights=w, kernel=kernel)
+        Ag = core.interpolate_points(box, g, points, kernel=kernel)
+        Aw = core.grid_points(box, points, weights=w, kernel=kernel)
 
         dot1 = np.dot(w,Ag)
         dot2 = helpers.map_dot_product(box,Aw,g)
@@ -181,9 +181,9 @@ def test_simulate_gaussian():
     
     for _ in range(100):
         box = helpers.random_box()
-        arr = lss.simulate_white_noise(box, fourier=True)
-        arr2 = lss.fft_c2r(box, arr)
-        arr2 = lss.fft_r2c(box, arr2)
+        arr = core.simulate_white_noise(box, fourier=True)
+        arr2 = core.fft_c2r(box, arr)
+        arr2 = core.fft_r2c(box, arr2)
         eps = np.max(np.abs(arr-arr2)) *  np.sqrt(box.pixel_volume)
         assert eps < 1.0e-10
         
@@ -197,11 +197,11 @@ def monte_carlo_simulate_gaussian(npix, pixsize):
     p_fourier = np.zeros(box.fourier_space_shape)
         
     for nmc in itertools.count():
-        x = lss.simulate_white_noise(box, fourier=False)
-        x = lss.fft_r2c(box, x)
+        x = core.simulate_white_noise(box, fourier=False)
+        x = core.fft_r2c(box, x)
         p_real += np.abs(x)**2
 
-        y = lss.simulate_white_noise(box, fourier=True)
+        y = core.simulate_white_noise(box, fourier=True)
         p_fourier += np.abs(y)**2
 
         if utils.is_perfect_square(nmc):
@@ -213,7 +213,7 @@ def monte_carlo_simulate_gaussian(npix, pixsize):
 
 
 def _test_estimate_power_spectrum(box, kbin_delim, nmaps=None, use_dc=False):
-    """Compares lss.estimate_power_spectrum() to a reference implementation.
+    """Compares estimate_power_spectrum() to a reference implementation.
     
     Note that nmaps=1 is slightly different from nmaps=None. 
     (The pk arrays have shape (1,1,nkbins) versus (nkbins,) in the two cases.)
@@ -223,10 +223,10 @@ def _test_estimate_power_spectrum(box, kbin_delim, nmaps=None, use_dc=False):
     """
 
     M = nmaps if (nmaps is not None) else 1
-    maps = np.array([ lss.simulate_white_noise(box, fourier=True) for _ in range(M) ])
+    maps = np.array([ core.simulate_white_noise(box, fourier=True) for _ in range(M) ])
     
     map_arg = maps if (nmaps is not None) else maps[0]
-    pk, bc = lss.estimate_power_spectrum(box, map_arg, kbin_delim, use_dc=use_dc, allow_empty_bins=True, return_counts=True)
+    pk, bc = core.estimate_power_spectrum(box, map_arg, kbin_delim, use_dc=use_dc, allow_empty_bins=True, return_counts=True)
     
     nbins = len(kbin_delim) - 1
     ref_pk = np.zeros((M,M,nbins))
@@ -268,7 +268,7 @@ def _test_estimate_power_spectrum(box, kbin_delim, nmaps=None, use_dc=False):
 
 
 def test_estimate_power_spectrum():
-    """Compares lss.estimate_power_spectrum() to a reference implementation.
+    """Compares estimate_power_spectrum() to a reference implementation.
     
     In principle, there is a small chance that this test can fail, if estimate_power_spectrum() 
     and the reference implementation put a k-mode in different bins, due to roundoff error. 
@@ -295,7 +295,7 @@ def test_estimate_power_spectrum():
 
 
 def _test_kbin_average(box, kbin_delim, use_dc=False):
-    """Compares lss.kbin_average() to a reference implementation.
+    """Compares kbin_average() to a reference implementation.
     
     In principle, there is a small chance that this test can fail, if kbin_average() 
     and the reference implementation put a k-mode in different bins, due to roundoff error. 
@@ -313,7 +313,7 @@ def _test_kbin_average(box, kbin_delim, use_dc=False):
             ret += coeffs[i] * np.cos(rvals[i]*k)
         return ret
 
-    fmean, bc = lss.kbin_average(box, f, kbin_delim, use_dc=use_dc, allow_empty_bins=True, return_counts=True)
+    fmean, bc = core.kbin_average(box, f, kbin_delim, use_dc=use_dc, allow_empty_bins=True, return_counts=True)
 
     nbins = len(kbin_delim) - 1
     ref_fk = f(box.get_k())
@@ -350,7 +350,7 @@ def _test_kbin_average(box, kbin_delim, use_dc=False):
     
 
 def test_kbin_average():
-    """Compares lss.kbin_average() to a reference implementation.
+    """Compares kbin_average() to a reference implementation.
     
     In principle, there is a small chance that this test can fail, if kbin_average() 
     and the reference implementation put a k-mode in different bins, due to roundoff error. 

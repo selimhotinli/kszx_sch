@@ -11,34 +11,50 @@ from . import utils
 
 
 def fft_r2c(box, arr, spin=0):
-    """Computes the FFT of real-space map 'arr', and returns a Fourier-space map.
+    r"""Computes the FFT of real-space map 'arr', and returns a Fourier-space map.
 
-    Args:
-        box (kszx.Box): defines pixel size, bounding box size, and location relative to observer.
-        arr: numpy array with shape (box.real_space_shape) and real dtype.
-        spin: currently only spin=0 and spin=1 are supported.
+        - ``box`` (kszx.Box): defines pixel size, bounding box size, and location of observer.
+          See :class:`~kszx.Box` for more info.
 
-    Returns:
-        numpy array with shape (box.fourier_space_shape) and complex dtype.
+        - ``arr``: numpy array representing a real-space map (dtype=float).
+
+        - ``spin``: currently only spin=0 and spin=1 are supported.
+
+    Returns a numpy array representing a Fourier-space map (dtype=complex).
+
+    The real-space and Fourier-space array shapes are given by ``box.real_space_shape``
+    and ``box.fourier_space_shape``, and are related as follows:
+
+    $$(\mbox{real-space shape}) = (n_0, n_1, \cdots, n_{d-1})$$
+    $$(\mbox{Fourier-space shape})= (n_0, n_1, \cdots, \lfloor n_{d-1}/2 \rfloor + 1)$$
 
     Notes:
 
-       - Our spin-0 Fourier conventions are (see Box docstring):
+       - Our spin-0 Fourier conventions are:
 
-           f(k) = (pixel volume) sum_x f(x) e^{-ik.x}     [ morally int d^nx f(x) e^{-ik.x} ]
-           f(x) = (box volume)^{-1} sum_k f(k) e^{ik.x}   [ morally int d^nk/(2pi)^n f(k) e^{ik.x} ]
+          $$f(k) = V_{pix} \sum_x f(x) e^{-ik\cdot x}$$
 
-       - In the spin-1 case, we include an extra factor (+i khat . rhat) in the c2r transform,
-         and (-i khat . rhat) in the r2c transform. Here, khat = (\vec k)/|k| and rhat = (\vec r)/|r|,
-         where r is spatial location in "observer" coordinates (observer is at origin, corners of
-         box are at box.{lpos,rpos}).
+          $$f(x) = V_{box}^{-1} \sum_k f(k) e^{ik\cdot x}$$
 
-         With this sign convention, the radial velocity field is given by (schematically):
-          
-            v_r(x) = faHD(x) * fft_c2r(delta(k)/k, spin=1)     # no minus sign
+       - We define spin-1 Fourier transforms by inserting an extra factor
+         $(\pm i {\hat k} \cdot {\hat r})$:
 
-         and if fft_r2c() is applied to the radial velocity field (or a kSZ velocity 
-         reconstruction), the result is positively correlated with delta(k).
+          $$f(k) = V_{pix} \sum_x f(x) (-i {\hat k} \cdot {\hat r}) e^{-ik\cdot x}$$
+
+          $$f(x) = V_{box}^{-1} \sum_k f(k) (i {\hat k} \cdot {\hat r}) e^{ik\cdot x}$$
+
+         where the line-of-sight direction $\hat r$ is defined in "observer coordinates"
+         (see :class:`~kszx.Box` for more info).
+
+         Application: the spin-1 c2r transform can be used to compute the radial velocity
+         field from the density field (with a factor $faH/k$).
+
+         Another application: the spin-1 r2c transform can be used to estimate $P_{gv}(k)$
+         or $P_{vv}(k)$ from the radial velocity field (or the kSZ velocity reconstruction),
+         by calling :func:`~kszx.fft_r2c()` followed by :func:`~kszx.estimate_power_spectrum()`.
+
+       - At some point in the future, I'll define spin-$l$ transforms, with an
+         extra factor $(\pm i^l P_l({\hat k} \cdot {\hat r}))$.
     """
 
     assert isinstance(box, Box)
@@ -69,34 +85,50 @@ def fft_r2c(box, arr, spin=0):
     
 
 def fft_c2r(box, arr, spin=0):
-    """Computes the FFT of Fourier-space map 'arr', and returns a real-space map.
+    r"""Computes the FFT of Fourier-space map 'arr', and returns a real-space map.
 
-    Args:
-        box (kszx.Box): defines pixel size, bounding box size, and location relative to observer.
-        arr: numpy array with shape (box.fourier_space_shape) and complex dtype.
-        spin: currently only spin=0 and spin=1 are supported.
+        - ``box`` (kszx.Box): defines pixel size, bounding box size, and location of observer.
+          See :class:`~kszx.Box` for more info.
 
-    Returns:
-        numpy array with shape (box.real_space_shape) and real dtype.
+        - ``arr``: numpy array representing a Fourier-space map (dtype=complex).
+
+        - ``spin``: currently only spin=0 and spin=1 are supported.
+
+    Returns a numpy array representing a real-space map (dtype=float).
+
+    The real-space and Fourier-space array shapes are given by ``box.real_space_shape``
+    and ``box.fourier_space_shape``, and are related as follows:
+
+    $$(\mbox{real-space shape}) = (n_0, n_1, \cdots, n_{d-1})$$
+    $$(\mbox{Fourier-space shape})= (n_0, n_1, \cdots, \lfloor n_{d-1}/2 \rfloor + 1)$$
 
     Notes:
 
        - Our spin-0 Fourier conventions are (see Box docstring):
 
-           f(k) = (pixel volume) sum_x f(x) e^{-ik.x}     [ morally int d^nx f(x) e^{-ik.x} ]
-           f(x) = (box volume)^{-1} sum_k f(k) e^{ik.x}   [ morally int d^nk/(2pi)^n f(k) e^{ik.x} ]
+          $$f(k) = V_{pix} \sum_x f(x) e^{-ik\cdot x}$$
 
-       - In the spin-1 case, we include an extra factor (+i khat . rhat) in the c2r transform,
-         and (-i khat . rhat) in the r2c transform. Here, khat = (\vec k)/|k| and rhat = (\vec r)/|r|,
-         where r is spatial location in observer coordinates (observer is at origin, corners of
-         the box are at box.{lpos,rpos}).
+          $$f(x) = V_{box}^{-1} \sum_k f(k) e^{ik\cdot x}$$
 
-         With this sign convention, the radial velocity field is given by (schematically):
-          
-            v_r(x) = faHD(x) * fft_c2r(delta(k)/k, spin=1)     # no minus sign
+       - We define spin-1 Fourier transforms by inserting an extra factor
+         $(\pm i {\hat k} \cdot {\hat r})$:
 
-         and if fft_r2c() is applied to the radial velocity field (or a kSZ velocity 
-         reconstruction), the result is positively correlated with delta(k).
+          $$f(k) = V_{pix} \sum_x f(x) (-i {\hat k} \cdot {\hat r}) e^{-ik\cdot x}$$
+
+          $$f(x) = V_{box}^{-1} \sum_k f(k) (i {\hat k} \cdot {\hat r}) e^{ik\cdot x}$$
+
+         where the line-of-sight direction $\hat r$ is defined in "observer coordinates"
+         (see :class:`~kszx.Box` for more info).
+
+         Application: the spin-1 c2r transform can be used to compute the radial velocity
+         field from the density field (with a factor $faH/k$).
+
+         Another application: the spin-1 r2c transform can be used to estimate $P_{gv}(k)$
+         or $P_{vv}(k)$ from the radial velocity field (or the kSZ velocity reconstruction),
+         by calling :func:`~kszx.fft_r2c()` followed by :func:`~kszx.estimate_power_spectrum()`.
+
+       - At some point in the future, I'll define spin-$l$ transforms, with an
+         extra factor $(\pm i^l P_l({\hat k} \cdot {\hat r}))$.
     """
     
     assert isinstance(box, Box)
@@ -130,26 +162,45 @@ def fft_c2r(box, arr, spin=0):
 
 
 def interpolate_points(box, arr, points, kernel, fft=False, spin=0):
-    """Interpolates real-space grid at a specified set of points.
+    r"""Interpolates real-space map at a specified set of points.
 
-    Args:
-        box (kszx.Box): defines pixel size, bounding box size, and location relative to observer.
-        arr: numpy array representing either a real-space (fft=False) or Fourier-space (fft=True) map.
-          - if fft=False, then (arr.shape, arr.dtype) = (box.real_space_shape, float)
-          - if fft=True, then (arr.shape, arr.dtype) = (box.fourier_space_shape, complex)
-        points: numpy array with shape (npoints, box.ndim).
-        kernel: either 'cic' or 'cubic' (for now).
-        fft: if True, then fft2_c2r(..., spin) will be applied to the input map before interpolating.
-        spin: passed as 'spin' argument to fft_c2r(). (Only used if fft=True.)
+    Function args:
 
-    Returns:
-        1-d numpy array with length npoints.
+        - ``box`` (kszx.Box): defines pixel size, bounding box size, and location of observer.
+          See :class:`~kszx.Box` for more info.
+
+        - ``arr`` (numpy array): represents the map to be interppolated, either in real space 
+          (if ``fft=False``) or Fourier space (if ``fft=True``).
+          
+          The real-space and Fourier-space array shapes are given by ``box.real_space_shape``
+          and ``box.fourier_space_shape``, and are related as follows:
+
+          $$(\mbox{real-space shape}) = (n_0, n_1, \cdots, n_{d-1})$$
+          $$(\mbox{Fourier-space shape})= (n_0, n_1, \cdots, \lfloor n_{d-1}/2 \rfloor + 1)$$
+
+        - ``points`` (numpy array):
+          Sequence of points where the map is to be interpolated.
+          Array shape should be (n,d), where n is the number of interpolation points, and d
+          is the box dimension (usually 3).
+
+        - ``kernel`` (string): either ``'cic'`` or ``'cubic'`` (more options will be defined later).
+
+        - ``fft`` (boolean): if True, then ``arr`` is a Fourier-space map, and ``fft_c2r(arr, spin)``
+          will be called before interpolating.
+    
+        - ``spin`` (integer): passed as 'spin' argument to ``fft_c2r()``. (Only used if ``fft=True``.)
+
+    Return value:
+
+        - 1-d numpy array with length npoints, containing interpolated values.
  
     Note: 
 
-       - The 'points' array should be specified in observer coordinates, not 'grid' coordinates.          
+       - The ``points`` array should be specified in "observer coordinates", not "grid coordinates".
+
          (Reminder: in observer coordinates, the observer is at the origin, coordinates have units
-          of distance, and the corners of the box are at box.{lpos,rpos}.)
+         of distance, and the corners of the box are at ``box.{lpos,rpos}``. 
+         See :class:`~kszx.Box` for more info.)
     """
 
     if not isinstance(box, Box):
@@ -211,47 +262,70 @@ def _check_weights(box, points, weights, prefix='', target_sum=None):
 
 
 def grid_points(box, points, weights=None, rpoints=None, rweights=None, kernel=None, fft=False, spin=0):
-    """Add a sum of delta functions, with specified coefficients or 'weights', to a real-space map.
+    r"""Returns a map representing a sum of delta functions (or a "galaxies - randoms" difference map).
 
-    Args:
+    Function args:
 
-        box (kszx.Box): defines pixel size, bounding box size, and location relative to observer.
+        - ``box`` (kszx.Box): defines pixel size, bounding box size, and location of observer.
+          See :class:`~kszx.Box` for more info.
 
-        points: numpy array with shape (npoints, box.ndim).
-        weights: either scalar, None, or 1-d array with length npoints.
-           - if 'weights' is a scalar, then all delta functions have equal weight.
-           - if 'weights' is None, then all delta functions have weight 1.
+        - ``points`` (2-d array):
+          Sequence of points where the delta functions are located (usually galaxy locations).
+          Array shape should be (n,d), where n is the number of interpolation points, and d
+          is the box dimension (usually 3).
 
-        rpoints: either None, or numpy array with shape (nrpoints, box.ndim).
-        rweights: either scalar, None, or 1-d array with length nrpoints.
-           The (rpoints, rweights) arrays represent "randoms" to be subtracted.
-           NOTE: the rweights are renormalized so that sum(rweights) = -sum(weights)!
+        - ``weights`` (either scalar, None, or 1-d array).
+           - if ``weights`` is an array, then it should have length n, where n is the number of
+             interpolation points.
+           - if ``weights`` is a scalar, then all delta functions have equal weight.
+           - if ``weights`` is None, then all delta functions have weight 1.
 
-        kernel: either 'cic' or 'cubic' (for now).
-           This argument is required, even though its default is None!
+        - ``rpoints`` (2-d array or None): 
+          Optional sequence of points where delta functions with negative coefficients
+          are located (representing a "random" catalog).
 
-        fft: if True, then fft2_r2c(..., spin) will be applied to the output map after gridding.
-        spin: passed as 'spin' argument to fft_r2c(). (Only used if fft=True.)
+        - ``rweights`` (either scalar, None, or 1-d array).
+          Weights for the ``rpoints`` array (same semantics as ``weights``).
+
+          NOTE: an additional multiplicative normalization is applied to the ``rweights``
+          so that ``sum(rweights) = -sum(weights)``. That is, if ``rweights`` are specified,
+          then the (galaxies - randoms) maps returned by this function always has mean zero.
+
+        - ``kernel`` (string): either ``'cic'`` or ``'cubic'`` (more options will be defined later).
+
+        - ``fft`` (boolean): if True, then ``fft_r2c(.., spin)`` will be applied to the
+          output map after gridding.
     
-    Returns: a numpy array representing a real-space (fft=False) or Fourier-space (fft=True) map.
+        - ``spin`` (integer): passed as 'spin' argument to ``fft_c2r()``. (Only used if ``fft=True``.)
+    
+    Return value: 
 
-      - if fft=False, then returned array has (shape, dtype) = (box.real_space_shape, float)
-      - if fft=True, then returned array has (shape, dtype) = (box.fourier_space_shape, complex)
+      - A numpy array representing a real-space (``fft=False``) or Fourier-space (``fft=True``) map.
 
-    Notes:
+        The real-space and Fourier-space array shapes are given by ``box.real_space_shape``
+        and ``box.fourier_space_shape``, and are related as follows:
 
-       - The 'points' array should be specified in observer coordinates, not 'grid' coordinates.
+        $$(\mbox{real-space shape}) = (n_0, n_1, \cdots, n_{d-1})$$
+        $$(\mbox{Fourier-space shape})= (n_0, n_1, \cdots, \lfloor n_{d-1}/2 \rfloor + 1)$$
+
+    Note:
+
+       - The ``points`` array should be specified in "observer coordinates", not "grid coordinates".
+
          (Reminder: in observer coordinates, the observer is at the origin, coordinates have units
-          of distance, and the corners of the box are at box.{lpos,rpos}.)
+         of distance, and the corners of the box are at ``box.{lpos,rpos}``. 
+         See :class:`~kszx.Box` for more info.)
 
-       - The normalization of the output map includes a factor (1 / pixel volume). 
-         (That is, the sum of the output array is np.sum(weights) / box.pixel_volume, not np.sum(weights).) 
+       - The normalization of the output map includes a factor (pixel volume)$^{-1}$. 
+         (That is, the sum of the output array is $(\sum_j w_j)/V_{\rm pix}$, not $(\sum_j w_j)$.)
 
-         This normalization best represents a weighted sum of delta functions f(x) = sum_j w_j delta^3(x-x_j). 
-         For example, if we FFT the output array with ksz.fft_r2c(), the result is a weighted sum of 
-         plane waves:
+         This normalization best represents a weighted sum of delta functions 
+         $f(x) = \sum_j w_j \delta^3(x-x_j)$. For example, if we FFT the output array with 
+         ``kszx.fft_r2c()``, the result is a weighted sum of plane waves:
 
-            f(k) = sum_j w_j exp(-ik.x_j)     [ with no factor of box or pixel volume ]
+         $$f(k) = \sum_j w_j \exp(-i{\bf k}\cdot {\bf x_j})$$
+    
+         with no factor of box or pixel volume.
     """
 
     if not isinstance(box, Box):
@@ -334,26 +408,42 @@ def _eval_kfunc(box, f, dc=None):
 
 
 def multiply_rfunc(box, arr, f, dest=None, in_place=False, regulate=False, eps=1.0e-6):
-    """Multiply real-space map 'arr' by a function f(r), where r is scalar radial coordinate.
+    r"""Multiply real-space map 'arr' by a function f(r), where r is scalar radial coordinate.
 
-    Args:
-        box (kszx.Box): defines pixel size, bounding box size, and location relative to observer.
-        arr: numpy array representing a real-space map (i.e. shape=box.real_space_shape, dtype=float)
-        f: function (or callable object) representing the function r -> f(r).
-        dest: real-space map where output will be written (if None, then new array will be allocated)
-        in_place: setting this to True is equivalent to dest=arr.
-        regulate (boolean): if True, then replace r = max(r,eps*pixsize) before calling f().
-        eps (float): only used if regulate=True.
+    Function args:
 
-    Returns: None. (The real-space map 'arr' is modified in-place.)
-
-    Notes: 
+        - ``box`` (kszx.Box): defines pixel size, bounding box size, and location of observer.
+          See :class:`~kszx.Box` for more info.
     
-       - The function f() must be vectorized: its argument 'r' will be a 3-dimensional arary,
+        - ``arr``: numpy array representing a real-space map. (The array shape should be given by
+          ``box.real_space_shape`` and the dtype should be ``float``.)
+
+        - ``f`` (function): The function r -> f(r).
+
+        - ``dest`` (array or None): real-space map where output will be written (if None, then new array will be allocated).
+
+        - ``in_place`` (boolean): Setting this to True is equivalent to ``dest=arr``.
+
+        - ``regulate`` (boolean): This optional argument is intended to regulate cases
+          where $\lim_{r\rightarrow 0} f(r) = \infty$. If ``regulate=True``, then we replace r
+          by ``max(r, eps*pixsize)`` before calling ``f()``.
+
+        - ``eps`` (float): only used if ``regulate=True``. See description in previous bullet point.
+
+    Return value:
+
+        - A real-space map. (Numpy array with same shape and dtype as ``arr``.)
+
+    Note: 
+    
+       - The function ``f()`` must be vectorized: its argument 'r' will be a 3-dimensional arary,
          and the return value should be an array with the same shape.
 
-       - r-values passed to f() will be in "observer" coordinates, i.e. the observer is at
-         the origin, and the box corners are given by self.lpos, self.rpos.
+       - r-values passed to ``f()`` will be in "observer" coordinates.
+
+         (Reminder: in observer coordinates, the observer is at the origin, coordinates have units
+         of distance, and the corners of the box are at ``box.{lpos,rpos}``. 
+         See :class:`~kszx.Box` for more info.)
     """
 
     assert isinstance(box, Box)
@@ -371,29 +461,46 @@ def multiply_rfunc(box, arr, f, dest=None, in_place=False, regulate=False, eps=1
     
     
 def multiply_kfunc(box, arr, f, dest=None, in_place=False, dc=None):
-    """Multiply Fourier-space map 'arr' in-place by a real-valued function f(k), where k=|k| is scalar wavenumber.
+    r"""Multiply Fourier-space map 'arr' by a real-valued function f(k), where k=|k| is scalar wavenumber.
+    
+    Function args:
 
-    Args:
-        box (kszx.Box): defines pixel size, bounding box size, and location relative to observer.
-        arr: numpy array representing a Fourier-space map (i.e. shape=box.fourier_space_shape, dtype=complex)
-        f: function (or callable object) representing the function k -> f(k).
-        dest: real-space map where output will be written (if None, then new array will be allocated)
-        in_place: setting this to True is equivalent to dest=arr.
-        dc (float): if specified, then f() is not evaluated at k=0, and the value of 'dc' is used instead of f(0).
+        - ``box`` (kszx.Box): defines pixel size, bounding box size, and location of observer.
+          See :class:`~kszx.Box` for more info.
+    
+        - ``arr``: numpy array representing a Fourier-space map. (The array shape should be given by
+          ``box.fourier_space_shape`` and the dtype should be ``complex``, see note below.)
 
-    Returns: None. (The Fourier-space map 'arr' is modified in-place.)
+        - ``f`` (function): The function k -> f(k).
+
+        - ``dest``: Fourier-space map where output will be written (if None, then new array will be allocated)
+
+        - ``in_place``: Setting this to True is equivalent to ``dest=arr``.
+
+        - ``dc`` (float): This optional argument is intended to regulate cases where
+          $\lim_{k\rightarrow 0} f(k) = \infty$. If ``dc`` is specified, then ``f()``
+          is not evaluated at k=0, and the value of ``dc`` is used instead of ``f(0)``.
+
+
+    Return value:
+
+        - A Fourier-space map. (Numpy array with same shape and dtype as ``arr``.)
 
     Notes: 
     
-       - The function f() must be vectorized: its argument 'k' will be a 3-dimensional arary,
+       - The function ``f()`` must be vectorized: its argument 'k' will be a 3-dimensional arary,
          and the return value should be a real-valued array with the same shape.
 
-       - k-values passed to f() will include the factor (2pi / boxsize).
+       - k-values passed to ``f()`` will be in "physical" units, i.e. the factor ``(2*pi / box.boxsize)``
+         is included.
 
-       - If 'dc' is specified, then f() will not be evaluated at k=0.
-         For example, this code is okay (will not raise a divide-by-zero expection):
+       - The ``arr`` argument and the returned array are Fourier-space maps.
+    
+         Reminder: real-space and Fourier-space array shapes are given by ``box.real_space_shape``
+         and ``box.fourier_space_shape``, and are related as follows:
 
-           multiply_kfunc(box, arr, lambda k:1/k**2, dc=0.0)
+         $$(\mbox{real-space shape}) = (n_0, n_1, \cdots, n_{d-1})$$
+         $$(\mbox{Fourier-space shape})= (n_0, n_1, \cdots, \lfloor n_{d-1}/2 \rfloor + 1)$$
     """
 
     assert isinstance(box, Box)
@@ -404,21 +511,33 @@ def multiply_kfunc(box, arr, f, dest=None, in_place=False, dc=None):
 
 
 def multiply_r_component(box, arr, axis, dest=None, in_place=True):
-    """Multiply real-space map 'arr' in-place by r_j (the j-th Cartesian coordinate, in observer coordinates).
+    r"""Multiply real-space map 'arr' by $r_j$ (the j-th Cartesian coordinate).
 
-    Args:
-        box (kszx.Box): defines pixel size, bounding box size, and location relative to observer.
-        arr: numpy array representing a real-space map (i.e. shape=box.real_space_shape, dtype=float)
-        dest: real-space map where output will be written (if None, then new array will be allocated)
-        in_place: setting this to True is equivalent to dest=arr.
-        axis (integer): component 0 <= j < box.ndim.
+    Function args:
 
-    Returns: None. (The real-space map 'arr' is modified in-place.)
+        - ``box`` (kszx.Box): defines pixel size, bounding box size, and location of observer.
+          See :class:`~kszx.Box` for more info.
+    
+        - ``arr``: numpy array representing a real-space map. (The array shape should be given by
+          ``box.real_space_shape`` and the dtype should be ``float``.)
+
+        - ``axis`` (integer): axis j (satisfying ``0 <= j < box.ndim``) along which $r_j$ is computed.
+
+        - ``dest`` (array or None): real-space map where output will be written (if None, then new array will be allocated).
+
+        - ``in_place`` (boolean): Setting this to True is equivalent to ``dest=arr``.
+
+    Return value:
+
+        - A real-space map. (Numpy array with same shape and dtype as ``arr``.)
 
     Note: 
 
-       - Values of r_i will be signed, and in "observer" coordinates, i.e. the observer is at
-         the origin, and the box corners are given by self.lpos, self.rpos.
+       - Values of $r_j$ will be signed, and in "observer" coordinates.
+
+         (Reminder: in observer coordinates, the observer is at the origin, coordinates have units
+         of distance, and the corners of the box are at ``box.{lpos,rpos}``. 
+         See :class:`~kszx.Box` for more info.)
     """
     
     assert isinstance(box, Box)
@@ -429,23 +548,43 @@ def multiply_r_component(box, arr, axis, dest=None, in_place=True):
 
     
 def apply_partial_derivative(box, arr, axis, dest=None, in_place=True):
-    """Multiply Fourier-space map 'arr' in-place by (i k_j). (This is the partial derivative d_j in Fourier space.)
+    r"""Multiply Fourier-space map 'arr' by $(i k_j)$. (This is the partial derivative $\partial_j$ in Fourier space.)
 
-    Args:
-        box (kszx.Box): defines pixel size, bounding box size, and location relative to observer.
-        arr: numpy array representing a Fourier-space map (i.e. shape=box.fourier_space_shape, dtype=complex)
-        dest: real-space map where output will be written (if None, then new array will be allocated)
-        in_place: setting this to True is equivalent to dest=arr.
-        axis (integer): component 0 <= j < box.ndim.
+    Function args:
 
-    Returns: None. (The Fourier-space map 'arr' is modified in-place.)
+        - ``box`` (kszx.Box): defines pixel size, bounding box size, and location of observer.
+          See :class:`~kszx.Box` for more info.
+        
+        - ``arr``: numpy array representing a Fourier-space map. (The array shape should be given by
+          ``box.fourier_space_shape`` and the dtype should be ``complex``, see note below.)
+
+        - ``axis`` (integer): axis j (satisfying ``0 <= j < box.ndim``) along which $(i k_j)$ is computed.
+
+        - ``dest`` (array or None): Fourier-space map where output will be written (if None, then new array will be allocated).
+
+        - ``in_place`` (boolean): Setting this to True is equivalent to ``dest=arr``.
+
+    Return value:
+
+        - A Fourier-space map. (Numpy array with same shape and dtype as ``arr``.)
 
     Notes: 
+
+       - k-values passed to ``f()`` will be in "physical" units, i.e. the factor ``(2*pi / box.boxsize)``
+         is included.
     
-       - Values of k_j will be signed, and include the factor (2pi / boxsize).
+       - Values of $k_j$ will be signed, and include the factor (2pi / boxsize).
 
        - The value of k_j will be taken to be zero at the Nyquist frequency.
          (I think this is the only sensible choice, since the sign is ambiguous.)
+
+       - The ``arr`` argument and the returned array are Fourier-space maps.
+    
+         Reminder: real-space and Fourier-space array shapes are given by ``box.real_space_shape``
+         and ``box.fourier_space_shape``, and are related as follows:
+
+         $$(\mbox{real-space shape}) = (n_0, n_1, \cdots, n_{d-1})$$
+         $$(\mbox{Fourier-space shape})= (n_0, n_1, \cdots, \lfloor n_{d-1}/2 \rfloor + 1)$$
     """
 
     assert isinstance(box, Box)
@@ -492,27 +631,31 @@ def _sqrt_pk(box, pk, regulate):
 
     
 def simulate_white_noise(box, *, fourier):
-    """Simulate white noise, in either real space or Fourier space, normalized to P(k)=1.
+    r"""Simulate white noise, in either real space or Fourier space, normalized to $P(k)=1$.
 
-    Args:
-        box (kszx.Box): defines pixel size, bounding box size, and location relative to observer.
-        fourier (boolean): determines whether output is real-space or Fourier-space.
+    Intended as a helper for ``simulate_gaussian_field()``, but may be useful on its own.
+
+    Function args:
+
+        - ``box`` (kszx.Box): defines pixel size, bounding box size, and location of observer.
+          See :class:`~kszx.Box` for more info.
+
+        - ``fourier`` (boolean): determines whether output is real-space or Fourier-space.
     
-    Returns: numpy array
+    Return value: 
 
-       - if fourier=False, real-space map is returned 
-            (shape = box.real_space_shape, dtype = float)
+      - A numpy array representing a real-space (``fourier=False``) or Fourier-space (``fourier=True``) map.
 
-       - if fourier=True, Fourier-space map is returned 
-            (shape = box.fourier_space_shape, dtype = complex)
+        The real-space and Fourier-space array shapes are given by ``box.real_space_shape``
+        and ``box.fourier_space_shape``, and are related as follows:
 
-    Intended as a helper for simulate_gaussian_field(), but may be useful on its own.
+        $$(\mbox{real-space shape}) = (n_0, n_1, \cdots, n_{d-1})$$
+        $$(\mbox{Fourier-space shape})= (n_0, n_1, \cdots, \lfloor n_{d-1}/2 \rfloor + 1)$$
 
-    Reminder: our Fourier conventions imply
+    Note: our normalization conventions for the simulated field are (in Fourier and real space):
     
-        <f(k) f(k')^*> = (box volume) P(k) delta_{kk'}  [ morally P(k) (2pi)^n delta^n(k-k') ]
-
-    Note units.
+    $$\langle f(k) f(k')^* \rangle = V_{\rm box} \delta_{kk'}$$
+    $$\langle f(x) f(x') \rangle = V_{\rm pix}^{-1} \delta_{xx'}$$
     """
 
     if not fourier:
@@ -552,9 +695,53 @@ def simulate_white_noise(box, *, fourier):
 
 
 def simulate_gaussian_field(box, pk, pk0=None):
+    r"""Simulates a Gaussian field (in Fourier space) with specified power spectrum P(k).
+
+    Function args:
+
+        - ``box`` (kszx.Box): defines pixel size, bounding box size, and location of observer.
+          See :class:`~kszx.Box` for more info.
+
+        - ``pk`` (function or scalar): The power spectrum, represented as a function $k \rightarrow P(k)$.
+          If the power spectrum is constant in $k$, then a scalar can be used instead of a function.
+
+        - ``pk0`` (scalar or None): This optional argument is intended to regulate cases
+          where $\lim_{k\rightarrow 0} P(k) = \infty$. If ``pk0`` is specified, then ``pk()`` is
+          not evaluated at k=0, and the value of ``pk0`` is used instead of ``Pk(0)``.
+    
+    Return value: 
+
+         - A numpy array representing a Fourier-space map. (Array shape is given by
+           ``box.fourier_space_shape``, and dtype is complex, see note below.)
+
+    Notes:
+
+       - The normalization of the simulated field is:
+
+         $$\langle f(k) f(k')^* \rangle = V_{\rm box} P(k) \delta_{kk'}$$
+    
+       - The function ``pk()`` must be vectorized: its argument 'k' will be a 3-dimensional arary,
+         and the return value should be a real-valued array with the same shape.
+    
+       - k-values passed to ``pk()`` will be in "physical" units, i.e. the factor ``(2*pi / box.boxsize)``
+         is included.
+
+       - The returned array is a Fourier-space map.
+    
+         Reminder: real-space and Fourier-space array shapes are given by ``box.real_space_shape``
+         and ``box.fourier_space_shape``, and are related as follows:
+
+         $$(\mbox{real-space shape}) = (n_0, n_1, \cdots, n_{d-1})$$
+         $$(\mbox{Fourier-space shape})= (n_0, n_1, \cdots, \lfloor n_{d-1}/2 \rfloor + 1)$$
     """
-    Args:
-        box (kszx.Box): defines pixel size, bounding box size, and location relative to observer.
+    
+    r"""Simulates a Gaussian field with specified power spectrum P(k).
+
+    Function args:
+
+        - ``box`` (kszx.Box): defines pixel size, bounding box size, and location of observer.
+          See :class:`~kszx.Box` for more info.
+
         pk (either callable, or a scalar). Must be real-valued.
         pk0 (either scalar, or None)
 
@@ -623,45 +810,71 @@ def _parse_map_or_maps(box, map_or_maps):
     
 
 def estimate_power_spectrum(box, map_or_maps, kbin_delim, *, use_dc=False, allow_empty_bins=False, return_counts=False):
-    """Computes windowed power spectrum P(k) for one or more maps (including cross-spectra).
+    r"""Computes power spectrum $P(k)$ for one or more maps (including cross-spectra). The window function is not deconvolved.
 
-    Args:
+    Function args:
 
-        box (kszx.Box): defines pixel size, bounding box size, and location relative to observer.
+        - ``box`` (kszx.Box): defines pixel size, bounding box size, and location of observer.
+          See :class:`~kszx.Box` for more info.
 
-        map_or_maps: single or multiple Fourier-space maps
-          - single map: numpy array of shape (box.fourier_space_shape) and dtype=complex.
-          - multiple maps: iterable object returning numpy arrays of shape (box.fourier_space_shape)
-              and dtype=complex. (Could be a list, tuple, or a numpy array with an extra axis.)
+        - ``map_or_maps`` (array or list of arrays): single or multiple Fourier-space maps.
 
-        kbin_delim: 1-d array of length (nkbins+1) defining bin endpoints.
-          The i-th bin covers k-range kbin_delim[i] <= k < kbin_delim[i+1].
+           - If ``map_or_maps`` is an array, then it represents a single Fourier-space map.
+             (The array shape should be given by ``box.fourier_space_shape`` and the dtype should be 
+             ``complex``, see note below.)
+    
+           - If ``map_or_maps`` is a list of arrays, then it represents multiple Fourier-space maps.
+             (Each map in the list should have shape ``box.fourier_space_shape`` and dtype ``complex``,
+             see note below.)
 
-        use_dc: if False (the default), then k=0 mode will not be used.
+        - ``kbin_delim`` (1-d array): 1-d array of length (nkbins+1) defining bin endpoints.
+          The i-th bin covers k-range ``kbin_delim[i] <= k < kbin_delim[i+1]``.
 
-        allow_empty_bins: if False (the default), then an execption is thrown if a k-bin is empty.
+        - ``use_dc`` (boolean): if False (the default), then the k=0 mode will not be used,
+          even if the lowest bin includes k=0.
 
-        return_counts (boolean): See below.
+        - ``allow_empty_bins`` (boolean): if False (the default), then an execption is thrown 
+          if a k-bin is empty.
 
-    Returns: 
+        - ``return_counts`` (boolean): See below.
 
-       - if return_counts=False (the default), then return value is an array 'pk'.
-            - if input is a single map, then pk.shape = (nkbins,)
-            - if input is multiple maps, then pk.shape = (nmaps, nmaps, nkbins)
+    Return value: 
 
-       - if return_counts=True, then return value is a pair (pk, bin_counts).
+       - An array ``pk`` is returned, with two cases as follows:
+
+           - If the ``map_or_maps`` argument is a single Fourier-space map (see above),
+             then ``pk`` is a 1-d array with length ``nkbins``, containing binned power
+             spectrum estimates.
+
+           - If the ``map_or_maps`` argument is a list of Fourier-space maps (see above),
+             then ``pk`` is a 3-d array with shape ``(nmaps, nmaps, nkbins)``, containing
+             all auto- and cross-power spectrum estimates.
+
+       - If ``return_counts=False`` (the default), then the return value is simply the ``pk`` array.
+
+         If ``return_counts=True``, then the return value is a pair ``(pk, bin_counts)``, where
+         ``bin_counts`` is a 1-d array with length ``nkbins``, containing the number of Fourier
+         modes in each k-bin.
 
     Notes:
+
+       - Normalization: to estimate the power spectrum, we square each Fourier mode and divide by 
+         the box volume. This is consistent with our normalization for Fourier-space maps (see e.g.
+         the :func:`~kszx.simulate_gaussian_field` docstring), which is:
+
+         $$\langle f(k) f(k')^* \rangle = V_{\rm box} P(k) \delta_{kk'}$$
     
        - The normalization of the estimated power spectrum P(k) assumes that the maps fill the
          entire box volume. If this is not the case (i.e. there is a survey window) then you'll
          need to renormalize P(k) or deconvolve the window function.
 
-       - Our Fourier conventions imply
+       - The input arrays are Fourier-space maps.
+    
+         Reminder: real-space and Fourier-space array shapes are given by ``box.real_space_shape``
+         and ``box.fourier_space_shape``, and are related as follows:
 
-            <f(k) f(k')^*> = (box volume) P(k) delta_{kk'}
-
-         Therefore, estimate_power_s applies a factor 1 / (box volume).
+         $$(\mbox{real-space shape}) = (n_0, n_1, \cdots, n_{d-1})$$
+         $$(\mbox{Fourier-space shape})= (n_0, n_1, \cdots, \lfloor n_{d-1}/2 \rfloor + 1)$$
     """
 
     kbin_delim = _check_kbin_delim(box, kbin_delim, use_dc)

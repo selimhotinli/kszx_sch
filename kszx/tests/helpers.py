@@ -78,8 +78,8 @@ def map_dot_product(box, arr1, arr2, normalize=True):
 
     If dot products are defined with these normalizations, then:
 
-       - kszx.lss.fft_c2r() and kszx.lss.fft_c2r() are adjoints (transposes)
-       - kszx.lss.interpolate_points() and kszx.lss.grid_points() are ajdoints.
+       - kszx.fft_c2r() and kszx.fft_c2r() are adjoints (transposes)
+       - kszx.interpolate_points() and kszx.grid_points() are ajdoints.
 
     These statements are the basis for unit tests in kszx.tests.test_lss.
     """

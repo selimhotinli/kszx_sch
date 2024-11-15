@@ -8,37 +8,52 @@ from .Box import Box
 
 class BoundingBox(Box):
     def __init__(self, points, pixsize, rpad):
-        """Subclass of Box which contains a specified set of points + padding.
+        r"""Subclass of Box whose size/position are chosen to match a galaxy survey.
 
         Constructor args:
 
-            points: numpy array with shape (npoints, ndim).
-              Contains galaxy locations, in coordinate system with observer at origin.
-              Usually obtained by calling Catalog.get_xyz(cosmo) -- see example below.
+           - points (numpy array with shape (ngal,3)):
+               Contains galaxy locations, in coordinate system with observer at origin.
+               Usually obtained by calling Catalog.get_xyz(cosmo) -- see example below.
 
-            pixsize (float): pixel length in same units as 'points'.
+           - pixsize (float):
+               Pixel side length (caller-specified units, usually Mpc).
 
-            rpad (float): box padding in same units as 'points' (suggest ~200 Mpc).
+           - rpad (float):
+               Box padding in same units as 'points' (e.g. rpad=200 for 200 Mpc).
 
-        Inherits the following members from Box: 
+        The BoundingBoxconstructor will automatically choose the number of pixels (npix)
+        and box position (cpos), so that the box contains the galaxy survey with the
+        specified padding (rpad).
 
-           ndim           number of dimensions N
-           npix           real-space map shape, represented as length-N array
-           pixsize        pixel side length in user-defined coordinates (scalar, i.e. pixels must be square)
-           boxsize        box side lengths in user-defined coordinates (equal to npix * pixsize)
-           nk             Fourier-space map shape, represented as length-N array
-           kfund          lowest frequency on each axis (length-N array, equal to 2pi/boxsize)
-           knyq           Nyquist frequency (scalar, equal to pi/pixsize)
-           box_volume     scalar box volume (equal to prod(boxsize))
-           pixel_volume   scalar pixel volume (equal to pixsize^N)
-           cpos           location of box center in observer coordinates (length-N array)
-           lpos           location of lower left corner (equal to cpos- (npix-1)*pixsize/2)
-           rpos           location of upper right corner (equal to cpos + (npix-1)*pixsize/2)
-           real_space_shape     same as 'npix', but represented as tuple instead of 1-d array
-           fourier_space_shape  same as 'nk', but represented as tuple instead of 1-d array
+        For more info on Boxes, see the :class:`~kszx.Box` base class docstring.
 
-        Example: make bounding box which contains galaxies + randoms.
+        Inherits the following members from :class:`~kszx.Box`:
         
+           - ndim (integer): Number of dimensions (usually 3).
+           - pixsize (float): Pixel side length in user-defined coordinates.
+           - boxsize (length-ndim array): Box side lengths in user-defined coordinates (equal to npix * pixsize).
+           - npix (length-ndim array): Real-space map shape, represented as numpy array.
+           - real_space_shape (tuple): same as 'npix', but represented as tuple instead of 1-d array
+           - nk (length-ndim array): Fourier-space map shape, represented as numpy array.
+           - fourier_space_shape (tuple) same as 'nk', but represented as tuple instead of 1-d array
+           - cpos (length-ndim array): location of box center, in observer coordinates
+           - lpos (length-ndim array): location of lower left box corner, in observer coordinates
+           - rpos (length-ndim array): location of upper right box corner, in observer coordinates
+           - kfund (length-ndim array): Lowest frequency on each axis (equal to 2pi/boxsize)
+           - knyq (float): Nyquist frequency (equal to pi/pixsize)
+           - box_volume (float): Box volume (equal to prod(boxsize))
+           - pixel_volume (float): Pixel volume (equal to pixsize^N)
+
+        The BoundingBox subclass also contains the following members:
+
+           - rpad (float): padding that was specified in BoundingBox constructor
+           - rmin (float): min distance between observer and galaxies (specified in constructor)
+           - rmax (float): max distance between observer and galaxies (specified in constructor)
+
+        Example::
+
+            # Make bounding box which contains galaxies + randoms.
             # Setup: 'gcat' and 'rcat' are objects of type Catalog.
             # 'cosmo' is an object of type Cosmology.
 
@@ -59,6 +74,7 @@ class BoundingBox(Box):
         assert 1 <= ndim <= 3
         assert pixsize > 0
         assert rpad >= 0
+        self.rpad = rpad
 
         r2 = np.sum(points**2, axis=1)
         self.rmin = np.min(r2)**0.5
@@ -92,6 +108,7 @@ class BoundingBox(Box):
         with io.StringIO() as f:
             print(f'BoundingBox(', file=f)
             self._print_box_members(f, end='')
+            print(f'    rpad = {self.rpad:.02f},', file=f)
             print(f'    rmin = {self.rmin:.02f}, rmax = {self.rmax:.02f},', file=f)
             print(f'    npix_prepad = {self.npix_prepad},', file=f)
             print(f'    npix_preround = {self.npix_preround}', file=f)

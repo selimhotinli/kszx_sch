@@ -25,7 +25,7 @@ from . import pixell_utils
 from .Box import Box
 from .BoundingBox import BoundingBox
 from .Catalog import Catalog
-from .Cosmology import Cosmology
+from .Cosmology import Cosmology, CosmologicalParams
 
 from . import act
 from . import desils
