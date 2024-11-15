@@ -11,6 +11,8 @@ conda:
 python:
   install:
     - requirements: doc/requirements_rtd.txt
-
+    - method: pip
+      path: .
+      
 sphinx:
   configuration: doc/source/conf.py
