@@ -1,0 +1,16 @@
+version: 2
+
+build:
+  os: "ubuntu-22.04"
+  tools:
+    python: "mambaforge-24.9"
+
+conda:
+  environment: doc/environment_rtd.yml
+
+python:
+  install:
+    - requirements: doc/requirements_rtd.txt
+
+sphinx:
+  configuration: doc/source/conf.py
