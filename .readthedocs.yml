@@ -10,7 +10,6 @@ conda:
 
 python:
   install:
-    - requirements: doc/requirements_rtd.txt
     - method: pip
       path: .
       
