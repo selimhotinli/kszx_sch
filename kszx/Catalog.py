@@ -266,7 +266,26 @@ class Catalog:
                     g.remove_column(k)
             
         return Catalog(cols=cols, name=name)
+
+
+    def absorb_columns(self, src_catalog, destructive=False):
+        """'Absorbs' all columns of 'src_catalog' into an existing Catalog (equivalent to calling add_column() multiple times).
+
+        If ``destructive=True``, then all columns will be removed from ``src_catalog`` (saving some memory)."""
         
+        if (self.size > 0) and (src_catalog.size > 0) and (self.size != src_catalog.size):
+            raise RuntimeError('Catalog.absorb_columns(): source and destination Catalogs must have the same size')
+        
+        for col_name in copy.copy(src_catalog.col_names):
+            col_data = getattr(src_catalog, col_name)
+            if not destructive:
+                col_data = np.copy(col_data)
+                
+            self.add_column(col_name, col_data)
+            
+            if destructive:
+                src_catalog.remove_column(col_name)
+
     
     @staticmethod
     def from_h5(filename):
