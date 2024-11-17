@@ -1,5 +1,6 @@
 """
-Data products from Zhou et al 2023, "DESI LRG samples for cross-correlation",
+The ``kszx.desils_lrg`` module is based on data products from
+Zhou et al 2023, "DESI LRG samples for cross-correlation",
 https://arxiv.org/abs/2309.06443.
 
 Data files are mostly found here:
@@ -24,8 +25,8 @@ from . import io_utils
 def read_galaxies(extended, download=False):
     r"""Reads LRGs with no imaging weights or quality cuts, and returns a Catalog object.
 
-    After calling this function, you'll probably want to call :func:`kszx.desils.compute_imaging_weights`
-    and/or :func:`kszx.desils.apply_quality_cuts`.
+    After calling this function, you'll probably want to call :func:`~kszx.desils_lrg.compute_imaging_weights`
+    and/or :func:`~kszx.desils_lrg.apply_quality_cuts`.
     
     Function arguments:
 
@@ -34,10 +35,10 @@ def read_galaxies(extended, download=False):
 
     Returns a :class:`kszx.Catalog` object, with the following columns::
     
-      ra_deg, dec_deg, z, zerr,                     # sky location, redshift, redshift error
-      pz_bin,                                       # in {1,2,3,4}
-      nobs_{g,r,z}, ebv, lrg_mask, maskbits         # used for quality cuts
-      photsys, galdepth_{g,r,z}, psfsize_{g,r,z}    # used for imaging weights
+      ra_deg, dec_deg, z, zerr,  # sky location, redshift, redshift error
+      pz_bin,                    # in {1,2,3,4}
+      nobs_{g,r,z}, ebv, lrg_mask, maskbits      # for quality cuts
+      photsys, galdepth_{g,r,z}, psfsize_{g,r,z} # for imaging weights
     """
 
     # Note: LRG catalog is split between a few FITS files (see _catalog_filename docstring).
@@ -69,7 +70,7 @@ def read_galaxies(extended, download=False):
 def read_randoms(ix_list, download=False):
     r"""Reads LRG random catalog with no quality cuts, and returns a Catalog object.
 
-    After calling this function, you'll probably want to call `kszx.desils.apply_quality_cuts`.
+    After calling this function, you'll probably want to call :func:`~kszx.desils_lrg.apply_quality_cuts`.
     
     Function arguments:
 
@@ -82,8 +83,8 @@ def read_randoms(ix_list, download=False):
     Returns a :class:`kszx.Catalog` object, obtained by combining randoms from all
     source files in ``ix_list``, with the following columns::
 
-      ra_deg, dec_deg,                        # sky location but no redshift
-      nobs_{g,r,z}, ebv, lrg_mask, maskbits   # used for quality cuts
+      ra_deg, dec_deg,           # sky location but no redshift
+      nobs_{g,r,z}, ebv, lrg_mask, maskbits  # for quality cuts
     """
 
     assert len(ix_list) >= 1
@@ -115,16 +116,17 @@ def read_randoms(ix_list, download=False):
 def compute_imaging_weights(gcat, extended, ebv=True, download=False):
     r"""Adds a 'weights' column to the Catalog (usually called just after read_galaxies()).
 
-    Note that this function can be called on the output of :func:`kszx.desils.read_galaxies`,
-    but not the output of :func:`kszx.desils.read_randoms`.
+    Note that this function can be called on the output of :func:`~kszx.desils_lrg.read_galaxies`,
+    but not the output of :func:`~kszx.desils_lrg.read_randoms`.
     
     Function arguments:
 
       - ``gcat``: a :class:`~kszx.Catalog` object, obtained by calling
-        :func:`kszx.desils.read_galaxies`.
+        :func:`kszx.desils_lrg.read_galaxies`.
 
       - ``extended`` (boolean): Slightly different imaging weights should be used for the
         "main" and "extended" DESILS-LRG samples, and this argument selects between them.
+        (Note that ``extended`` is also an argument to :func:`~kszx.desils_lrg.read_galaxies`.)
     
       - ``ebv`` (boolean): The DESILS-LRG data products define two sets of imaging weights,
         which do or do not use the E(B-V) column. This argument selects between them.
@@ -135,8 +137,8 @@ def compute_imaging_weights(gcat, extended, ebv=True, download=False):
     
       https://data.desi.lbl.gov/public/papers/c3/lrg_xcorr_2023/v1/catalogs/compute_imaging_weights.py
 
-    Note: in addition to the 'weights' column, this function also adds 'galdepth_gmag_ebv',
-    'galdepth_rmag_ebv', and 'galdepth_zmag_ebv' columns to the Catalog (following the python
+    Note: in addition to the ``weights`` column, this function also adds ``galdepth_gmag_ebv``,
+    ``galdepth_rmag_ebv``, and ``galdepth_zmag_ebv`` columns to the Catalog (following the python
     script referenced above.)
     """
 
@@ -195,7 +197,7 @@ def apply_quality_cuts(catalog, min_nobs=2, max_ebv=0.15, max_stardens=2500, lrg
     Function arguments:
 
       - ``catalog``: a :class:`~kszx.Catalog` object, obtained by calling
-        :func:`kszx.desils.read_galaxies` or :func:`kszx.desils.read_randoms`.
+        :func:`kszx.desils_lrg.read_galaxies` or :func:`kszx.desils_lrg.read_randoms`.
 
       - ``min_nobs`` (integer): min allowed value for NOBS_G, NOBS_R, NOBS_Z.
         Default value (2) comes from the references below.
@@ -254,7 +256,7 @@ def apply_quality_cuts(catalog, min_nobs=2, max_ebv=0.15, max_stardens=2500, lrg
 
 @functools.cache
 def read_stardens_map(download=False):
-    """Returns nside=64 ring-ordered healpix map.
+    """Returns nside=64 ring-ordered healpix map, cached between calls to read_stardens_map().
 
     Intended as a helper for apply_quality_cuts(), but may be independently useful."""
     

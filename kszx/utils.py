@@ -1,3 +1,5 @@
+"""The ``kszx.utils`` module contains miscelleanous utilities, that didn't really fit in elsewhere."""
+
 import numpy as np
 import scipy.special
 import scipy.integrate
@@ -10,17 +12,18 @@ import scipy.interpolate
 def ra_dec_to_xyz(ra_deg, dec_deg, r=None):
     """Converts spherical polar coordinates (ra_deg, dec_deg) to cartesian coords (x,y,z).
     
-    Args:
-       - ra_deg: numpy array containing ra in degrees (not radians!)
-       - dec_deg: numpy array containing dec in degrees (not radians!)
-       - r (optional): numpy array containing radial coordinates
+    Function arguments:
+    
+       - ``ra_deg`` (array): RA in degrees (not radians!)
+       - ``dec_deg`` (array): DEC in degrees (not radians!)
+       - ``r`` (optional array): radial coordinates (units of length)
 
-    Returns:
+    Return value:
 
-       - xyz: new array with a length-3 axis appended.
+       - ``xyz`` (array): new array with a length-3 axis appended.
          (E.g. if ra_deg and dec_deg have shape (m,n), then xyz has shape (m,n,3)).
 
-    The coordinate systems are related by:
+    The coordinate systems are related by::
 
         x = r * cos(dec) * cos(ra)
         y = r * cos(dec) * sin(ra)
@@ -53,18 +56,23 @@ def ra_dec_to_xyz(ra_deg, dec_deg, r=None):
 def xyz_to_ra_dec(xyz, return_r=False):
     """Converts cartesian coords (x,y,z) to spherical polar coordinates (ra_deg, dec_deg).
 
-    Args:
-       - xyz: array whose last axis has length 3.
+    Function arguments:
+    
+       - ``xyz`` (array): array whose last axis has length 3.
+       - ``return_r`` (boolean): indicates whether radial coords are returned, see below.
 
-    Returns:
-       - ra_deg: numpy array containing ra in degrees (not radians!)
-       - dec_deg: numpy array containing dec in degrees (not radians!)
-       - r (only returned if return_r=True): numpy array containing radial coordinates
+    Return value:
 
-    The returned arrays have one lower dimension than 'xyz'. (E.g., if xyz has shape (m,n,3)
-    then ra_deg,dec_deg,r all have shape (m,n).)
+       - ``ra_deg`` (array): RA in degrees (not radians!)
+       - ``dec_deg`` (array): DEC in degrees (not radians!)
+       - ``r`` (array): radial coordinates (in same units as ``xyz``)
+       - If ``return_r`` is True, then the return value is a triple ``(ra_deg, dec_deg, r)``.
+         If ``return_r`` is False, then the return value is a pair ``(ra_deg, dec_deg)``.
 
-    The coordinate systems are related by:
+    The returned arrays have one lower dimension than ``xyz``. (E.g. if ``xyz`` has shape (m,n,3)
+    then ``ra_deg``, ``dec_deg``, and ``r`` all have shape (m,n).)
+
+    The coordinate systems are related by::
 
         x = r * cos(dec) * cos(ra)
         y = r * cos(dec) * sin(ra)
@@ -95,13 +103,15 @@ def xyz_to_ra_dec(xyz, return_r=False):
 
 
 def W_tophat(x):
-    """Returns Fourier transform of a 3-d tophat W(x), where x=kR. Vectorized.
+    r"""Returns Fourier transform of a 3-d tophat W(x), where x=kR. Vectorized.
     
     W(x) is given by any of the equivalent forms:
 
-       W(x) = 3/x^3 (sin(x) - x cos(x))
-            = 3 j1(x) / x
-            = j0(x) + j2(x)
+    .. math::
+
+       W(x) &= 3 (\sin(x) - x \cos(x)) / x^3 \\
+            &= 3 j_1(x) / x \\
+            &= j_0(x) + j_2(x)
     """
 
     # Timing showed that this implementation was fastest.

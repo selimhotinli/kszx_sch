@@ -22,4 +22,5 @@ kszx documentation
    fft
    interpolation
    manipulating_maps
-   
+   misc_utils
+   desils_lrg
