@@ -1,12 +1,19 @@
 """
-Data products from https://data.desi.lbl.gov/public/papers/c3/lrg_xcorr_2023/.
+Data products from Zhou et al 2023, "DESI LRG samples for cross-correlation",
+https://arxiv.org/abs/2309.06443.
 
-Note: these LRGs are DR9, not DR10!
+Data files are mostly found here:
+  https://data.desi.lbl.gov/public/papers/c3/lrg_xcorr_2023/.
+
+With the exception of the randoms, which are here:
+  https://data.desi.lbl.gov/public/ets/target/catalogs/dr9/0.49.0/randoms/
 """
 
 import os
+import yaml
 import fitsio
 import healpy
+import warnings
 import functools
 import numpy as np
 
@@ -15,33 +22,69 @@ from . import io_utils
     
 
 def read_galaxies(extended, download=False):
-    """Returns LRGs with no "quality cuts"."""
+    r"""Reads LRGs with no imaging weights or quality cuts, and returns a Catalog object.
 
-    # List of pairs (my_col_name, fits_col_name).
+    After calling this function, you'll probably want to call :func:`kszx.desils.compute_imaging_weights`
+    and/or :func:`kszx.desils.apply_quality_cuts`.
+    
+    Function arguments:
+
+      - ``extended`` (boolean): determines whether "extended" or "main" catalog is read.
+      - ``download`` (boolean): if True, then all needed data files will be auto-downloaded.
+
+    Returns a :class:`kszx.Catalog` object, with the following columns::
+    
+      ra_deg, dec_deg, z, zerr,                     # sky location, redshift, redshift error
+      pz_bin,                                       # in {1,2,3,4}
+      nobs_{g,r,z}, ebv, lrg_mask, maskbits         # used for quality cuts
+      photsys, galdepth_{g,r,z}, psfsize_{g,r,z}    # used for imaging weights
+    """
+
+    # Note: LRG catalog is split between a few FITS files (see _catalog_filename docstring).
+
+    # First, the "main" FITS file.
+    # cols = list of pairs (my_col_name, fits_col_name).
     cols = [ ('ra_deg','RA'), ('dec_deg','DEC'), ('z','Z_PHOT_MEDIAN') ]
-    cols += [ ('ebv','EBV'), ('lrg_mask','lrg_mask') ]
     cols += [ (f'nobs_{x}', f'PIXEL_NOBS_{x.upper()}') for x in ['g','r','z'] ]
-    cols += [ ('maskbits','MASKBITS') ]
-
+    cols += [ ('ebv','EBV'), ('lrg_mask','lrg_mask'), ('pz_bin','pz_bin') ]
+    cols += [ ('maskbits','MASKBITS'), ('photsys','PHOTSYS') ]
     filename = _catalog_filename(extended, download=download)
     catalog = Catalog.from_fits(filename, cols)
 
-    # zerr column (photo-z error)
+    # Read zerr column (photo-z error) from the "pz" FITS file.
     filename = _catalog_filename(extended, suffix='pz', download=download)
     ctmp = Catalog.from_fits(filename, [('zerr','Z_PHOT_STD')])
-    catalog.add_column('zerr', ctmp.zerr)
+    catalog.absorb_columns(ctmp, destructive=True)
 
-    # stardens column
-    m = read_stardens_map(download=download)
-    nside = healpy.npix2nside(len(m))
-    ix = healpy.ang2pix(nside, catalog.ra_deg, catalog.dec_deg, lonlat=True)
-    catalog.add_column('stardens', m[ix])
+    # Read GALDEPTH_{G,R,Z} and PSFSIZE_{G,R,Z} cols from the "more_2" FITS file.
+    cols = [ (f'galdepth_{x}', f'GALDEPTH_{x.upper()}') for x in ['g','r','z'] ]
+    cols += [ (f'psfsize_{x}', f'PSFSIZE_{x.upper()}') for x in ['g','r','z'] ]
+    filename = _catalog_filename(extended, suffix='more_2', download=download)
+    ctmp = Catalog.from_fits(filename, cols)
+    catalog.absorb_columns(ctmp, destructive=True)
 
     return catalog
 
 
 def read_randoms(ix_list, download=False):
-    """Returns randoms with no "quality cuts"."""
+    r"""Reads LRG random catalog with no quality cuts, and returns a Catalog object.
+
+    After calling this function, you'll probably want to call `kszx.desils.apply_quality_cuts`.
+    
+    Function arguments:
+
+      - ``ix_list`` (list): a list of integers $0 \le i < 200$. The DESILS-LRG randoms
+        are split across 200 source files, and this argument determines which source files
+        will be read.
+    
+      - ``download`` (boolean): if True, then all needed data files will be auto-downloaded.
+
+    Returns a :class:`kszx.Catalog` object, obtained by combining randoms from all
+    source files in ``ix_list``, with the following columns::
+
+      ra_deg, dec_deg,                        # sky location but no redshift
+      nobs_{g,r,z}, ebv, lrg_mask, maskbits   # used for quality cuts
+    """
 
     assert len(ix_list) >= 1
     assert len(set(ix_list)) == len(ix_list)  # no duplicates
@@ -63,25 +106,124 @@ def read_randoms(ix_list, download=False):
         filename2 = _random_filename(ix, mflag=True, download=download)
         ctmp = Catalog.from_fits(filename2, [('lrg_mask','lrg_mask')])
         catalog.add_column('lrg_mask', ctmp.lrg_mask)
-        
-        # stardens column
-        m = read_stardens_map(download=download)
-        nside = healpy.npix2nside(len(m))
-        ix = healpy.ang2pix(nside, catalog.ra_deg, catalog.dec_deg, lonlat=True)
-        catalog.add_column('stardens', m[ix])
 
         catalog_list.append(catalog)
 
-    return Catalog.concatenate(catalog_list, name='DESILS-LRG randoms')
+    return Catalog.concatenate(catalog_list, name='DESILS-LRG randoms', destructive=True)
 
 
-def apply_quality_cuts(catalog, min_nobs=2, max_ebv=0.15, max_stardens=2500, lrg_mask=True, island_mask=True):
-    """Applies LRG quality cuts in-place to 'catalog' (usually called just after read_galaxies() or read_randoms()).
+def compute_imaging_weights(gcat, extended, ebv=True, download=False):
+    r"""Adds a 'weights' column to the Catalog (usually called just after read_galaxies()).
+
+    Note that this function can be called on the output of :func:`kszx.desils.read_galaxies`,
+    but not the output of :func:`kszx.desils.read_randoms`.
+    
+    Function arguments:
+
+      - ``gcat``: a :class:`~kszx.Catalog` object, obtained by calling
+        :func:`kszx.desils.read_galaxies`.
+
+      - ``extended`` (boolean): Slightly different imaging weights should be used for the
+        "main" and "extended" DESILS-LRG samples, and this argument selects between them.
+    
+      - ``ebv`` (boolean): The DESILS-LRG data products define two sets of imaging weights,
+        which do or do not use the E(B-V) column. This argument selects between them.
+
+      - ``download`` (boolean): if True, then all needed data files will be auto-downloaded.
+    
+    Reference:
+    
+      https://data.desi.lbl.gov/public/papers/c3/lrg_xcorr_2023/v1/catalogs/compute_imaging_weights.py
+
+    Note: in addition to the 'weights' column, this function also adds 'galdepth_gmag_ebv',
+    'galdepth_rmag_ebv', and 'galdepth_zmag_ebv' columns to the Catalog (following the python
+    script referenced above.)
+    """
+
+    # Weights array that will be added to Catalog at the end.
+    weight = np.zeros(gcat.size)
+
+    # Load weights (linear_coeffs yaml file)
+    weights_path = _linear_coeffs_filename(extended, ebv, download)
+    with open(weights_path, "r") as f:
+        linear_coeffs = yaml.safe_load(f)
+
+    # Convert depths to units of magnitude
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        gcat.add_column('galdepth_gmag_ebv', -2.5*(np.log10((5/np.sqrt(gcat.galdepth_g)))-9) - 3.214*gcat.ebv)
+        gcat.add_column('galdepth_rmag_ebv', -2.5*(np.log10((5/np.sqrt(gcat.galdepth_r)))-9) - 2.165*gcat.ebv)
+        gcat.add_column('galdepth_zmag_ebv', -2.5*(np.log10((5/np.sqrt(gcat.galdepth_z)))-9) - 1.211*gcat.ebv)
+
+    # List of column names in linear regression ('EBV', 'PSFSIZE_G', 'galdepth_gmag_ebv', etc.)
+    xnames_fit = list(linear_coeffs['south_bin_1'].keys())
+    xnames_fit.remove('intercept')
+
+    # Assign zero weights to objects with invalid imaging properties
+    # (their fraction should be negligibly small)
+    mask_bad = np.full(gcat.size, False)
+    for xname in xnames_fit:
+        col = getattr(gcat, xname.lower())
+        mask_bad |= ~np.isfinite(col)
+    print(f'kszx.desils_lrg.compute_imaging_mask: {np.sum(mask_bad)} invalid objects')
+    
+    for field in ['north', 'south']:
+        photsys = field[0].upper()   # 'N' or 'S'
+
+        for bin_index in range(1, 5):  # 4 bins
+            mask_bin = (gcat.photsys == photsys)
+            mask_bin &= (gcat.pz_bin == bin_index)
+            mask_bin &= ~mask_bad
+
+            # wt = intercept + sum(coeff * col)
+            bin_str = f'{field}_bin_{bin_index}'
+            wt = linear_coeffs[bin_str]['intercept']
+            
+            for xname in xnames_fit:
+                coeff = linear_coeffs[bin_str][xname]
+                col = getattr(gcat, xname.lower())
+                wt += coeff * col[mask_bin]
+
+            weight[mask_bin] = 1.0 / wt    # 1/predicted_density as weights for objects
+
+    gcat.add_column('weight', weight)
+
+
+def apply_quality_cuts(catalog, min_nobs=2, max_ebv=0.15, max_stardens=2500, lrg_mask=True, maskbits=True, island_mask=True, download=True):
+    r"""Applies LRG quality cuts in-place to a catalog (usually called just after read_galaxies() or read_randoms()).
+
+    Function arguments:
+
+      - ``catalog``: a :class:`~kszx.Catalog` object, obtained by calling
+        :func:`kszx.desils.read_galaxies` or :func:`kszx.desils.read_randoms`.
+
+      - ``min_nobs`` (integer): min allowed value for NOBS_G, NOBS_R, NOBS_Z.
+        Default value (2) comes from the references below.
+
+      - ``max_ebv`` (float): max allowed value for E(B-V).
+        Default value (0.15) comes from the references below.
+
+      - ``max_stardens`` (float): max allowed stellar density (in deg^{-2})).
+        Note that stellar density isn't in the catalogs, and will be inferred from an external
+        data product. Default value (2500) comes from the references below.
+    
+      - ``lrg_mask`` (boolean): whether to apply 'lrg_mask' column from catalog.
+        (See third reference below.)
+
+      - ``maskbits`` (boolean): whether to apply DESILS mask bits 1 (BRIGHT), 12 (GALAXY),
+        and 13 (CLUSTER). This is strictly weaker than ``lrg_mask``. (See fourth reference
+        below.)
+    
+      - ``island_mask`` (boolean): If True, then some islands in the NGC will be masked.
+
+      - ``download`` (boolean): if True, then all needed data files will be auto-downloaded.
 
     References:
-       https://data.desi.lbl.gov/public/papers/c3/lrg_xcorr_2023/v1/catalogs/quality_cuts.py
-       https://data.desi.lbl.gov/public/papers/c3/lrg_xcorr_2023/v1/catalogs/randoms_quality_cuts.py
-       https://data.desi.lbl.gov/public/papers/c3/lrg_xcorr_2023/v1/catalogs/lrgmask_v1.1/README.txt
+    
+       - https://data.desi.lbl.gov/public/papers/c3/lrg_xcorr_2023/v1/catalogs/quality_cuts.py
+       - https://data.desi.lbl.gov/public/papers/c3/lrg_xcorr_2023/v1/catalogs/randoms_quality_cuts.py
+       - https://data.desi.lbl.gov/public/papers/c3/lrg_xcorr_2023/v1/catalogs/lrgmask_v1.1/README.txt
+       - https://www.legacysurvey.org/dr10/bitmasks/
     """
 
     if island_mask:
@@ -102,7 +244,11 @@ def apply_quality_cuts(catalog, min_nobs=2, max_ebv=0.15, max_stardens=2500, lrg
         catalog.apply_boolean_mask(mask, name = f'DESILS-LRG quality cut: EBV < {max_ebv}')
 
     if max_stardens is not None:
-        mask = (catalog.stardens < max_stardens)
+        m = read_stardens_map(download=download)
+        nside = healpy.npix2nside(len(m))
+        ix = healpy.ang2pix(nside, catalog.ra_deg, catalog.dec_deg, lonlat=True)
+        stardens = m[ix]
+        mask = (stardens < max_stardens)
         catalog.apply_boolean_mask(mask, name = f'DESILS-LRG quality cut: stardens < {max_stardens}')
     
 
@@ -110,9 +256,7 @@ def apply_quality_cuts(catalog, min_nobs=2, max_ebv=0.15, max_stardens=2500, lrg
 def read_stardens_map(download=False):
     """Returns nside=64 ring-ordered healpix map.
 
-    Note that read_galaxies() and read_randoms() call this function 'under the hood',
-    and store the results in the 'stardens' Catalog column, so you probably won't need
-    to call this function directly."""
+    Intended as a helper for apply_quality_cuts(), but may be independently useful."""
     
     filename = _desils_lrg_path('misc/pixweight-dr7.1-0.22.0_stardens_64_ring.fits', download=True)
     
@@ -124,7 +268,7 @@ def read_stardens_map(download=False):
     
     assert np.all(f['HPXPIXEL'] == np.arange(npix))
     return np.asarray(f['STARDENS'], dtype=np.float32)  # convert big-endian float32 -> native
-
+    
 
 ####################################################################################################
 
@@ -142,7 +286,7 @@ def _catalog_filename(extended, suffix=None, download=False):
                          FRACIN_{G,R,Z}, FIBERTOTFLUX_G, SHAPE_{R,R_IVAR},
                          SHAPE_{E1,E2}, SERSIC, DCHISSQ
 
-        suffix='more_2'  GALDEPTH_{G,R,Z}, PSFDEPTH_{G,R,Z,W1,W2}, PSFSIZE_{G,R,Z}
+        suffix='more_2'  GALDEPTH_{G,R,Z}, PSFSIZE_{G,R,Z,W1,W2}, PSFSIZE_{G,R,Z}
 
         suffix='photom'  TYPE, EBC, FLUX_{G,R,Z,W1,W2}, FLUX_IVAR_{G,R,Z,W1,W2},
                          MW_TRANSMISSION_{G,R,Z,W1,W2}, FIBERFLUX_{G,R,Z},
@@ -188,7 +332,15 @@ def _random_filename(ix, mflag, download=False):
         return _desils_lrg_path(f'catalogs/lrgmask_v1.1/randoms-{s}-lrgmask_v1.1.fits.gz', download=download)
     else:
         return _desils_ets_path(f'target/catalogs/dr9/0.49.0/randoms/resolve/randoms-{s}.fits', download=download)
-    
+
+
+def _linear_coeffs_filename(extended, ebv, download=False):
+    """The 'extended' and 'ebv' arguments should be True or False."""
+
+    prefix = 'extended' if extended else 'main'
+    suffix = '' if ebv else '_no_ebv'
+    return _desils_lrg_path(f'catalogs/imaging_weights/{prefix}_lrg_linear_coeffs_pz{suffix}.yaml', download=download)
+
     
 def _desils_lrg_path(relpath, download=False):
     """Example: _desils_lrs_path('catalogs/dr9_lrg_pzbins.fits').
