@@ -2,14 +2,15 @@
 
 ```
 conda create -n kszx -c conda-forge \
-   python jupyterlab jupytext pybind11 \
+   python==3.12.6 jupyterlab jupytext pybind11 \
    sphinx sphinx-math-dollar \
    automake gxx_linux-64 \
    h5py python-wget astropy camb fitsio healpy
 
 conda activate kszx
 
-pip install pymangle pixell   # not in conda
+pip install pixell      # not in conda
+# pip install pymangle  # you probably don't need this
 ```
 
 ### Jupyterlab:

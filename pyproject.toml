@@ -2,7 +2,8 @@
 name = "kszx"
 version = "0.0.1"
 requires-python = ">= 3.11"
+dependencies = [ 'scipy', 'matplotlib', 'h5py', 'wget', 'astropy', 'camb', 'healpy', 'fitsio', 'pixell' ]
 
 [build-system]
-requires = [ "setuptools>=61.0", "pybind11>=2.10" ]
+requires = [ "setuptools>=61.0", "pybind11>=2.10", "numpy" ]
 build-backend = "setuptools.build_meta"
