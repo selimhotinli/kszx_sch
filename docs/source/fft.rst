@@ -1,3 +1,5 @@
+.. _fft wrappers:
+
 :mod:`FFT wrappers`
 ===================
 

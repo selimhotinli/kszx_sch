@@ -1,5 +1,7 @@
+.. _gridding/interpolation:
+
 :mod:`Gridding/interpolation`
-=================================
+=============================
 
 .. autofunction:: kszx.grid_points
 

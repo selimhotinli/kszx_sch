@@ -8,6 +8,13 @@ kszx documentation
 
 .. toctree::
    :maxdepth: 1
+   :caption: Toplevel:
+
+   intro
+   install
+
+.. toctree::
+   :maxdepth: 1
    :caption: Core classes:
 
    box

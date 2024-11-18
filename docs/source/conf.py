@@ -7,8 +7,8 @@
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
 project = 'kszx'
-copyright = '2024, Some awesome kSZ collaborators'
-author = 'Some awesome kSZ collaborators'
+copyright = '2024 Selim, Kendrick, et al'
+author = 'Selim, Kendrick, et al'
 
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
@@ -18,8 +18,11 @@ import sys
 #sys.path.insert(0, os.path.abspath('../..'))
 import kszx
 
+# https://sublime-and-sphinx-guide.readthedocs.io/en/latest/references.html
+extensions = ['sphinx.ext.autosectionlabel']
+
 # https://www.sphinx-doc.org/en/master/usage/extensions/autodoc.html#configuration
-extensions = ['sphinx.ext.autosummary', 'sphinx.ext.autodoc', 'sphinx.ext.napoleon']
+extensions += ['sphinx.ext.autosummary', 'sphinx.ext.autodoc', 'sphinx.ext.napoleon']
 autoclass_content = 'both'
 
 # https://www.sympy.org/sphinx-math-dollar/

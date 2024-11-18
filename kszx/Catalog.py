@@ -12,6 +12,9 @@ class Catalog:
     def __init__(self, cols=None, name=None, filename=None, size=0):
         r"""Represents a galaxy catalog, with one "row" per galaxy, and user-defined "columns" for RA, DEC, etc.
 
+        A design decision: do we actually need a Catalog class? Or should we phase it out,
+        in favor of ``numpy.recarray`` or ``astropy.Table``?
+
         Constructor args:
           - cols: dictionary (string col_name) -> (1-d numpy array).
             Optional, since you can add columns later with add_column().
@@ -29,7 +32,8 @@ class Catalog:
         Additionally, for each column name (in ``self.col_names``), the Catalog contains 
         a member with the corresponding name, whose value is a 1-d array of length self.size.
 
-        Column names are user-defined, but here are some frequently-occuring column names:
+        Column names are user-defined, but here are some frequently-occuring column names
+        (note that I always use lower case):
 
           - ``self.ra_deg``: right ascension (degrees)
           - ``self.dec_deg``: declination (degrees)
