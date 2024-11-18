@@ -1,4 +1,6 @@
+import os
 import healpy
+import scipy.fft
 import pixell.enmap
 import numpy as np
 
@@ -10,15 +12,18 @@ from . import utils
 ####################################################################################################
 
 
-def fft_r2c(box, arr, spin=0):
+def fft_r2c(box, arr, spin=0, threads=None):
     r"""Computes the FFT of real-space map 'arr', and returns a Fourier-space map.
 
         - ``box`` (kszx.Box): defines pixel size, bounding box size, and location of observer.
           See :class:`~kszx.Box` for more info.
 
-        - ``arr``: numpy array representing a real-space map (dtype=float).
+        - ``arr`` (array): numpy array representing a real-space map (dtype=float).
 
-        - ``spin``: currently only spin=0 and spin=1 are supported.
+        - ``spin`` (integer): currently only spin=0 and spin=1 are supported.
+
+        - ``threads`` (integer or None): number of parallel threads used.
+          If ``threads=None``, then number of threads defaults to ``os.cpu_count()``.
 
     Returns a numpy array representing a Fourier-space map (dtype=complex).
 
@@ -60,8 +65,13 @@ def fft_r2c(box, arr, spin=0):
     assert isinstance(box, Box)
     assert box.is_real_space_map(arr)   # check shape and dtype of input array
 
+    if threads is None:
+        threads = os.cpu_count()
+    
     if spin == 0:
-        ret = np.fft.rfftn(arr)
+        # Currently using scipy.fft instead of pyfftw.
+        # (When I tried pyfftw, it was weirdly slow.)
+        ret = scipy.fft.rfftn(arr, workers=threads)
         ret *= box.pixel_volume   # see Fourier conventions in docstring
         return ret                # numpy array with shape=box.fourier_space_shape and dtype=complex.
 
@@ -75,7 +85,7 @@ def fft_r2c(box, arr, spin=0):
     for axis in range(box.ndim):
         t = multiply_rfunc(box, arr, lambda r: 1./r, regulate=True)
         t *= box.get_r_component(axis)
-        t = fft_r2c(box, t, spin=0)
+        t = fft_r2c(box, t, spin=0, threads=threads)
         t *= -1j * box.get_k_component(axis, zero_nyquist=True)  # note minus sign here
         ret += t
         del t
@@ -84,7 +94,7 @@ def fft_r2c(box, arr, spin=0):
     return ret
     
 
-def fft_c2r(box, arr, spin=0):
+def fft_c2r(box, arr, spin=0, threads=None):
     r"""Computes the FFT of Fourier-space map 'arr', and returns a real-space map.
 
         - ``box`` (kszx.Box): defines pixel size, bounding box size, and location of observer.
@@ -93,6 +103,9 @@ def fft_c2r(box, arr, spin=0):
         - ``arr``: numpy array representing a Fourier-space map (dtype=complex).
 
         - ``spin``: currently only spin=0 and spin=1 are supported.
+
+        - ``threads`` (integer or None): number of parallel threads used.
+          If ``threads=None``, then number of threads defaults to ``os.cpu_count()``.
 
     Returns a numpy array representing a real-space map (dtype=float).
 
@@ -134,8 +147,13 @@ def fft_c2r(box, arr, spin=0):
     assert isinstance(box, Box)
     assert box.is_fourier_space_map(arr)   # check shape and dtype of input array
 
+    if threads is None:
+        threads = os.cpu_count()
+
     if spin == 0:
-        ret = np.fft.irfftn(arr, box.npix)
+        # Currently using scipy.fft instead of pyfftw.
+        # (When I tried pyfftw, it was weirdly slow.)
+        ret = scipy.fft.irfftn(arr, box.npix, workers=threads)
         ret *= (1.0 / box.pixel_volume)    # see Fourier conventions in docstring
         return ret                         # numpy array with shape=box.real_space shape and dtype=complex.
 
