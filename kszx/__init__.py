@@ -31,6 +31,7 @@ from . import act
 from . import desils
 from . import desils_lrg
 from . import planck
+from . import plot
 from . import sdss
 from . import tests
 

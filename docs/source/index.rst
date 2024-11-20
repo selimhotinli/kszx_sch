@@ -31,3 +31,9 @@ kszx documentation
    manipulating_maps
    misc_utils
    desils_lrg
+
+.. toctree::
+   :maxdepth: 2
+   :caption: High-level functions:
+
+   plot
