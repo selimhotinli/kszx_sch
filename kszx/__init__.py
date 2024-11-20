@@ -30,6 +30,7 @@ from .Cosmology import Cosmology, CosmologicalParams
 from . import act
 from . import desils
 from . import desils_lrg
+from . import ksz_desils
 from . import planck
 from . import plot
 from . import sdss

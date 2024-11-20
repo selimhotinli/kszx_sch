@@ -37,3 +37,5 @@ kszx documentation
    :caption: High-level functions:
 
    plot
+   ksz_desils
+   
