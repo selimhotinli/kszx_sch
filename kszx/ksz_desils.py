@@ -6,6 +6,38 @@ from scipy.ndimage import gaussian_filter1d
 from scipy.interpolate import interp1d
 
 
+def subtract_zbin_means(w, z, nz=15):
+    r"""Given per-galaxy weights 'w', and galaxy redshifts 'z', compute and subtract the mean weight in redshift bins.
+    
+    Function arguments:
+      - ``w`` (array): per-galaxy weights
+      - ``z`` (array): galaxy redshifts
+
+    Return value:
+      - A copy of ``w``, after subtracting the mean weight in redshift bins.
+
+    (Source: Selim's ``pipeline_getsurrogates_selim.ipynb``, Nov 2024.)
+    """
+
+    w = np.asarray(w)
+    z = np.asarray(z)
+    assert w.shape == z.shape
+    
+    zmin = np.min(z) - 1.0e-7
+    zmax = np.max(z) + 1.0e-7
+    zbins = np.linspace(zmin, zmax, nz)
+    
+    locatez = np.digitize(z, zbins)
+    zbin_means = np.zeros(nz)
+    
+    for iz in range(1,nz):
+        wbin = w[locatez==iz]
+        if len(wbin) > 0:
+            zbin_means[iz] = np.mean(wbin)
+    
+    return w - zbin_means[locatez]
+
+
 class PhotozDistribution:
     def __init__(self, zobs_arr, zerr_arr, zmin=0.0, zmax=1.5, zerr_min=0.02, zerr_max=0.5, nzbins=100, nzerrbins=49, niter=100, sigma=2):
         r"""Selim's model for the joint (ztrue, zobs, zerr) distribution in DESILS-LRG.
