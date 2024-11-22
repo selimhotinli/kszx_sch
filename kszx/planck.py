@@ -81,7 +81,7 @@ def _hfi_galmask_filename(apodization, download=False):
     assert apodization in [0, 2, 5]    
     relpath = f'release_2/ancillary-data/masks/HFI_Mask_GalPlane-apo{apodization}_2048_R2.00.fits'
     
-    planck_base_dir = io_utils.get_data_dir('planck')
+    planck_base_dir = os.path.join(io_utils.get_data_dir(), 'planck')
     abspath = os.path.join(planck_base_dir, relpath)
 
     if download and not os.path.exists(abspath):

@@ -352,7 +352,7 @@ def _desils_lrg_path(relpath, download=False):
     Intended to be called through wrapper, e.g. _catalog_filename()."""
     
     relpath = os.path.join('lrg_xcorr_2023/v1', relpath)
-    desils_base_dir = io_utils.get_data_dir('desils')
+    desils_base_dir = os.path.join(io_utils.get_data_dir(), 'desils')
     abspath = os.path.join(desils_base_dir, relpath)
 
     if download and not os.path.exists(abspath):
@@ -370,7 +370,7 @@ def _desils_ets_path(relpath, download=False):
     Intended to be called through wrapper, e.g. _random_filename()."""
 
     relpath = os.path.join('ets', relpath)
-    desils_base_dir = io_utils.get_data_dir('desils')
+    desils_base_dir = os.path.join(io_utils.get_data_dir(), 'desils')
     abspath = os.path.join(desils_base_dir, relpath)
 
     if download and not os.path.exists(abspath):

@@ -189,7 +189,7 @@ def _sdss_path(relpath, download=False, gz=False):
     If gz=True, then the file is gzipped on the SDSS website (only matters if download=True).
     """
     
-    sdss_base_dir = io_utils.get_data_dir('sdss')
+    sdss_base_dir = os.path.join(io_utils.get_data_dir(), 'sdss')
     abspath = os.path.join(sdss_base_dir, 'DR12v5', relpath)
 
     if (not download) or os.path.exists(abspath):

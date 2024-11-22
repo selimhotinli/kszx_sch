@@ -21,7 +21,7 @@ def _desils_path(relpath, dr, download=False):
     assert dr == 10    # placeholder for future expansion
     relpath = os.path.join('dr10', relpath)
 
-    desils_base_dir = io_utils.get_data_dir('desils')
+    desils_base_dir = os.path.join(io_utils.get_data_dir(), 'desils')
     abspath = os.path.join(desils_base_dir, relpath)
 
     if download and not os.path.exists(abspath):

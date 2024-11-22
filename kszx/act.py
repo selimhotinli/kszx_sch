@@ -71,7 +71,7 @@ def _act_path(relpath, dr, download=False, is_aux=False):
     """
 
     assert dr == 5    # currently, only support DR5
-    act_base_dir = io_utils.get_data_dir('act')
+    act_base_dir = os.path.join(io_utils.get_data_dir(), 'act')
     abspath = os.path.join(act_base_dir, 'dr5.01', relpath)
 
     if (not download) or os.path.exists(abspath):
@@ -103,7 +103,7 @@ def _act_nersc_path(relpath, download=False):
     For files which are downloaded here: https://portal.nersc.gov/project/act
     """
 
-    act_base_dir = io_utils.get_data_dir('act')
+    act_base_dir = os.path.join(io_utils.get_data_dir(), 'act')
     abspath = os.path.join(act_base_dir, relpath)
 
     if download and not os.path.exists(abspath):

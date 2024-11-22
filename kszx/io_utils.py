@@ -64,34 +64,28 @@ def write_npz(filename, *args, **kwds):
 
 
 @functools.cache
-def get_data_dir(name):
-    """
-    Usage: get_data_dir('desils') returns
+def get_data_dir():
+    """Returns root directory for auto-downloaded kszx data. (Either $KSZX_DATA_DIR or $HOME/kszx_data.)"""
 
-      - the value of the environment variable DESILS_DATA_DIR if defined,
-
-      - otherwise $(root)/deslis, where $(root) is:
-          - the value of the environment variable KSZX_ROOT_DATA_DIR if defined,
-          - otherwise, /data
-
-    Special case: get_data_dir('kszx_root') returns $(root) as defined above. 
-    (Used internally, when calling get_data_dir() recursively.)
-    """
-
-    env_varname = f'{name.upper()}_DATA_DIR'
-    
-    if env_varname in os.environ:
-        ret = os.environ[env_varname]
-        print(f"Using {name} data directory {ret} from environment variable {env_varname}")
-        return ret
-
-    if name.upper() == 'KSZX_ROOT':
-        ret = '/data'
+    if 'KSZX_DATA_DIR' in os.environ:
+        data_dir = os.environ['KSZX_DATA_DIR']
+        print(f'kszx: using environment variable $KSZX_DATA_DIR: {data_dir}')
+    elif 'HOME' in os.environ:
+        data_dir = os.path.join(os.environ['HOME'], 'kszx_data')
+        print(f'kszx: environment variable $KSZX_DATA_DIR not defined, using {data_dir} instead')
     else:
-        ret = os.path.join(get_data_dir('kszx_root'), name)
-        
-    print(f"Using default {name} data directory '{ret}' (set environment variable {env_varname} to override)")
-    return ret
+        raise RuntimeError('kszx.get_data_dir(): neither $KSZX_DATA_DIR nor $HOME environment variables were defined?!')
+
+    if os.path.isdir(data_dir):
+        return data_dir
+    
+    raise RuntimeError(f'kszx: data directory {data_dir} not found.\n'
+                       + f"This is the directory where kszx will auto-download and retrieve data files.\n"
+                       + f"Here are some options:\n"
+                       + f"  1. if you want to store data in this directory, do 'mkdir -p {data_dir}'\n"
+                       + f"  2. if you want to use a different directory, do 'ln -s /some/other/dir {data_dir}\n"
+                       + f"  3. if you want to use a different directory, another option is to set the $KSZX_DATA_DIR env variable\n"
+                       + f"For more discussion, see: https://kszx.readthedocs.io/en/latest/intro.html#data-files")
 
 
 def mkdir_containing(filename):
