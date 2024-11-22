@@ -30,6 +30,7 @@ kszx documentation
    interpolation
    manipulating_maps
    misc_utils
+   sdss
    desils_lrg
 
 .. toctree::
