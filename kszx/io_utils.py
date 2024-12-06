@@ -1,7 +1,10 @@
 import os
 import h5py
+import gzip
+import shutil
 import fitsio
 import pickle   # FIXME cPickle?
+import tarfile
 import functools
 import numpy as np
 
@@ -111,6 +114,35 @@ def wget(filename, url):
     print()   # extra newline after progress bar
     assert os.path.exists(filename)
 
+
+def unpack(srcfile, expected_dstfile=None):
+    """Unpacks a file ending in one of: .gz, .tar, .tgz, .tar.gz"""
+    
+    if not os.path.exists(srcfile):
+        raise RuntimeError(f"kszx.io_utils.unpack(): source file '{srcfile}' does not exist")
+    
+    if srcfile.endswith('.tar'):
+        print(f'Un-tarring {srcfile}')
+        tar = tarfile.open(srcfile, 'r:')
+        tar.extractall(path = os.path.dirname(srcfile))
+        tar.close()
+    elif srcfile.endswith('.tar.gz') or srcfile.endswith('.tgz'):
+        print(f'Un-tarring and gunzipping {srcfile}')
+        tar = tarfile.open(srcfile, 'r:gz')
+        tar.extractall(path = os.path.dirname(srcfile))
+        tar.close()
+    elif srcfile.endswith('.gz'):
+        dstfile = srcfile[:-3]
+        print(f'Gunzipping {srcfile} -> {dstfile}')
+        with gzip.open(srcfile, 'rb') as f_in:
+            with open(dstfile, 'wb') as f_out:
+                shutil.copyfileobj(f_in, f_out)
+    else:
+        raise RuntimeError(f"kszx.io_utils.unpack(): source file '{srcfile}' must end in .gz, .tgz, or .tar.gz")
+
+    if (expected_dstfile is not None) and not os.path.exists(expected_dstfile):
+        raise RuntimeError(f"kszx.io_utils.unpack(): after unpacking {srcfile=}, {expected_dstfile=} does not exist")
+    
 
 ####################################################################################################
 
