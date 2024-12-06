@@ -97,12 +97,13 @@ class RandomPoly:
         return ret
         
         
-    def eval_grid(self, shape):
-        assert len(shape) == self.ndim
+    def eval_grid(self, shape, ishift):
+        assert len(shape) == len(ishift) == self.ndim
         ret = np.ones(shape)
 
         for axis in range(self.ndim):
             x = np.linspace(self.lpos[axis], self.rpos[axis], shape[axis])
+            x = np.roll(x, ishift[axis])
             y = self._eval_axis(x, axis)
             s = np.concatenate((np.ones(axis,dtype=int), (-1,), np.ones(self.ndim-axis-1,dtype=int)))
             ret *= np.reshape(y, s)
@@ -119,21 +120,28 @@ def test_interpolation():
     for _ in range(100):
         # Currently, interpolate_points() supports CIC and cubic.
         kernel, degree = ('cic',1) if (np.random.uniform() < 0.5) else ('cubic',3)
-
+        periodic = (np.random.uniform() < 0.5)
+        
         # Currently, interpolate_points() only supports ndim=3.
         box = helpers.random_box(ndim=3, nmin=degree+1)
-        poly = RandomPoly(degree=degree, lpos=box.lpos, rpos=box.rpos)
-        ndim = box.ndim
-
+        ndim = box.ndim  # placeholder for future expansion
+        
+        ishift = np.random.randint(-1000,1000,size=ndim) if periodic else np.zeros(ndim,dtype=int)
+        poly_lpos = box.lpos + ishift * box.pixsize
+        poly_rpos = box.rpos + ishift * box.pixsize
+        
+        poly = RandomPoly(degree=degree, lpos=poly_lpos, rpos=poly_rpos)
+        
         npoints = np.random.randint(100, 200)
         pad = (degree - 1 + 1.0e-7) * (box.pixsize/2.)
-        points = np.random.uniform(box.lpos+pad, box.rpos-pad, size=(npoints,ndim))
-        
-        grid = poly.eval_grid(box.npix)
+        points = np.random.uniform(poly_lpos + pad, poly_rpos - pad, size=(npoints,ndim))
         exact_vals = poly.eval_points(points)
-        interpolated_vals = core.interpolate_points(box, grid, points, kernel=kernel)
+
+        grid = poly.eval_grid(box.npix, ishift)
+        interpolated_vals = core.interpolate_points(box, grid, points, kernel=kernel, periodic=periodic)
 
         epsilon = helpers.compare_arrays(exact_vals, interpolated_vals)
+        # print(f'{epsilon=}')
         assert epsilon < 1.0e-12
         
     print('test_interpolation(): pass')
@@ -145,20 +153,21 @@ def test_interpolation_gridding_consistency():
     for _ in range(100):
         # Currently, interpolate_points() supports CIC and cubic.
         kernel, degree = ('cic',1) if (np.random.uniform() < 0.5) else ('cubic',3)
-
+        periodic = (np.random.uniform() < 0.5)
+        
         # Currently, interpolate_points() only supports ndim=3.
         box = helpers.random_box(ndim=3, nmin=degree+1)
-        ndim = box.ndim
+        ndim = box.ndim  # placeholder for future expansion
 
         npoints = np.random.randint(100, 200)
-        pad = (degree - 1 + 1.0e-7) * (box.pixsize/2.)
+        pad = (-1000 * box.pixsize) if periodic else ((degree - 1 + 1.0e-7) * (box.pixsize/2.))
         points = np.random.uniform(box.lpos+pad, box.rpos-pad, size=(npoints,ndim))
 
         g = np.random.normal(size=box.npix)  # random grid
         w = np.random.normal(size=npoints)   # random weights
         
-        Ag = core.interpolate_points(box, g, points, kernel=kernel)
-        Aw = core.grid_points(box, points, weights=w, kernel=kernel)
+        Ag = core.interpolate_points(box, g, points, kernel=kernel, periodic=periodic)
+        Aw = core.grid_points(box, points, weights=w, kernel=kernel, periodic=periodic)
 
         dot1 = np.dot(w,Ag)
         dot2 = helpers.map_dot_product(box,Aw,g)

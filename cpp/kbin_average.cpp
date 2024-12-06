@@ -11,16 +11,16 @@ inline double square(double x) { return x*x; }
 
 
 static void _kbin_average(double *out_fk, long *out_bcounts,
-			  const double *in_fk, const int *fk_strides,
-			  int nkbins, const double *k2_delim, double curr_k2, int curr_bin,
-			  int ndim, const int *np, const double *kf)
+			  const double *in_fk, const long *fk_strides,
+			  long nkbins, const double *k2_delim, double curr_k2, long curr_bin,
+			  long ndim, const long *np, const double *kf)
 {
-    int np0 = np[0];
+    long np0 = np[0];
     double kf0 = kf[0];
-    int s0 = fk_strides[0];
+    long s0 = fk_strides[0];
 
     if (ndim == 1) {
-	for (int ik = 0; 2*ik <= np0; ik++) {
+	for (long ik = 0; 2*ik <= np0; ik++) {
 	    // Update curr_bin.
 	    double k2 = curr_k2 + square(ik*kf0);
 	    while (k2 >= k2_delim[curr_bin+1])
@@ -28,7 +28,7 @@ static void _kbin_average(double *out_fk, long *out_bcounts,
 		    return;
 	
 	    if (curr_bin >= 0) {
-		int m = ((ik==0) || (2*ik==np0)) ? 1 : 2;
+		long m = ((ik==0) || (2*ik==np0)) ? 1 : 2;
 		out_fk[curr_bin] += m * in_fk[0];
 		out_bcounts[curr_bin] += m;
 	    }
@@ -37,8 +37,8 @@ static void _kbin_average(double *out_fk, long *out_bcounts,
 	}
     }
     else {
-	for (int ik0 = 0; ik0 < np0; ik0++) {
-	    int ik = std::min(ik0, np0-ik0);;
+	for (long ik0 = 0; ik0 < np0; ik0++) {
+	    long ik = std::min(ik0, np0-ik0);;
 	    double k2 = curr_k2 + square(ik*kf0);
 
 	    // Update curr_bin
@@ -68,46 +68,44 @@ py::tuple kbin_average(py::array_t<const double> &fk, py::array_t<const double> 
 	throw runtime_error("kbin_average: expected kf.ndim == 1");
     if (npix.shape(0) != kf.shape(0))
 	throw runtime_error("kbin_average: expected len(npix) == len(kf)");
-    if (get_int_stride(npix,0) != 1)
+    if (get_stride(npix,0) != 1)
 	throw runtime_error("kbin_average: expected npix to be contiguous array");
-    if (get_int_stride(kf,0) != 1)
+    if (get_stride(kf,0) != 1)
 	throw runtime_error("kbin_average: expected kf to be contiguous array");
     
-    int nkbins = get_int_shape(k_delim,0) - 1;    // note -1 here
-    int ndim = get_int_shape(npix,0);
+    long nkbins = get_shape(k_delim,0) - 1;    // note -1 here
+    int ndim = get_shape(npix,0);
 
     if (ndim < 1)
 	throw runtime_error("kbin_average: expected len(npix) >= 1");
     if (nkbins < 1)
 	throw runtime_error("kbin_average: expected len(k_delim) >= 2");
     
-    vector<int> np(ndim);
+    vector<long> np(ndim);
     vector<double> k2_delim(nkbins+1);
-    vector<int> fk_strides(ndim);
+    vector<long> fk_strides(ndim);
 
     // Error-check 'kbin_delim' argument, and populate 'k2_delim' vector (squaring)
 
     const double *kd = k_delim.data();
-    int ks = get_int_stride(k_delim, 0);
+    long ks = get_stride(k_delim, 0);
     
     if (kd[0] < 0.)
 	throw runtime_error("kbin_average: expected k_delim[0] >= 0");
 
-    for (int b = 0; b < nkbins; b++)
+    for (long b = 0; b < nkbins; b++)
 	if (kd[b*ks] >= kd[(b+1)*ks])
 	    throw runtime_error("kbin_average: expected k_delim array to be sorted");
 
-    for (int b = 0; b < nkbins+1; b++)
+    for (long b = 0; b < nkbins+1; b++)
 	k2_delim[b] = square(kd[b*ks]);
     
-    // Error-check 'npix' argument, and populate 'np' vector (converting long -> int).
+    // Error-check 'npix' argument, and populate 'np' vector.
     
     for (int axis = 0; axis < ndim; axis++) {
 	long n = npix.data()[axis];
 	if (n <= 0)
 	    throw runtime_error("kbin_average: expected npix > 0");
-	if (n > INT_MAX)
-	    throw runtime_error("kbin_average: npix >= 2^31?!");
 	np[axis] = n;
     }
 
@@ -117,11 +115,11 @@ py::tuple kbin_average(py::array_t<const double> &fk, py::array_t<const double> 
 	throw runtime_error("kbin_average: expected map.ndim == len(npix)");
 	
     for (int axis = 0; axis < ndim; axis++) {
-	int n_expected = (axis < (ndim-1)) ? np[axis] : ((np[axis]/2) + 1);
+	long n_expected = (axis < (ndim-1)) ? np[axis] : ((np[axis]/2) + 1);
 	if (fk.shape(axis) != n_expected)
 	    throw runtime_error("kbin_average: map shape is inconsistent with 'npix'");
 	
-	fk_strides[axis] = get_int_stride(fk, axis);
+	fk_strides[axis] = get_stride(fk, axis);
     }
 
     // Run PSE kernel.
@@ -134,7 +132,7 @@ py::tuple kbin_average(py::array_t<const double> &fk, py::array_t<const double> 
 
     memset(out_fk, 0, nkbins * sizeof(*out_fk));
     memset(out_bcounts, 0, nkbins * sizeof(*out_bcounts));
-    int curr_bin = (k2_delim[0] > 0.) ? -1 : 0;
+    long curr_bin = (k2_delim[0] > 0.) ? -1 : 0;
 
     _kbin_average(out_fk, out_bcounts,
 		  fk.data(), &fk_strides[0],
@@ -143,7 +141,7 @@ py::tuple kbin_average(py::array_t<const double> &fk, py::array_t<const double> 
 
     // Apply normalization.
     
-    for (int b = 0; b < nkbins; b++) {
+    for (long b = 0; b < nkbins; b++) {
 	long n = out_bcounts[b];
 	double fk_norm = (n > 0) ? (1.0 / double(n)) : 0.0;
 	out_fk[b] *= fk_norm;

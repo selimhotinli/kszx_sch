@@ -179,7 +179,7 @@ def fft_c2r(box, arr, spin=0, threads=None):
 ####################################################################################################
 
 
-def interpolate_points(box, arr, points, kernel, fft=False, spin=0):
+def interpolate_points(box, arr, points, kernel, fft=False, spin=0, periodic=False):
     r"""Interpolates real-space map at a specified set of points.
 
     Function args:
@@ -207,6 +207,8 @@ def interpolate_points(box, arr, points, kernel, fft=False, spin=0):
           will be called before interpolating.
     
         - ``spin`` (integer): passed as 'spin' argument to ``fft_c2r()``. (Only used if ``fft=True``.)
+
+        - ``periodic`` (boolean): if True, then the box has periodic boundary conditions.
 
     Return value:
 
@@ -249,9 +251,9 @@ def interpolate_points(box, arr, points, kernel, fft=False, spin=0):
         arr = fft_c2r(box, arr, spin=spin)
         
     if kernel == 'cic':
-        return cpp_kernels.cic_interpolate_3d(arr, points, box.lpos[0], box.lpos[1], box.lpos[2], box.pixsize)
+        return cpp_kernels.cic_interpolate_3d(arr, points, box.lpos[0], box.lpos[1], box.lpos[2], box.pixsize, periodic)
     elif kernel == 'cubic':
-        return cpp_kernels.cubic_interpolate_3d(arr, points, box.lpos[0], box.lpos[1], box.lpos[2], box.pixsize)
+        return cpp_kernels.cubic_interpolate_3d(arr, points, box.lpos[0], box.lpos[1], box.lpos[2], box.pixsize, periodic)
     else:
         raise RuntimeError('kszx.interpolate_points(): {kernel=} is not supported')
 
@@ -279,7 +281,7 @@ def _check_weights(box, points, weights, prefix='', target_sum=None):
     return weights
 
 
-def grid_points(box, points, weights=None, rpoints=None, rweights=None, kernel=None, fft=False, spin=0):
+def grid_points(box, points, weights=None, rpoints=None, rweights=None, kernel=None, fft=False, spin=0, periodic=False):
     r"""Returns a map representing a sum of delta functions (or a "galaxies - randoms" difference map).
 
     Function args:
@@ -315,7 +317,9 @@ def grid_points(box, points, weights=None, rpoints=None, rweights=None, kernel=N
           output map after gridding.
     
         - ``spin`` (integer): passed as 'spin' argument to ``fft_c2r()``. (Only used if ``fft=True``.)
-    
+
+        - ``periodic`` (boolean): if True, then the box has periodic boundary conditions.
+
     Return value: 
 
       - A numpy array representing a real-space (``fft=False``) or Fourier-space (``fft=True``) map.
@@ -370,12 +374,12 @@ def grid_points(box, points, weights=None, rpoints=None, rweights=None, kernel=N
         
     grid = np.zeros(box.real_space_shape, dtype=float)
     weights = _check_weights(box, points, weights)  # also checks 'points' arg
-    cpp_kernel(grid, points, weights, box.lpos[0], box.lpos[1], box.lpos[2], box.pixsize)
+    cpp_kernel(grid, points, weights, box.lpos[0], box.lpos[1], box.lpos[2], box.pixsize, periodic)
 
     if rpoints is not None:
         wsum = np.sum(weights)
         rweights = _check_weights(box, rpoints, rweights, prefix='r', target_sum = -wsum)
-        cpp_kernel(grid, rpoints, rweights, box.lpos[0], box.lpos[1], box.lpos[2], box.pixsize)        
+        cpp_kernel(grid, rpoints, rweights, box.lpos[0], box.lpos[1], box.lpos[2], box.pixsize, periodic)
 
     return fft_r2c(box,grid,spin=spin) if fft else grid
 

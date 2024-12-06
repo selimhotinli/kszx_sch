@@ -6,6 +6,11 @@
 #include <pybind11/pybind11.h>
 #include <pybind11/numpy.h>
 
+// Hardware branch predictor hint.
+#ifndef _unlikely
+#define _unlikely(x)  (__builtin_expect(!!(x), 0))
+#endif
+
 namespace py = pybind11;
 
 
@@ -15,17 +20,17 @@ namespace py = pybind11;
 
 
 extern py::array_t<double> cic_interpolate_3d(py::array_t<const double> &grid, py::array_t<const double> &points,
-					      double lpos0, double lpos1, double lpos2, double pixsize);
+					      double lpos0, double lpos1, double lpos2, double pixsize, bool periodic);
 
 extern py::array_t<double> cubic_interpolate_3d(py::array_t<const double> &grid, py::array_t<const double> &points,
-						double lpos0, double lpos1, double lpos2, double pixsize);
+						double lpos0, double lpos1, double lpos2, double pixsize, bool periodic);
 
 
 extern void cic_grid_3d(py::array_t<double> &grid, py::array_t<const double> &points, py::array_t<const double> &weights,
-			double lpos0, double lpos1, double lpos2, double pixsize);
+			double lpos0, double lpos1, double lpos2, double pixsize, bool periodic);
 
 extern void cubic_grid_3d(py::array_t<double> &grid, py::array_t<const double> &points, py::array_t<const double> &weights,
-			  double lpos0, double lpos1, double lpos2, double pixsize);
+			  double lpos0, double lpos1, double lpos2, double pixsize, bool periodic);
 
 
 extern py::tuple estimate_power_spectrum(py::list map_list, py::array_t<const double> &k_delim,
@@ -41,36 +46,31 @@ extern py::tuple kbin_average(py::array_t<const double> &fk, py::array_t<const d
 // These inline functions are used internally.
 
 
-// Hardware branch predictor hint.
-#ifndef _unlikely
-#define _unlikely(x)  (__builtin_expect(!!(x), 0))
-#endif
-
+// Like fmod(), but the return value is in the range [0,y).
+inline double xfmod(double x, double y)
+{
+    x = fmod(x,y);
+    return (x < 0) ? (x+y) : x;
+}
+    
 
 template<typename T>
-inline int get_int_shape(const py::array_t<T> &arr, int d)
+inline long get_shape(const py::array_t<T> &arr, int d)
 {
-    long s = arr.shape(d);
-
-    if (_unlikely((s > INT_MAX)))
-	throw std::runtime_error("kszx.cpp_kernels: array axis length >= 2^31?!");
-
-    return int(s);
+    return arr.shape(d);
 }
 
 
 template<typename T>
-inline int get_int_stride(const py::array_t<T> &arr, int d)
+inline long get_stride(const py::array_t<T> &arr, int d)
 {
-    if (_unlikely(arr.strides(d) % sizeof(T)))
+    long s = arr.strides(d);
+    long ss = s / sizeof(T);
+
+    if (_unlikely(s != (ss * sizeof(T))))
 	throw std::runtime_error("kszx.cpp_kernels: unaligned array stride?!");
-    
-    long s = arr.strides(d) / sizeof(T);
 
-    if (_unlikely((s < INT_MIN) || (s > INT_MAX)))
-	throw std::runtime_error("kszx.cpp_kernels: array stride >= 2^31?!");
-
-    return int(s);
+    return ss;
 }
 
     

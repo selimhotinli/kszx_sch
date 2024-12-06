@@ -16,20 +16,20 @@
 template<typename T>
 struct interpolation_args
 {
-    T *gdata;           // grid data
-    int gn0, gn1, gn2;  // grid shape
-    int gs0, gs1, gs2;  // grid strides
+    T *gdata;            // grid data
+    long gn0, gn1, gn2;  // grid shape
+    long gs0, gs1, gs2;  // grid strides
 
     const double *pdata;  // points data
     long npoints;         // points array has shape (npoints, ndim)
-    int ps0, ps1;         // strides in 2-d points array
+    long ps0, ps1;        // strides in 2-d points array
 
     // Used to translate 'points' to grid_coords in get_xyz().
     double lpos0, lpos1, lpos2, rec_ps, rec_pvol;
 
     // Optional: weights array
     const double *wdata = nullptr;
-    int ws = 0;   // stride in 1-d weights array
+    long ws = 0;   // stride in 1-d weights array
     
 
     // This constructor does not have a 'weights' array, and is used in interpolation kernels.
@@ -53,20 +53,20 @@ struct interpolation_args
         else
             gdata = grid.mutable_data();
 	
-	gn0 = get_int_shape(grid, 0);
-	gn1 = get_int_shape(grid, 1);
-	gn2 = get_int_shape(grid, 2);
-	gs0 = get_int_stride(grid, 0);
-	gs1 = get_int_stride(grid, 1);
-	gs2 = get_int_stride(grid, 2);
+	gn0 = get_shape(grid, 0);
+	gn1 = get_shape(grid, 1);
+	gn2 = get_shape(grid, 2);
+	gs0 = get_stride(grid, 0);
+	gs1 = get_stride(grid, 1);
+	gs2 = get_stride(grid, 2);
 
 	if ((gn0 < 2) || (gn1 < 2) || (gn2 < 2))
 	    throw std::runtime_error("expected all grid dimensions >= 2");
 	
 	pdata = points.data();
 	npoints = points.shape(0);
-	ps0 = get_int_stride(points, 0);
-	ps1 = get_int_stride(points, 1);
+	ps0 = get_stride(points, 0);
+	ps1 = get_stride(points, 1);
 
 	lpos0 = lpos0_;
 	lpos1 = lpos1_;
@@ -85,7 +85,7 @@ struct interpolation_args
 	    throw std::runtime_error("expected 'weights' to be a length-N array, where N=points.shape[0]");
 
 	wdata = weights.data();
-	ws = get_int_stride(weights, 0);
+	ws = get_stride(weights, 0);
     }
 
     

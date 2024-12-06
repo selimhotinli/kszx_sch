@@ -21,7 +21,7 @@ struct pse_args
 {
     double        *out_pk;       // length nkbins * M^2, where M = nmaps
     long          *out_bcounts;  // length nkbins
-    int            nkbins;
+    long           nkbins;
     const double  *k2_delim;     // length (nkbins+1)
 };
 
@@ -31,11 +31,11 @@ struct pse_args
 // Power spectrum estimation (pse) kernels:
 // The template parameter M is the number of maps.
 // 
-//    inline void pse_1d<M> (const pse_args &args, double curr_k2, int curr_bin,
-//                           int np, double kf, const cplx **maps, const int *strides);
+//    inline void pse_1d<M> (const pse_args &args, double curr_k2, long curr_bin,
+//                           long np, double kf, const cplx **maps, const long *strides);
 //
-//    void pse<M> (const pse_args &args, double curr_k2, int curr_bin, int ndim,
-//                 const int *np, const double *kf, const cplx **maps, const int *strides);
+//    void pse<M> (const pse_args &args, double curr_k2, long curr_bin, long ndim,
+//                 const long *np, const double *kf, const cplx **maps, const long *strides);
 //
 // Args:
 //
@@ -45,7 +45,7 @@ struct pse_args
 //       and the remaning (ndim-1)*M entries can be used as scratch space
 //       (for recursive calls to pse<M> with ndim -> (ndim-1)).
 //
-//   - strides: shape=(ndim,M) dtype=int
+//   - strides: shape=(ndim,M) dtype=long
 //
 //       Note that spatial dimension is the slowly varying index, and map
 //       index is rapidly varying.
@@ -84,30 +84,30 @@ struct pse_args
 //      update the unit test (test_estimate_power_spectrum()).
 
 
-template<int M>
-inline void pse_1d(const pse_args &args, double curr_k2, int curr_bin, int np, double kf, const cplx **maps, const int *strides);
+template<long M>
+inline void pse_1d(const pse_args &args, double curr_k2, long curr_bin, long np, double kf, const cplx **maps, const long *strides);
 
 
 // nmaps=1
-template<> inline void pse_1d<1> (const pse_args &args, double curr_k2, int curr_bin, int np, double kf, const cplx **maps, const int *strides)
+template<> inline void pse_1d<1> (const pse_args &args, double curr_k2, long curr_bin, long np, double kf, const cplx **maps, const long *strides)
 {
     double *out_pk = args.out_pk;
     long *out_bcounts = args.out_bcounts;
     
-    int nkbins = args.nkbins;
+    long nkbins = args.nkbins;
     const double *k2_delim = args.k2_delim;
 
     const cplx *map = maps[0];
-    int s = strides[0];
+    long s = strides[0];
 
-    for (int ik = 0; 2*ik <= np; ik++) {
+    for (long ik = 0; 2*ik <= np; ik++) {
 	// Update curr_bin.
 	double k2 = curr_k2 + square(ik*kf);
 	while (k2 >= k2_delim[curr_bin+1])
 	    if (++curr_bin == nkbins)
 		return;
 	
-	int m = ((ik==0) || (2*ik==np)) ? 1 : 2;
+	long m = ((ik==0) || (2*ik==np)) ? 1 : 2;
 	cplx z = map[0];
 	map += s;
 	
@@ -121,27 +121,27 @@ template<> inline void pse_1d<1> (const pse_args &args, double curr_k2, int curr
 
 
 // nmaps=2
-template<> inline void pse_1d<2> (const pse_args &args, double curr_k2, int curr_bin, int np, double kf, const cplx **maps, const int *strides)
+template<> inline void pse_1d<2> (const pse_args &args, double curr_k2, long curr_bin, long np, double kf, const cplx **maps, const long *strides)
 {
     double *out_pk = args.out_pk;
     long *out_bcounts = args.out_bcounts;
     
-    int nkbins = args.nkbins;
+    long nkbins = args.nkbins;
     const double *k2_delim = args.k2_delim;
 
     const cplx *map0 = maps[0];
     const cplx *map1 = maps[1];
-    int s0 = strides[0];
-    int s1 = strides[1];
+    long s0 = strides[0];
+    long s1 = strides[1];
 
-    for (int ik = 0; 2*ik <= np; ik++) {
+    for (long ik = 0; 2*ik <= np; ik++) {
 	// Update curr_bin.
 	double k2 = curr_k2 + square(ik*kf);
 	while (k2 >= k2_delim[curr_bin+1])
 	    if (++curr_bin == nkbins)
 		return;
 
-	int m = ((ik==0) || (2*ik==np)) ? 1 : 2;
+	long m = ((ik==0) || (2*ik==np)) ? 1 : 2;
 	cplx z0 = map0[0];
 	cplx z1 = map1[0];
 	map0 += s0;
@@ -159,29 +159,29 @@ template<> inline void pse_1d<2> (const pse_args &args, double curr_k2, int curr
 
 
 // nmaps=3
-template<> inline void pse_1d<3> (const pse_args &args, double curr_k2, int curr_bin, int np, double kf, const cplx **maps, const int *strides)
+template<> inline void pse_1d<3> (const pse_args &args, double curr_k2, long curr_bin, long np, double kf, const cplx **maps, const long *strides)
 {
     double *out_pk = args.out_pk;
     long *out_bcounts = args.out_bcounts;
     
-    int nkbins = args.nkbins;
+    long nkbins = args.nkbins;
     const double *k2_delim = args.k2_delim;
 
     const cplx *map0 = maps[0];
     const cplx *map1 = maps[1];
     const cplx *map2 = maps[2];
-    int s0 = strides[0];
-    int s1 = strides[1];
-    int s2 = strides[2];
+    long s0 = strides[0];
+    long s1 = strides[1];
+    long s2 = strides[2];
 
-    for (int ik = 0; 2*ik <= np; ik++) {
+    for (long ik = 0; 2*ik <= np; ik++) {
 	// Update curr_bin.
 	double k2 = curr_k2 + square(ik*kf);
 	while (k2 >= k2_delim[curr_bin+1])
 	    if (++curr_bin == nkbins)
 		return;
 
-	int m = ((ik==0) || (2*ik==np)) ? 1 : 2;
+	long m = ((ik==0) || (2*ik==np)) ? 1 : 2;
 	cplx z0 = map0[0];
 	cplx z1 = map1[0];
 	cplx z2 = map2[0];
@@ -204,31 +204,31 @@ template<> inline void pse_1d<3> (const pse_args &args, double curr_k2, int curr
 
 
 // nmaps=4
-template<> inline void pse_1d<4> (const pse_args &args, double curr_k2, int curr_bin, int np, double kf, const cplx **maps, const int *strides)
+template<> inline void pse_1d<4> (const pse_args &args, double curr_k2, long curr_bin, long np, double kf, const cplx **maps, const long *strides)
 {
     double *out_pk = args.out_pk;
     long *out_bcounts = args.out_bcounts;
     
-    int nkbins = args.nkbins;
+    long nkbins = args.nkbins;
     const double *k2_delim = args.k2_delim;
 
     const cplx *map0 = maps[0];
     const cplx *map1 = maps[1];
     const cplx *map2 = maps[2];
     const cplx *map3 = maps[3];
-    int s0 = strides[0];
-    int s1 = strides[1];
-    int s2 = strides[2];
-    int s3 = strides[3];
+    long s0 = strides[0];
+    long s1 = strides[1];
+    long s2 = strides[2];
+    long s3 = strides[3];
 
-    for (int ik = 0; 2*ik <= np; ik++) {
+    for (long ik = 0; 2*ik <= np; ik++) {
 	// Update curr_bin.
 	double k2 = curr_k2 + square(ik*kf);
 	while (k2 >= k2_delim[curr_bin+1])
 	    if (++curr_bin == nkbins)
 		return;
 
-	int m = ((ik==0) || (2*ik==np)) ? 1 : 2;
+	long m = ((ik==0) || (2*ik==np)) ? 1 : 2;
 	cplx z0 = map0[0];
 	cplx z1 = map1[0];
 	cplx z2 = map2[0];
@@ -256,10 +256,10 @@ template<> inline void pse_1d<4> (const pse_args &args, double curr_k2, int curr
 }
 
 
-template<int M>
-static void pse(const pse_args &args, double curr_k2, int curr_bin, int ndim, const int *np, const double *kf, const cplx **maps, const int *strides)
+template<long M>
+static void pse(const pse_args &args, double curr_k2, long curr_bin, long ndim, const long *np, const double *kf, const cplx **maps, const long *strides)
 {
-    int np0 = np[0];
+    long np0 = np[0];
     double kf0 = kf[0];
 
     if (ndim == 1) {
@@ -267,14 +267,14 @@ static void pse(const pse_args &args, double curr_k2, int curr_bin, int ndim, co
 	return;
     }
     
-    int nkbins = args.nkbins;
+    long nkbins = args.nkbins;
     const double *k2_delim = args.k2_delim;
     
-    for (int m = 0; m < M; m++)
+    for (long m = 0; m < M; m++)
 	maps[M+m] = maps[m];
     
-    for (int ik0 = 0; ik0 < np0; ik0++) {
-	int ik = std::min(ik0, np0-ik0);;
+    for (long ik0 = 0; ik0 < np0; ik0++) {
+	long ik = std::min(ik0, np0-ik0);;
 	double k2 = curr_k2 + square(ik*kf0);
 
 	// Update curr_bin
@@ -287,7 +287,7 @@ static void pse(const pse_args &args, double curr_k2, int curr_bin, int ndim, co
 	if (curr_bin < nkbins)
 	    pse<M> (args, k2, curr_bin, ndim-1, np+1, kf+1, maps+M, strides+M);
 
-	for (int m = 0; m < M; m++)
+	for (long m = 0; m < M; m++)
 	    maps[m+M] += strides[m];
     }
 }
@@ -309,14 +309,14 @@ py::tuple estimate_power_spectrum(py::list map_list, py::array_t<const double> &
     if (box_volume <= 0)
 	throw runtime_error("estimate_power_spectrum: expected box_volume > 0");
     
-    if (get_int_stride(npix,0) != 1)
+    if (get_stride(npix,0) != 1)
 	throw runtime_error("estimate_power_spectrum: expected npix to be contiguous array");
-    if (get_int_stride(kf,0) != 1)
+    if (get_stride(kf,0) != 1)
 	throw runtime_error("estimate_power_spectrum: expected kf to be contiguous array");
     
-    int nmaps = map_list.size();
-    int nkbins = get_int_shape(k_delim,0) - 1;    // note -1 here
-    int ndim = get_int_shape(npix,0);
+    long nmaps = map_list.size();
+    long nkbins = get_shape(k_delim,0) - 1;    // note -1 here
+    int ndim = get_shape(npix,0);
 
     if (ndim < 1)
 	throw runtime_error("estimate_power_spectrum: expected len(npix) >= 1");
@@ -332,40 +332,38 @@ py::tuple estimate_power_spectrum(py::list map_list, py::array_t<const double> &
     // Note: 'map_vec' is length (ndim * nmaps), but only the first nmaps entries will be
     // initialized here. (Remaning entries are used as scratch space by the PSE kernel.)
     
-    vector<int> np(ndim);
+    vector<long> np(ndim);
     vector<double> k2_delim(nkbins+1);
     vector<const cplx *> map_vec(ndim * nmaps, nullptr);
-    vector<int> strides(ndim * nmaps);  // spatial dimension is major index, map is minor index
+    vector<long> strides(ndim * nmaps);  // spatial dimension is major index, map is minor index
 
     // Error-check 'kbin_delim' argument, and populate 'k2_delim' vector (squaring)
 
     const double *kd = k_delim.data();
-    int ks = get_int_stride(k_delim, 0);
+    long ks = get_stride(k_delim, 0);
     
     if (kd[0] < 0.)
 	throw runtime_error("estimate_power_spectrum: expected k_delim[0] >= 0");
 
-    for (int b = 0; b < nkbins; b++)
+    for (long b = 0; b < nkbins; b++)
 	if (kd[b*ks] >= kd[(b+1)*ks])
 	    throw runtime_error("estimate_power_spectrum: expected k_delim array to be sorted");
 
-    for (int b = 0; b < nkbins+1; b++)
+    for (long b = 0; b < nkbins+1; b++)
 	k2_delim[b] = square(kd[b*ks]);
     
-    // Error-check 'npix' argument, and populate 'np' vector (converting long -> int).
+    // Error-check 'npix' argument, and populate 'np' vector.
     
     for (int axis = 0; axis < ndim; axis++) {
 	long n = npix.data()[axis];
 	if (n <= 0)
 	    throw runtime_error("estimate_power_spectrum: expected npix > 0");
-	if (n > INT_MAX)
-	    throw runtime_error("estimate_power_spectrum: npix >= 2^31?!");
 	np[axis] = n;
     }
 
     // Error-check 'map_list' argument, and populate vectors 'map_vec', 'strides'.
     
-    for (int imap = 0; imap < nmaps; imap++) {
+    for (long imap = 0; imap < nmaps; imap++) {
 	py::object obj = map_list[imap];
 	py::array_t<complex<double>> arr = obj;
 
@@ -375,17 +373,17 @@ py::tuple estimate_power_spectrum(py::list map_list, py::array_t<const double> &
 	map_vec[imap] = arr.data();
 	
 	for (int axis = 0; axis < ndim; axis++) {
-	    int n_expected = (axis < (ndim-1)) ? np[axis] : ((np[axis]/2) + 1);
+	    long n_expected = (axis < (ndim-1)) ? np[axis] : ((np[axis]/2) + 1);
 	    if (arr.shape(axis) != n_expected)
 		throw runtime_error("estimate_power_spectrum: map shape is inconsistent with 'npix'");
 	    
-	    strides[axis*nmaps + imap] = get_int_stride(arr, axis);
+	    strides[axis*nmaps + imap] = get_stride(arr, axis);
 	}
     }
 
     // Run PSE kernel.
 
-    int M2 = ((nmaps) * (nmaps+1)) / 2;
+    long M2 = ((nmaps) * (nmaps+1)) / 2;
     vector<double> tmp_pk(nkbins * M2);
     py::array_t<long> ret_bcounts({nkbins});
 
@@ -397,7 +395,7 @@ py::tuple estimate_power_spectrum(py::list map_list, py::array_t<const double> &
 
     memset(args.out_pk, 0, nkbins * M2 * sizeof(*args.out_pk));
     memset(args.out_bcounts, 0, nkbins * sizeof(*args.out_bcounts));
-    int curr_bin = (args.k2_delim[0] > 0.) ? -1 : 0;
+    long curr_bin = (args.k2_delim[0] > 0.) ? -1 : 0;
 
     if (nmaps == 1)
 	pse<1> (args, 0.0, curr_bin, ndim, &np[0], kf.data(), &map_vec[0], &strides[0]);
@@ -416,18 +414,18 @@ py::tuple estimate_power_spectrum(py::list map_list, py::array_t<const double> &
     py::array_t<double> ret_pk({nmaps,nmaps,nkbins});
     double *rptr = ret_pk.mutable_data();
     
-    for (int b = 0; b < nkbins; b++) {
+    for (long b = 0; b < nkbins; b++) {
 	long n = args.out_bcounts[b];
 	pk_norm[b] = (n > 0) ? (1.0 / double(n) / box_volume) : 0.0;
     }
     
-    int isrc = 0;  // represents index pair (m,m2)
-    for (int m = 0; m < nmaps; m++) {
-	for (int m2 = 0; m2 <= m; m2++) {
-	    int idst1 = (m*nmaps + m2) * nkbins;
-	    int idst2 = (m2*nmaps + m) * nkbins;
+    long isrc = 0;  // represents index pair (m,m2)
+    for (long m = 0; m < nmaps; m++) {
+	for (long m2 = 0; m2 <= m; m2++) {
+	    long idst1 = (m*nmaps + m2) * nkbins;
+	    long idst2 = (m2*nmaps + m) * nkbins;
 	    
-	    for (int b = 0; b < nkbins; b++) {
+	    for (long b = 0; b < nkbins; b++) {
 		double pk = pk_norm[b] * tmp_pk[b*M2 + isrc];
 		rptr[idst1+b] = pk;
 		rptr[idst2+b] = pk;
