@@ -1,4 +1,3 @@
-import time
 import camb
 import numpy as np
 import scipy.interpolate
@@ -118,7 +117,6 @@ class Cosmology:
         """
         
         if isinstance(params, str):
-            print(f"Initializing '{params}' cosmology")
             params = CosmologicalParams(params)   # 'params' arg is a string, e.g. 'planck18+bao' or 'hmvec'.
         elif not isinstance(params, CosmologicalParams):
             raise RuntimeError("Cosmology constructor: argument must be either a CosmologicalParams, or a string e.g. 'planck18+bao'")
@@ -175,11 +173,9 @@ class Cosmology:
         
         camb_params.set_matter_power(redshifts=z_pk, kmax=params.kmax)
 
-        print(f'Running CAMB')
+        # print(f'Running CAMB')
         
-        camb_timer = time.time()
         camb_results = camb.get_results(camb_params)
-        camb_timer = time.time() - camb_timer
 
         # self._sigma8_z = 1-d array of redshifts (ordered from highest to lowest)
         # self._sigma8 = sigma8 value at each redshift
@@ -201,7 +197,6 @@ class Cosmology:
         self._plin_k = k
         self._plin_z = z
         self._plin_pzk = pzk
-        print(f'Done running CAMB [{camb_timer} seconds]')
 
         assert utils.is_sorted(k)
         assert utils.is_sorted(z)
