@@ -1,3 +1,4 @@
+import os
 import h5py
 import copy
 import fitsio
@@ -162,7 +163,7 @@ class Catalog:
         return self.apply_boolean_mask(mask, name=name, in_place=in_place)
 
 
-    def get_xyz(self, cosmo):
+    def get_xyz(self, cosmo, zcol_name='z'):
         r"""Returns shape (N,3) array containing galaxy locations in Cartesian coords (observer at origin). 
 
         The Catalog must define columns named ``ra_deg``, ``dec_deg``, and ``z``.
@@ -190,9 +191,9 @@ class Catalog:
 
         assert 'ra_deg' in self.col_names
         assert 'dec_deg' in self.col_names
-        assert 'z' in self.col_names
-        
-        chi = cosmo.chi(z=self.z)
+        assert zcol_name in self.col_names
+
+        chi = cosmo.chi(z = getattr(self,zcol_name))
         xyz = utils.ra_dec_to_xyz(self.ra_deg, self.dec_deg, r=chi)
         return xyz
     
@@ -337,7 +338,7 @@ class Catalog:
         See sdss.py and desils_lry.py for examples."""
 
         if name is None:
-            name = filename
+            name = os.path.basename(filename)
             
         print(f'Reading {filename}')
         catalog = Catalog(name=name, filename=filename)
@@ -348,6 +349,25 @@ class Catalog:
                 
         catalog._announce_file_read()
         return catalog
+
+
+    @staticmethod
+    def from_text_file(filename, col_names, name=None):
+        """Reads text file (one row per catalog object) and returns a Catlog object.
+        The ``col_names`` arg should be a list of column names. See sdss.py for examples."""
+
+        if name is None:
+            name = os.path.basename(filename)
+            
+        # Note: we copy the transposed array, to get contiguous 1-d arrays.
+        print(f'Reading {filename}')
+        cols = [ np.copy(x) for x in np.loadtxt(filename).T ]
+
+        if len(cols) != len(col_names):
+            raise RuntimeError(f'{filename}: file has {len(cols)} columns, {len(col_names)} cols were expected')
+
+        cols = dict(zip(col_names,cols))
+        return Catalog(cols, name=name, filename=filename)
 
     
     def _announce_file_read(self):
