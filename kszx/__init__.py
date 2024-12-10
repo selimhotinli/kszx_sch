@@ -27,6 +27,7 @@ from .Box import Box
 from .BoundingBox import BoundingBox
 from .Catalog import Catalog
 from .Cosmology import Cosmology, CosmologicalParams
+from .SurrogateFactory import SurrogateFactory
 
 from . import act
 from . import desils
