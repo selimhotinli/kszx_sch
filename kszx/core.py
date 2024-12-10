@@ -255,7 +255,7 @@ def interpolate_points(box, arr, points, kernel, fft=False, spin=0, periodic=Fal
     elif kernel == 'cubic':
         return cpp_kernels.cubic_interpolate_3d(arr, points, box.lpos[0], box.lpos[1], box.lpos[2], box.pixsize, periodic)
     else:
-        raise RuntimeError('kszx.interpolate_points(): {kernel=} is not supported')
+        raise RuntimeError(f'kszx.interpolate_points(): {kernel=} is not supported')
 
 
 def _check_weights(box, points, weights, prefix='', target_sum=None):
@@ -370,7 +370,7 @@ def grid_points(box, points, weights=None, rpoints=None, rweights=None, kernel=N
     elif kernel == 'cubic':
         cpp_kernel = cpp_kernels.cubic_grid_3d
     else:
-        raise RuntimeError('kszx.grid_points(): {kernel=} is not supported')        
+        raise RuntimeError(f'kszx.grid_points(): {kernel=} is not supported')        
         
     grid = np.zeros(box.real_space_shape, dtype=float)
     weights = _check_weights(box, points, weights)  # also checks 'points' arg
@@ -382,6 +382,37 @@ def grid_points(box, points, weights=None, rpoints=None, rweights=None, kernel=N
         cpp_kernel(grid, rpoints, rweights, box.lpos[0], box.lpos[1], box.lpos[2], box.pixsize, periodic)
 
     return fft_r2c(box,grid,spin=spin) if fft else grid
+
+
+def compensation_kernel(box, kernel):
+    """Returns power spectrum compensation factor C(k) for specified gridding/interpolation kernel.
+
+        - ``box`` (kszx.Box): defines pixel size, bounding box size, and location of observer.
+          See :class:`~kszx.Box` for more info.
+
+        - ``kernel`` (string): either ``'cic'`` or ``'cubic'`` (more options will be defined later).
+
+    The return value is a real-valued array of shape box.fourier_space_shape.
+    """
+
+    # See tex notes. The variable 's' is sin(k*L/2)
+    if kernel == 'cic':
+        f = lambda s: 1 - (2./3.)*s*s
+    elif kernel == 'cubic':
+        f = lambda s: 1 - (22./45.)*(s**4) - (124./945.)*(s**6)
+    else:
+        raise RuntimeError(f'kszx.gridding_pk_multiplier(): {kernel=} is not supported')
+
+    assert isinstance(box, Box)
+    ret = np.ones(box.fourier_space_shape, dtype=float)
+
+    for d in range(box.ndim):
+        nr = box.real_space_shape[d]
+        nf = box.fourier_space_shape[d]
+        s = np.sin(np.pi * np.arange(nf,dtype=float)/nr)
+        ret *= np.reshape(f(s), (1,)*d + (nf,) + (1,)*(box.ndim-d-1))
+
+    return ret
 
 
 ####################################################################################################
@@ -928,30 +959,38 @@ def estimate_power_spectrum(box, map_or_maps, kbin_delim, *, use_dc=False, allow
 def kbin_average(box, f, kbin_delim, *, use_dc=False, allow_empty_bins=False, return_counts=False):
     """Averages a real-valued function f(k) in k-bins.
 
-    Args:
+    Function args:
 
-        box (kszx.Box): defines pixel size, bounding box size, and location relative to observer.
+        - ``box`` (kszx.Box): defines pixel size, bounding box size, and location of observer.
+          See :class:`~kszx.Box` for more info.
 
-        f: function (or callable object) representing the function k -> f(k).
+        - ``f`` (function or array): the quantity f(k) to be averaged, represented either
+          as a real-valued array of shape ``box.fourier_space_shape``, or a function k -> f(k).
 
-        kbin_delim: 1-d array of length (nkbins+1) defining bin endpoints.
+        - ``kbin_delim``: 1-d array of length (nkbins+1) defining bin endpoints.
           The i-th bin covers k-range kbin_delim[i] <= k < kbin_delim[i+1].
 
-        use_dc: if False (the default), then skip k=0, and don't evaluate f(k) at k=0.
+        - ``use_dc`` (boolean): if False (the default), then the k=0 mode will not be used,
+          even if the lowest bin includes k=0.
 
-        allow_empty_bins: if False (the default), then an execption is thrown if a k-bin is empty.
+        - ``allow_empty_bins`` (boolean): if False (the default), then an execption is thrown 
+          if a k-bin is empty.
 
-        return_counts (boolean): See below.
+        - ``return_counts`` (boolean): See below.
 
-    Returns: 
+    Return value: 
 
-       - if return_counts=False (the default), then return value is a length-nkbins array 'fk_mean'.
-       - if return_counts=True, then return value is a pair (fk_mean, bin_counts).
+       - If ``return_counts=False`` (the default), then return value is a 1-d array ``fk_mean``
+         with length nkbins, containing bin-averaged values of f(k).
+
+         If ``return_counts=True``, then the return value is a pair ``(fk_mean, bin_counts)``, where
+         ``bin_counts`` is a 1-d array with length ``nkbins``, containing the number of Fourier
+         modes in each k-bin.
 
     Notes: 
 
        - This function is intended to be used in situations where we want to compare the
-         output of estimate_power_spectrum() to a "theory" power spectrum, such as CAMB Plin().
+         output of estimate_power_spectrum() to a "theory" power spectrum, such as ``Cosmology.plin_z0()``.
          To remove binning artifacts, you may want to bin-average the theory power spectrum
          over the same k-bins used in estimate_power_spectrum().
     
@@ -965,7 +1004,14 @@ def kbin_average(box, f, kbin_delim, *, use_dc=False, allow_empty_bins=False, re
     """
 
     kbin_delim = _check_kbin_delim(box, kbin_delim, use_dc)
-    fk = _eval_kfunc(box, f, dc = (None if use_dc else 0.))
+
+    if callable(f):
+        fk = _eval_kfunc(box, f, dc = (None if use_dc else 0.))
+        assert fk.shape == box.fourier_space_shape
+        assert fk.dtype == float
+    else:
+        fk = utils.asarray(f, 'kszx.kbin_delim', 'f', dtype=float)
+        assert fk.shape == box.fourier_space_shape
 
     fk_mean, bin_counts = cpp_kernels.kbin_average(fk, kbin_delim, box.npix, box.kfund)
 

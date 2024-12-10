@@ -5,6 +5,7 @@ from .core import \
     fft_c2r, \
     interpolate_points, \
     grid_points, \
+    compensation_kernel, \
     multiply_rfunc, \
     multiply_kfunc, \
     multiply_r_component, \
