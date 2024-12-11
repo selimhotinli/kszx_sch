@@ -366,9 +366,20 @@ class Catalog:
         if len(cols) != len(col_names):
             raise RuntimeError(f'{filename}: file has {len(cols)} columns, {len(col_names)} cols were expected')
 
-        cols = dict(zip(col_names,cols))
+        cols = dict(((k,v) for (k,v) in zip(col_names,cols) if k is not None))
         return Catalog(cols, name=name, filename=filename)
 
+
+    def show(self):
+        """Prints a summary of the Catalog to stdout, with one line per column showing min/mean/max."""
+        s1 = '' if (self.name is None) else f'name={self.name}, '
+        s2 = '' if (self.filename is None) else f', filename={self.filename}'
+        
+        print(f'Catalog({s1}size={self.size}{s2})')
+        for k in sorted(self.col_names):
+            v = getattr(self, k)
+            print(f'    {k}: min={np.min(v)}, mean={np.mean(v)}, max={np.max(v)}')
+        
     
     def _announce_file_read(self):
         s1 = '' if (self.name is None) else f'{self.name}: '

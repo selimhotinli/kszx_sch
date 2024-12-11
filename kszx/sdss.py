@@ -13,7 +13,7 @@ from . import Catalog
 from . import io_utils
 
 
-def read_galaxies(survey, download=False):
+def read_galaxies(survey, dr=12, download=False):
     r"""Reads SDSS galaxy catalog, and returns a Catalog object.
     
     After calling this function, you'll probably want to call :func:`Catalog.apply_redshift_cut()`
@@ -23,6 +23,8 @@ def read_galaxies(survey, download=False):
 
       - ``survey`` (str): either 'CMASS_North', 'CMASS_South', 'LOWZ_North', 'LOWZ_South',
         'CMASSLOWZTOT_North', 'CMASSLOWZTOT_South', 'CLASSLOWZE2_North', or 'CMASSLOWZE3_North'.
+
+      - ``dr`` (integer): either 11 or 12.
 
       - ``download`` (boolean): if True, then all needed data files will be auto-downloaded.
 
@@ -43,11 +45,11 @@ def read_galaxies(survey, download=False):
      gcat.apply_redshift_cut(0.43, 0.7)
     """
     
-    filename = _galaxy_filename(survey, download)
+    filename = _galaxy_filename(survey, dr, download)
     return read_fits_catalog(filename, is_randcat=False)
 
 
-def read_randoms(survey, download=False):
+def read_randoms(survey, dr=12, download=False):
     r"""Reads SDSS random catalog, and returns a Catalog object.
 
     After calling this function, you'll probably want to call :func:`Catalog.apply_redshift_cut()`
@@ -57,6 +59,8 @@ def read_randoms(survey, download=False):
 
       - ``survey`` (str): either 'CMASS_North', 'CMASS_South', 'LOWZ_North', 'LOWZ_South',
         'CMASSLOWZTOT_North', 'CMASSLOWZTOT_South', 'CLASSLOWZE2_North', or 'CMASSLOWZE3_North'.
+
+      - ``dr`` (integer): either 11 or 12.
 
       - ``download`` (boolean): if True, then all needed data files will be auto-downloaded.
 
@@ -72,18 +76,21 @@ def read_randoms(survey, download=False):
      rcat.apply_redshift_cut(0.43, 0.7)
     """
     
-    filenames = _random_filenames(survey, download)
+    filenames = _random_filenames(survey, dr, download)
     catalogs = [ read_fits_catalog(f, is_randcat=True) for f in filenames ]
     return Catalog.concatenate(catalogs, name=f'{survey} randoms', destructive=True)
 
 
-def read_mask(survey, download=False):
+def read_mask(survey, dr=12, download=False):
     r"""Reads SDSS mangle mask, and returns a pymangle object. Rarely needed!
 
     Function arguments:
 
       - ``survey`` (str): either 'CMASS_North', 'CMASS_South', 'LOWZ_North', 'LOWZ_South',
         'CMASSLOWZTOT_North', 'CMASSLOWZTOT_South', 'CLASSLOWZE2_North', or 'CMASSLOWZE3_North'.
+
+      - ``dr`` (integer): either 11 or 12.
+
 
       - ``download`` (boolean): if True, then all needed data files will be auto-downloaded.
 
@@ -93,12 +100,12 @@ def read_mask(survey, download=False):
     Note: requires pymangle! (Not a dependency by default.)    
     """
     import pymangle
-    filename = _mask_filename(survey, download)
+    filename = _mask_filename(survey, dr, download)
     print(f'Reading {filename}')
     return pymangle.Mangle(filename)
 
 
-def read_mock(survey, mock_type, ix, download=False):
+def read_mock(survey, mock_type, ix, dr=12, download=False):
     r"""Reads SDSS mock galaxy catalog, and returns a Catalog object.
 
     Note that the qpm mocks are already restricted to an appropriate redshift range,
@@ -109,15 +116,23 @@ def read_mock(survey, mock_type, ix, download=False):
 
       - ``survey`` (str): either 'CMASS_North', 'CMASS_South', 'LOWZ_North', 'LOWZ_South'.
 
-      - ``mock_type`` (str): currently only 'qpm' is supported
+      - ``mock_type`` (str): currently 'qpm' (DR12 only) and 'pthalos' (DR11 only)
+        are implemented.
+
+      - ``ix`` (integer): index of mock, in the range ``0 <= ix < 1000``, except for
+        CMASS PTHALOS where the range is ``0 <= ix < 600``.
+
+      - ``dr`` (integer): either 11 or 12.
 
       - ``download`` (boolean): if True, then all needed data files will be auto-downloaded.
 
     Returns a :class:`kszx.Catalog` object, with the following columns::
      
      ra_deg, dec_deg, z,    # sky location, redshift
-     wfkp,                  # FKP weight
      wveto                  # systematic weights
+     wfkp                   # FKP weight (available for QPM but not PTHALOS)
+     cboss, wcp, wzf        # PTHALOS only: completeness/systematics weights
+     ztrue                  # PTHALOS only: true redshift, removing peculiar velocities
 
     Example usage::
 
@@ -126,16 +141,20 @@ def read_mock(survey, mock_type, ix, download=False):
      # mcat.apply_redshift_cut(0.43, 0.7) not needed!
     """
 
-    filename = _mock_filename(survey, mock_type, ix, download=download)
+    filename = _mock_filename(survey, mock_type, ix, dr, download=download)
 
     if mock_type.lower() == 'qpm':
         # https://data.sdss.org/datamodel/files/BOSS_LSS_REDUX/dr11_qpm_mocks/mock_galaxy_DRX_SAMPLE_NS_QPM_IDNUMBER.html
         return Catalog.from_text_file(filename, col_names=['ra_deg','dec_deg','z','wfkp','wveto'])
+    elif mock_type.lower() == 'pthalos':
+        # https://data.sdss.org/datamodel/files/BOSS_LSS_REDUX/dr11_pthalos_mocks/mock_galaxy_DRX_SAMPLE_NS_PTHALOS_IDNUMBER.html
+        # Omit 'ipoly' and 'galaxy flag'
+        return Catalog.from_text_file(filename, col_names=['ra_deg','dec_deg','z', None,'cboss','wcp','wzf','wveto','ztrue',None])
     else:
-        raise RuntimeError(f"kszx.sdss: {mock_type=} was not recognized (only 'qpm' is currently supported)")
+        raise RuntimeError(f"kszx: SDSS {mock_type=} was not recognized (currently support 'qpm' and 'pthalos')")
 
 
-def read_mock_randoms(survey, mock_type, download=True):
+def read_mock_randoms(survey, mock_type, dr=12, download=False):
     r"""Reads SDSS mock random catalog, and returns a Catalog object.
 
     Note that the qpm mocks are already restricted to an appropriate redshift range,
@@ -146,7 +165,10 @@ def read_mock_randoms(survey, mock_type, download=True):
 
       - ``survey`` (str): either 'CMASS_North', 'CMASS_South', 'LOWZ_North', 'LOWZ_South'.
 
-      - ``mock_type`` (str): currently only 'qpm' is supported.
+      - ``mock_type`` (str): currently 'qpm' (DR12 only) and 'pthalos' (DR11 only)
+        are implemented.
+
+      - ``dr`` (integer): either 11 or 12.
 
       - ``download`` (boolean): if True, then all needed data files will be auto-downloaded.
 
@@ -162,16 +184,21 @@ def read_mock_randoms(survey, mock_type, download=True):
      # mrcat.apply_redshift_cut(0.43, 0.7) not needed!
     """
 
+    filenames = _mock_random_filenames(survey, mock_type, dr, download=download)
+
     if mock_type.lower() == 'qpm':
         # https://data.sdss.org/datamodel/files/BOSS_LSS_REDUX/dr11_qpm_mocks/mock_random_DRX_SAMPLE_NS_QPM_NxV.html
-        filenames = _mock_random_filenames(survey, mock_type, download=download)
         catalogs = [ Catalog.from_text_file(f, col_names=['ra_deg','dec_deg','z','wfkp']) for f in filenames ]
-        return Catalog.concatenate(catalogs, name=f'{survey} qpm mock randoms', destructive=True)
+        return Catalog.concatenate(catalogs, name=f'{survey} {mock_type} mock randoms', destructive=True)
+    elif mock_type.lower() == 'pthalos':
+        # https://data.sdss.org/datamodel/files/BOSS_LSS_REDUX/dr11_pthalos_mocks/mock_random_DRX_SAMPLE_NS_PTHALOS_IDNUMBER.html
+        catalogs = [ Catalog.from_text_file(f, col_names=['ra_deg','dec_deg','z',None,'cboss','wcp','wzf','wveto']) for f in filenames ]
+        return Catalog.concatenate(catalogs, name=f'{survey} {mock_type} randoms', destructive=True)        
     else:
-        raise RuntimeError(f"kszx.sdss: {mock_type=} was not recognized (only 'qpm' is currently supported)")
+        raise RuntimeError(f"kszx: SDSS {mock_type=} was not recognized (currently support 'qpm' and 'pthalos')")
     
 
-def download(survey, mask=False, qpm=False):
+def download(survey, dr=12, mask=False, qpm=False, pthalos=False):
     r"""Downloads SDSS data products (galaxies, randoms, and optionally mangle mask) for a given survey.
 
     Can be called from command line: ``python -m kszx download_sdss``.
@@ -181,15 +208,26 @@ def download(survey, mask=False, qpm=False):
       - ``survey`` (str): either 'CMASS_North', 'CMASS_South', 'LOWZ_North', 'LOWZ_South',
         'CMASSLOWZTOT_North', 'CMASSLOWZTOT_South', 'CLASSLOWZE2_North', or 'CMASSLOWZE3_North'.
 
+      - ``dr`` (integer): either 11 or 12.
+
       - ``mask`` (boolean): if True, then mangle mask will be downloaded (in addition to 
         galaxies and randoms).
+
+      - ``qpm`` (boolean): if True, then QPM mocks will be downloaded (DR12 only).
+
+      - ``pthalos`` (boolean): if True, then PTHALOS mocks will be downloaded (DR11 only).
     """
     
-    _galaxy_filename(survey, download=True)
-    _random_filenames(survey, download=True)
-    _mask_filename(survey, download=mask)
-    _mock_filename(survey, 'qpm', 999, download=qpm)   # will also download mocks 0, ..., 998
-    _mock_random_filename(survey, 'qpm', download=qpm)
+    _galaxy_filename(survey, dr, download=True)
+    _random_filenames(survey, dr, download=True)
+    _mask_filename(survey, dr, download=mask)
+
+    for flag, mock_type in [ (qpm,'qpm'), (pthalos,'pthalos') ]:
+        if not flag:
+            continue
+        for _ in _mock_random_filenames(survey, mock_type, dr, download=True):
+            pass
+        _mock_filename(survey, mock_type, 0, dr, download=True)  # will download all mocks
 
 
 ####################################################################################################
@@ -245,23 +283,28 @@ def read_fits_catalog(filename, is_randcat, name=None, extra_columns=[]):
 ####################################################################################################
 
 
-def _check_survey(survey, abridged=False):
+def _check_survey(survey, dr, abridged=False):
     """Check that 'survey' is valid, and return its standard capitalization."""
+
+    dhash = { 11: 'DR11v1', 12: 'DR12v5' }
     
+    if dr not in dhash:
+        raise RuntimeError("SDSS {dr=} not supported (currently support DR11, DR12)")
+        
     survey_list = [ 'CMASS_North', 'CMASS_South', 'LOWZ_North', 'LOWZ_South' ]
 
-    if not abridged:
+    if (dr==12) and (not abridged):
         survey_list += [ 'CMASSLOWZTOT_North', 'CMASSLOWZTOT_South',
                          'CLASSLOWZE2_North', 'CMASSLOWZE3_North' ]
                     
     for s in survey_list:
         if survey.upper() == s.upper():
-            return s
+            return s, dhash[dr]
 
     raise RuntimeError(f"SDSS survey '{survey}' not recognized (must be one of: {survey_list})")
         
     
-def _sdss_path(relpath, download=False, *, packed_relpath=None, gz=False):
+def _sdss_path(relpath, dr, download, *, packed_relpath=None, gz=False):
     """Intended to be called through wrapper such as _galaxy_filename(), _random_filenames(), etc.
 
     If 'packed_relpath' is specified, it should be a file ending in '.gz', '.tgz', or '.tar.gz'
@@ -269,11 +312,13 @@ def _sdss_path(relpath, download=False, *, packed_relpath=None, gz=False):
 
     Setting gz=True is shorthand for packed_relpath = "{relpath}.gz".
 
+    The 'dr' argument is only used if download=True, to construct the URL.
+
     Example: 
 
          _sdss_path(relpath = 'qpm_mocks/mock_galaxy_DR12_LOWZ_S_QPM_0137.rdzw',
                     packed_relpath = 'qpm_mocks/mock_galaxy_DR12_LOWZ_S_QPM_allmocks.tar.gz',
-                    download = True)
+                    download = True, dr = 12)
 
     Does the following:
 
@@ -301,51 +346,80 @@ def _sdss_path(relpath, download=False, *, packed_relpath=None, gz=False):
 
     if not packed_relpath:
         # Case 1: No tar/gz involved, just download file.
-        url = f'https://data.sdss.org/sas/dr12/boss/lss/{relpath}'
+        url = f'https://data.sdss.org/sas/dr{dr}/boss/lss/{relpath}'
         io_utils.wget(abspath, url)   # calls assert os.path.exists(abspath) after downloading
     else:
         # Case 2: Download tar/gz file by calling _sdss_path() recursively, then unpack.
-        packed_abspath = _sdss_path(packed_relpath, download=True)
+        packed_abspath = _sdss_path(packed_relpath, dr, download=True)
         io_utils.unpack(packed_abspath, abspath)  # calls assert os.path.exists(abspath) after unpacking
     
     return abspath
 
 
-def _galaxy_filename(survey, download=False):
-    s = _check_survey(survey)
-    return _sdss_path(f'galaxy_DR12v5_{s}.fits', download, gz=True)
+def _galaxy_filename(survey, dr, download=False):
+    s, d = _check_survey(survey, dr)
+    return _sdss_path(f'galaxy_{d}_{s}.fits', dr, download, gz=True)
 
 
-def _random_filenames(survey, download=False):
-    s = _check_survey(survey)
-    return [ _sdss_path(f'random{n}_DR12v5_{s}.fits', download, gz=True) for n in [0,1] ]
+def _random_filenames(survey, dr, download=False):
+    s, d = _check_survey(survey, dr)
+    return [ _sdss_path(f'random{n}_{d}_{s}.fits', dr, download, gz=True) for n in [0,1] ]
 
 
 def _mask_filename(survey, download=False):
-    s = _check_survey(survey)
-    return _sdss_path(f'mask_DR12v5_{s}.ply', download)
+    s, d = _check_survey(survey, dr)
+    return _sdss_path(f'mask_{d}_{s}.ply', dr, download)
 
 
-def _mock_filename(survey, mock_type, ix, download=False):
-    _check_survey(survey, abridged=True)
+def _mock_filename(survey, mock_type, ix, dr, download=False):
+    _check_survey(survey, dr, abridged=True)
+
+    if (dr == 12) and (mock_type.lower() == 'qpm'):
+        assert 0 <= ix < 1000
+        
+        # The 'ix' argument is a zero-based index 0 <= ix < 1000, but the
+        # QPM files use a one-based index 1 <= ix <= 1000, so we add 1.
+            
+        return _sdss_path(
+            relpath = f'qpm_mocks/mock_galaxy_DR{dr}_{survey[:-4].upper()}_QPM_{(ix+1):04d}.rdzw',
+            packed_relpath = f'qpm_mocks/mock_galaxy_DR{dr}_{survey[:-4].upper()}_QPM_allmocks.tar.gz',
+            download = download,
+            dr = dr
+        )
+
+    elif (dr == 11) and (mock_type.lower() == 'pthalos'):
+        assert 0 <= ix < 600
+        
+        # The 'ix' argument is a zero-based index 0 <= ix < 600, but the
+        # pthalos mocks use an one-index 4001 <= ir <= 4600, so we add 4001 (!)
+
+        return _sdss_path(
+            relpath = f'dr{dr}_pthalos_mocks/mock_galaxy_DR{dr}_{survey[:-4].upper()}_PTHALOS_ir{(ix+4001)}.dat',
+            packed_relpath = f'dr{dr}_pthalos_mocks/mock_galaxy_DR{dr}_{survey[:-4].upper()}_PTHALOS_allmocks.tar.gz',
+            download = download,
+            dr = dr
+        )
     
-    if mock_type.lower() != 'qpm':
-        raise RuntimeError(f"kszx.sdss: {mock_type=} was not recognized (only 'qpm' is currently supported)")
+    else:
+        raise RuntimeError(f"kszx: SDSS {(mock_type,dr)=} was not recognized (currently support ('qpm',12) and ('pthalos',11))")
 
-    # NOTE: 'ix' argument is a zero-based index 0 <= ix < 1000, but the
-    # QPM files use a one-based index 1 <= ix <= 1000, so we add 1.
+
+def _mock_random_filenames(survey, mock_type, dr, download=False):
+    _check_survey(survey, dr, abridged=True)
     
-    return _sdss_path(
-        relpath = f'qpm_mocks/mock_galaxy_DR12_{survey[:-4].upper()}_QPM_{(ix+1):04d}.rdzw',
-        packed_relpath = f'qpm_mocks/mock_galaxy_DR12_{survey[:-4].upper()}_QPM_allmocks.tar.gz',
-        download = download
-    )
+    if (dr == 12) and (mock_type.lower() == 'qpm'):
+        for n in [1,2]:
+            yield _sdss_path(f'qpm_mocks/mock_random_DR{dr}_{survey[:-4].upper()}_50x{n}.rdzw', dr=dr, download=download, gz=True)
 
-
-def _mock_random_filenames(survey, mock_type, download=False):
-    _check_survey(survey, abridged=True)
+    elif (dr == 11) and (mock_type.lower() == 'pthalos'):
+        nfiles = 600 if survey.lower().startswith('cmass') else 1000
+        for n in range(4001, 4001+nfiles):
+            yield _sdss_path(
+                relpath = f'dr{dr}_pthalos_mocks/mock_random_DR{dr}_{survey[:-4].upper()}_PTHALOS_ir{n}.dat',
+                packed_relpath = f'dr{dr}_pthalos_mocks/mock_random_DR{dr}_{survey[:-4].upper()}_PTHALOS_allmocks.tar.gz',
+                download = download,
+                dr = dr
+            )
     
-    if mock_type.lower() != 'qpm':
-        raise RuntimeError(f"kszx.sdss: {mock_type=} was not recognized (only 'qpm' is currently supported)")
-
-    return [ _sdss_path(f'qpm_mocks/mock_random_DR12_{survey[:-4].upper()}_50x{n}.rdzw', download=True, gz=True) for n in [1,2] ]
+    else:
+        raise RuntimeError(f"kszx: SDSS {(mock_type,dr)=} was not recognized (currently support ('qpm',12) and ('pthalos',11))")
