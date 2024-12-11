@@ -30,8 +30,8 @@ from .Cosmology import Cosmology, CosmologicalParams
 from .SurrogateFactory import SurrogateFactory
 
 from . import act
-from . import desils
 from . import desils_lrg
+from . import desils_main
 from . import ksz_desils
 from . import planck
 from . import plot
