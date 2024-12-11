@@ -957,7 +957,7 @@ def estimate_power_spectrum(box, map_or_maps, kbin_delim, *, use_dc=False, allow
 
 
 def kbin_average(box, f, kbin_delim, *, use_dc=False, allow_empty_bins=False, return_counts=False):
-    """Averages a real-valued function f(k) in k-bins.
+    """Averages a real-valued array/function f(k) in k-bins.
 
     Function args:
 

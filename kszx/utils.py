@@ -261,19 +261,15 @@ def log_uniform(xmin, xmax, size=None):
 
 
 def covscale(m):
+    """Converts covariance matrix to correlation matrix (with 1's on the diagonal)."""
+    
     m = np.array(m)
     assert m.ndim == 2
     assert m.shape[0] == m.shape[1]
     assert np.all(m.diagonal() > 0.0)
 
-    n = m.shape[0]
-    ret = np.zeros((n,n))
-
-    for i in xrange(n):
-        for j in xrange(n):
-            ret[i,j] = m[i,j] / (m[i,i]*m[j,j])**0.5
-
-    return ret
+    x = 1.0 / np.sqrt(m.diagonal())
+    return m * x.reshape((1,-1)) * x.reshape((-1,1))
 
 
 def is_perfect_square(n):

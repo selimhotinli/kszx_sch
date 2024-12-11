@@ -15,7 +15,7 @@ from .core import \
 
 
 class SurrogateFactory:
-    def __init__(self, box, cosmo, ngal, bg, randcat, rweights=1.0, photometric=None, fnl=0, fsurr=1, ksz=False, bv=None, kernel='cubic'):
+    def __init__(self, box, cosmo, ngal, bg, randcat, rweights=1.0, photometric=None, fnl=0, nsurr=None, ksz=False, bv=None, kernel='cubic'):
         """
         rweights: either None, or a 1-d array of length randcat.size (e.g. FKP weights).
 
@@ -32,17 +32,22 @@ class SurrogateFactory:
         assert isinstance(cosmo, Cosmology)
         assert isinstance(randcat, Catalog)
         assert 0 < ngal < randcat.size
-        assert 0 < fsurr <= 1
         assert fnl == 0    # placeholder
         assert not ksz     # placeholder
         assert bv is None  # placeholder
 
+        if nsurr is None:
+            nsurr = randcat.size
+            
+        assert 0 < ngal < nsurr
+        assert nsurr <= randcat.size
+            
         self.box = box
         self.cosmo = cosmo
         self.ngal = ngal
         self.kernel = kernel
         self.nrand = randcat.size
-        self.nsurr = int(fsurr * self.nrand + 0.5)
+        self.nsurr = int(nsurr)
         self.fnl = fnl
         self.ksz = ksz
         # Note: don't need to save reference to 'randcat'.
@@ -94,16 +99,15 @@ class SurrogateFactory:
         assert (self.rcat_wt.ndim == 0) or (self.rcat_wt.shape == (self.nrand,))
 
         v = self.sigma2 * self.rcat_bD**2
-        self.fsurr_min = (ngal/self.nrand * np.max(v)) + 1.0e-10
+        self.nsurr_min = int((ngal * np.max(v)) + 1 + 1.0e-10)
 
-        if self.fsurr_min > 1:
-            nrand_min = int(self.fsurr_min * self.rand) + 1
-            raise RuntimeError(f'SurrogateFactory: not enough randoms! (nrand={self.nrand}, {nrand_min=}')
+        if self.nsurr_min > self.nrand:
+            raise RuntimeError(f'SurrogateFactory: not enough randoms! (nrand={self.nrand}, nsurr_min={self.nsurr_min})')
 
-        if fsurr < self.fsurr_min:
-            raise RuntimeError(f'SurrogateFactor: fsurr is too small ({fsurr=}, fsurr_min={self.fsurr_min})')
+        if nsurr < self.nsurr_min:
+            raise RuntimeError(f'SurrogateFactory: nsurr is too small ({nsurr=}, nsurr_min={self.nsurr_min})')
 
-        # If fsurr >= self.fsurr_min, then argument to sqrt(...) is always >= 0.
+        # If nsurr >= self.nsurr_min, then argument to sqrt(...) is always >= 0.
         self.rcat_eta_rms = np.sqrt(self.nsurr/ngal - v)
 
     
