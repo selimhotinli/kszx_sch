@@ -291,6 +291,32 @@ class Catalog:
             if destructive:
                 src_catalog.remove_column(col_name)
 
+
+    def make_random_subcatalog(self, new_size, name=None):
+        """Returns a new Catalog, obtained by choosing a random subset (with size ``new_size``) of existing Catalog.
+
+        This method can be used to reduce the size of a random catalog. For example::
+
+           # Random catalong with 100x the galaxy density
+           rcat_large = kszx.sdss.read_randoms('CMASS_North')                  
+
+           # Random catalong with 10x the galaxy density
+           rcat_small = rcat_large.make_random_subcatalog(rcat_large.size/10)
+        """
+
+        new_size = int(new_size)
+        assert new_size > 0
+        assert new_size <= self.size
+        
+        if name is None:
+            name = f'subcatalog({new_size=})'
+
+        # This seems to be the fastest way to select 'new_size' random indices in [0,self.size).
+        isrc = np.random.permutation(self.size)[:new_size]
+        
+        cols = { k: getattr(self,k)[isrc] for k in self.col_names }
+        return Catalog(cols=cols, name=name, size=new_size)
+
     
     @staticmethod
     def from_h5(filename):
@@ -335,7 +361,7 @@ class Catalog:
         """Reads FITS file in SDSS/DESILS format, and returns a Catalog object.
         
         The ``col_name_pairs`` arg should be a list of pairs (col_name, fits_col_name).
-        See sdss.py and desils_lry.py for examples."""
+        See sdss.py and desils_lrg.py for examples."""
 
         if name is None:
             name = os.path.basename(filename)
