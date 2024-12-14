@@ -28,6 +28,12 @@ def ra_dec_to_xyz(ra_deg, dec_deg, r=None):
         x = r * cos(dec) * cos(ra)
         y = r * cos(dec) * sin(ra)
         z = r * sin(dec)
+
+    Note that the radial coordinate ``r`` must be specified as a comoving distance. If you
+    have redshifts instead, you should call ``Cosmology.chi()``::
+
+        cosmo = kszx.Cosmology('planck18+bao')
+        xyz = kszx.utils.ra_dec_to_xyz(ra_deg, dec_deg, cosmo.chi(z=z))
     """
     
     ra_deg = np.asarray(ra_deg)
