@@ -27,6 +27,8 @@ from .Box import Box
 from .BoundingBox import BoundingBox
 from .Catalog import Catalog
 from .Cosmology import Cosmology, CosmologicalParams
+
+from .CatalogPSE import CatalogPSE
 from .SurrogateFactory import SurrogateFactory
 
 from . import act
