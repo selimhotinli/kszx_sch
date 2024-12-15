@@ -1,6 +1,4 @@
 # To do:
-#  - make sure that DC mode is being included
-#  - explore choice of K empirically in a few examples
 #  - don't forget to think about compensation!!
 #  - when the dust settles, create an interface for compensation_kernel which uses less memory.
 #  - I guess I'm renaming kbin_delim -> kbin_edges
@@ -9,6 +7,9 @@
 from . import core
 from . import utils
 
+from .Box import Box
+
+import numpy as np
 from collections.abc import Iterable
 
 
@@ -20,14 +21,15 @@ class CatalogPSE:
         assert nfields <= 50
         
         # If use_dc=False, then core._check_kbin_delim() will change kmin.
-        self.kbin_edges = core._check_kbin_delim(box, kbin_delim, use_dc)
-        self.kbin_centers = (self.kbin_edges[1:] + self.kbin_edges[:-1]) / 2.
-        self.return_1d = return_1d
-        self.nfields = int(nfields)
-        self.nkbins = len(self.kbin_edges) - 1
         self.box = box
+        self.kbin_edges = core._check_kbin_delim(box, kbin_edges, use_dc)
+        self.kbin_centers = (self.kbin_edges[1:] + self.kbin_edges[:-1]) / 2.
+        self.nkbins = len(self.kbin_edges) - 1
+        self.nfields = int(nfields)
         self.spin = self._parse_spin(spin)
         self.kernel = kernel
+        self.use_dc = use_dc
+        self.return_1d = return_1d
         self.heavyweight = heavyweight
 
         rpoints, rweights, _ = self._parse_pwv(rpoints, rweights, None, 'CatalogPSE.__init__()', prefix='r')
@@ -41,23 +43,25 @@ class CatalogPSE:
         for i in range(self.nfields):
             for j in range(i):
                 if (rpoints[i] is rpoints[j]) and (rweights[i] is rweights[j]):
-                    self.rmaps[i] = rmaps[j]
-                    self.fmaps[i] = fmaps[j]
+                    self.rmaps[i] = self.rmaps[j]
+                    self.fmaps[i] = self.fmaps[j]
                     break
             else:
                 self.rmaps[i] = core.grid_points(box, rpoints[i], rweights[i], kernel=kernel)
-                self.fmaps[i] = core.fft_r2c(box, rmaps[i])
+                self.fmaps[i] = core.fft_r2c(box, self.rmaps[i])
                 self.fmaps[i] *= ck
 
-        # Save the real-space maps, for later use in apply().
-        # Note: saving Fourier-space maps doesn't work, since apply() can use nonzero spins.
-        self.rmaps = rmaps
+        # FIXME revisit the issue of choosing K!
+        K = 0.6 * box.knyq
+        self.normalization = self.compute_normalization(K)
 
-        if heavyweight:
-            self.fmaps = fmaps
+        # We save the real-space maps, for later use in apply().
+        # (Note: saving Fourier-space maps doesn't work, since apply() can use nonzero spins.)
+        #
+        # If heavyweight=True, then we also save Fourier-space maps, for use in compute_normalization().
 
-        print('FIXME placeholder value of K!!')
-        self.normalization = self.compute_normalization(K=0.1)
+        if not heavyweight:
+            del self.fmaps
 
 
     def apply(self, points, weights=None, values=None):
@@ -102,7 +106,7 @@ class CatalogPSE:
         if not hasattr(self, 'fmaps'):
             raise RuntimeError(f'CatalogPSE: to call compute_normalization()')
             
-        edges = np.array([ 0, K, 2**(1./self.box.ndim) * K ])
+        edges = np.array([ 0, K / 2**(1./self.box.ndim), K ])
 
         # use_dc=True is important here!!
         pk, counts = core.estimate_power_spectrum(self.box, self.fmaps, edges, use_dc=True, return_counts=True)

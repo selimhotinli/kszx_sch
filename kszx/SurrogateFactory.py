@@ -83,7 +83,7 @@ class SurrogateFactory:
         zcols = zcols.intersection(randcat.col_names)
 
         # Case 1: spectroscopic catalog.
-        if zcols == set(['z'])
+        if zcols == set(['z']):
             if photometric is None:
                 print("SurrogateFactory: setting photometric=False (randcat contains 'z' but not ztrue/zobs)")
             elif photometric:
