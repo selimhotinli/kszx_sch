@@ -1,9 +1,3 @@
-# To do:
-#  - don't forget to think about compensation!!
-#  - when the dust settles, create an interface for compensation_kernel which uses less memory.
-#  - I guess I'm renaming kbin_delim -> kbin_edges
-#  - Add helper functions to make (galaxies - randoms) plots?
-
 from . import core
 from . import utils
 
@@ -15,6 +9,10 @@ from collections.abc import Iterable
 
 class CatalogPSE:
     def __init__(self, box, kbin_edges, rpoints, *, rweights=None, spin=0, nfields=1, kernel='cubic', use_dc=False, return_1d=True, heavyweight=None):
+        """
+        Uses simple prescription for power spectrum normalization -- will improve later.
+        """
+        
         assert isinstance(box, Box)
         assert int(nfields) == nfields
         assert nfields >= 1
@@ -32,15 +30,19 @@ class CatalogPSE:
         self.return_1d = return_1d
         self.heavyweight = heavyweight
 
-        rpoints, rweights, _ = self._parse_pwv(rpoints, rweights, None, 'CatalogPSE.__init__()', prefix='r')
+        # rpoints = length-nfields list of shape-(nrand,box.ndim) arrays
+        # rweights = length-nfields list of (shape-(nrand,) array or None)
+        # self.rwsums = numpy array of shape (nfields,)
+        rpoints, rweights, _, self.rwsums = self._parse_pwv(rpoints, rweights, None, 'CatalogPSE.__init__()', prefix='r')
 
         # FIXME when the dust settles, create an interface for compensation_kernel which uses less memory.
         ck = 1.0 / np.sqrt(core.compensation_kernel(box, kernel))
         
-        self.rmaps = [ None for _ in range(self.nfields) ]  # real space
-        self.fmaps = [ None for _ in range(self.nfields) ]  # Fourier space
+        self.rmaps = [ None for _ in range(self.nfields) ]  # real space maps
+        self.fmaps = [ None for _ in range(self.nfields) ]  # Fourier space maps
         
         for i in range(self.nfields):
+            # (rpoints, rweights) pairs can be repeated -- in this case we can save memory.
             for j in range(i):
                 if (rpoints[i] is rpoints[j]) and (rweights[i] is rweights[j]):
                     self.rmaps[i] = self.rmaps[j]
@@ -50,15 +52,26 @@ class CatalogPSE:
                 self.rmaps[i] = core.grid_points(box, rpoints[i], rweights[i], kernel=kernel)
                 self.fmaps[i] = core.fft_r2c(box, self.rmaps[i])
                 self.fmaps[i] *= ck
-
+            
         # FIXME revisit the issue of choosing K!
         K = 0.6 * box.knyq
-        self.normalization = self.compute_normalization(K)
+        self.A = self.compute_A(K)
+        assert self.A.shape == (self.nfields, self.nfields)
+        assert np.all(self.A.diagonal() > 0)
+
+        self.normalization = np.zeros((self.nfields, self.nfields))
+        
+        for i in range(self.nfields):
+            for j in range(i+1):
+                r = self.A[i,j] / np.sqrt(self.A[i,i] * self.A[j,j])
+                if r < 0.03:
+                    print(f'CatalogPSE: fields {(j,i)} have non-overlapping footprints, cross power will not be estiamted')
+                else:
+                    self.normalization[i,j] = self.normalization[j,i] = 1.0 / self.A[i,j]
 
         # We save the real-space maps, for later use in apply().
         # (Note: saving Fourier-space maps doesn't work, since apply() can use nonzero spins.)
-        #
-        # If heavyweight=True, then we also save Fourier-space maps, for use in compute_normalization().
+        # If heavyweight=True, then we also save Fourier-space maps, for use in compute_A().
 
         if not heavyweight:
             del self.fmaps
@@ -75,9 +88,10 @@ class CatalogPSE:
         in Case 2.
         """
         
-        points, weights, values = self._parse_pwv(points, weights, values, 'CatalogPSE.apply()')
+        points, weights, values, wsums = self._parse_pwv(points, weights, values, 'CatalogPSE.apply()')
+        wratios = wsums / self.rwsums
 
-        # Fourier-space maps
+        # Fourier-space maps (initialized in loop)
         fmaps = [ None for _ in range(self.nfields) ]
 
         for i in range(self.nfields):
@@ -86,25 +100,31 @@ class CatalogPSE:
             if v is None:
                 # Case 1: density field of tracers, with randoms subtracted.
                 m = core.grid_points(self.box, p, w, kernel=self.kernel)
-                m -= (xx) * self.rmaps[i]   # subtract randoms
+                m -= wratios[i] * self.rmaps[i]   # subtract randoms
             else:
                 # Case 2: general sum of delta functions, with no random subtraction.
-                m = core.grid_points(self.box, p, w*v, kernel=self.kernel)
+                wv = (w*v) if (w is not None) else v
+                m = core.grid_points(self.box, p, wv, kernel=self.kernel)
 
             fmaps[i] = core.fft_r2c(self.box, m, spin = self.spin[i])
             del m
 
         pk = core.estimate_power_spectrum(box, fmaps, self.kbin_edges, use_dc = self.use_dc)
         assert pk.shape == (self.nfields, self.nfields, self.nkbins)
+
+        pk *= np.reshape(wratios, (self.nfields, 1, 1))
+        pk *= np.reshape(wratios, (1, self.nfields, 1))
+        pk *= np.reshape(self.normalization, (self.nfields, self.nfields, 1))
         
         return pk[0,0,:] if (self.return_1d and (self.nfields == 1)) else pk
 
 
-    def compute_normalization(self, K):
+    def compute_A(self, K):
         """Returns a shape (self.nfields, self.nfields) array. Denoted A_{WW'} in the notes."""
 
         if not hasattr(self, 'fmaps'):
-            raise RuntimeError(f'CatalogPSE: to call compute_normalization()')
+            raise RuntimeError('CatalogPSE: in order to call compute_A(), you'
+                               + ' should call the constructor with heavyweight=True')
             
         edges = np.array([ 0, K / 2**(1./self.box.ndim), K ])
 
@@ -113,7 +133,8 @@ class CatalogPSE:
         assert pk.shape == (self.nfields, self.nfields, 2)
         assert counts.shape == (2,)
 
-        return (pk[:,:,0]*counts[0] - pk[:,:,1]*counts[1])
+        # Note factor (1/V_box), which normalizes sum_k -> int d^3k/(2pi)^3
+        return (pk[:,:,0]*counts[0] - pk[:,:,1]*counts[1]) / self.box.box_volume
         
 
     ################################################################################################
@@ -186,27 +207,37 @@ class CatalogPSE:
         values = self._parse_vals(values, caller, f'{prefix}values')
 
         assert len(points) == len(weights) == len(values) == self.nfields
+        wsums = np.zeros(self.nfields)
 
         # Shape checks.
-        for p,w,v in zip(points, weights, values):
+        for i in range(self.nfields):
+            p,w,v = points[i], weights[i], values[i]
+
             if (p.ndim != 2) or (p.shape[1] != self.box.ndim):
                 raise RuntimeError(f"{caller}: expected {prefix}points to have shape (*,{self.box.ndim}), got shape {p.shape}")
-            
+            if p.shape[0] == 0:
+                raise RuntimeError(f"{caller}: {prefix}points array has zero length")
+
             if w is not None:
                 if w.ndim != 1:
                     raise RuntimeError(f"{caller}: expected {prefix}weights to be a 1-d array, got shape {w.shape}")
                 if p.shape[0] != w.shape[0]:
                     raise RuntimeError(f"{caller}: {prefix}points/{prefix}weights arrays have unequal lengths ({p.shape[0]}, {w.shape[0]})")
                 if np.min(w) < 0:
-                    raise RuntimeError(f"{caller}: {prefix}weights arrays have unequal lengths ({p.shape[0]}, {w.shape[0]})")                
-
+                    raise RuntimeError(f"{caller}: {prefix}weights array has negative value(s)")
+                
             if v is not None:
                 if v.ndim != 1:
                     raise RuntimeError(f"{caller}: expected {prefix}values to be a 1-d array, got shape {v.shape}")
                 if p.shape[0] != v.shape[0]:
                     raise RuntimeError(f"{caller}: {prefix}points/{prefix}values arrays have unequal lengths ({p.shape[0]}, {v.shape[0]})")
+                
+            wsums[i] = np.sum(w) if (w is not None) else len(p)
+
+        if np.any(wsums <= 0):
+            raise RuntimeError(f"{caller}: {prefix}weights array is all zeros")
             
-        return points, weights, values
+        return points, weights, values, wsums
         
 
     def _parse_spin(self, spin):
