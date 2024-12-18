@@ -30,13 +30,19 @@ kszx documentation
    interpolation
    manipulating_maps
    misc_utils
-   sdss
-   desils_lrg
 
 .. toctree::
    :maxdepth: 2
-   :caption: High-level functions:
+   :caption: High-level features:
 
+   catalog_pse
+   surrogate_factory
    plot
    ksz_desils
-   
+
+.. toctree::
+   :maxdepth: 2
+   :caption: Datasets:
+
+   sdss
+   desils_lrg

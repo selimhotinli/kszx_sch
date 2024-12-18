@@ -1,5 +1,5 @@
-:mod:`DESILS-LRG data`
-======================
+:mod:`DESILS-LRG`
+=================
 
 .. automodule:: kszx.desils_lrg
 		

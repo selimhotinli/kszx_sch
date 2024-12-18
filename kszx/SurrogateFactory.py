@@ -9,11 +9,43 @@ from . import core
 
 
 class SurrogateFactory:
-    def __init__(self, box, cosmo, randcat, ngal_mean, ngal_rms, bg, rweights=None, fnl=0, ksz=False, bvr=None, vr_noise_realization=None, vr_rms=None, photometric=None, deltac=1.68, kernel='cubic'):
-        """SurrogateFactory: high-level class which simulates "surrogate" fields for a galaxy survey.
+    def __init__(self, box, cosmo, randcat, ngal_mean, ngal_rms, bg, gweights=None, fnl=0, ksz=False, ksz_gweights=None, ksz_bv=None, ksz_tcmb_realization=None, ksz_tcmb_rms=None, photometric=None, deltac=1.68, kernel='cubic'):
+        r"""SurrogateFactory: high-level class which simulates "surrogate" fields for a galaxy survey.
 
-           <eta^2> = (N_surr/N_gal) - < delta_G^2 >
+        We simulate the surrogate fields (for notation see overleaf):
         
+        $$\begin{align}
+        S_g(x) &= \frac{N_{gal}}{N_{rand}} \sum_{j \in rand} W_j^L (b_j^g \delta_m(x_j) + \eta_j^g) \delta^3(x-x_j) \\
+        S_v(x) &= \frac{N_{gal}}{N_{rand}} \sum_{j \in rand} W_j^S (b_j^v v_r(x_j) + \eta_j^v) \delta^3(x-x_j)
+        \end{align}$$
+
+        with the following correspondence between overleaf notation and constructor args:
+           - $W_j^L =$ ``gweights``
+           - $W_j^S =$ ``ksz_gweights``
+           - $b_j^g =$ ``bg``
+           - $b_j^v =$ ``ksz_bv``
+
+        The number of galaxies $N_{gal}$ is a random variable.
+        The noise fields $\eta_j^g$ and $\eta_j^v$ are simulated as follows:
+
+           - For $\eta_j^g$, we simulate Gaussian random numbers with variance
+
+             $$\mbox{Var}(\eta_j^g) = \frac{N_{rand}}{N_{gal}} - \mbox{Var}(b_j^g \delta_m(x_j))$$
+
+           - For $\eta_j^v$, there are two possibilities. First, the caller may specify a per-object RMS
+             $\sigma_j^T =$ ``ksz_tcmb_rms``. Then $\eta_j^v$ is a Gaussian random number with variance
+
+             $$\mbox{Var}(\eta_j^v) \rangle = \frac{N_{rand}}{N_{gal}} (\sigma_j^T)^2$$
+
+           - The second possibility for $\eta_j^v$: the caller specifies a fixed CMB realization
+             $T_j =$ ``ksz_tcmb_realization``. In each surrogate simulation, we choose a random
+             subset $S$ of the random catalog, with size $N_{gal}$. Then:
+
+             $$\eta_j = \begin{cases}
+             \frac{N_{rand}}{N_{gal}} T_j & \mbox{if } j\in S \\
+             0 & \mbox{if } j\not\in S
+             \end{cases}$$
+
         Constructor args:
 
           - ``box`` (kszx.Box): defines pixel size, bounding box size, and location of observer,
@@ -30,7 +62,7 @@ class SurrogateFactory:
               2. photometric: randcat contains 'ztrue' and 'zobs' columns, but not 'z'.
 
             Note that in the photometric case, your random catalog must contain 'ztrue' and
-            'zobs' columns which accurately simulate the joint $(z_{\rm true}, z_{\rm obs})$
+            'zobs' columns which accurately simulate the joint $(z_{true}, z_{obs})$
             distribution of the galaxies.
         
             (Reminder: you can use ``Catalog.add_column()`` and ``Catalog.remove_column()``
@@ -46,11 +78,11 @@ class SurrogateFactory:
                2. a 1-d array of length randcat.size
                3. a scalar
 
-          - ``rweights`` (optional): Per-object weights applied to the random catalog.
+          - ``gweights`` (optional): Per-object weights applied to the random catalog.
             For example, an FKP weighting. Can be specified in any of the three
             ways as the ``bg`` argumment (see above).
 
-            You should use an ``rweights`` which is as consistent as possible with
+            You should use an ``gweights`` which is as consistent as possible with
             the weighting that you use to analyze the galaxy data. For example, if
             you plan to analyze galaxy data with FKP weighting, you should also
             use FKP weighting in the ``SurrogateFactory``.
@@ -63,24 +95,24 @@ class SurrogateFactory:
             will be simulated (in addition to the galaxy surrogate field). (For details,
             see ``SurrogateFactory.simulate()``.)
 
-          - ``bvr``: Bias for the velocity reconstruction. Should be specified iff ``ksz=True``.
+          - ``ksz_bv``: Bias for the velocity reconstruction. Should be specified iff ``ksz=True``.
             Can be specified in any of the three ways as the ``bg`` argumment (see above).
 
-          - ``vr_noise_realization``: Velocity reconstruction noise *realization* (not RMS).
+          - ``ksz_tcmb_realization``: Velocity reconstruction noise *realization* (not RMS).
             Must be specified as a 1-d array of length ``randcat.size``. Note that
             reconstruction noise can either be specified as a "realization" or an "RMS",
             see a few lines below for discussion.
         
-          - ``vr_rms``: Per-object velocity reconstruction noise *RMS* (not realization).
+          - ``ksz_tcmb_rms``: Per-object velocity reconstruction noise *RMS* (not realization).
             Can be specified in any of the three ways as the ``bg`` argument (see above).
 
             Note that velocity reconstruction noise can be specified in two ways: either
-            as a noise *realization* (via the ``vr_noise_realization`` argument), or a
-            noise *rms* (via the ``vr_rms`` argument). If ``vr_rms`` is specified, then
+            as a noise *realization* (via the ``ksz_tcmb_realization`` argument), or a
+            noise *rms* (via the ``ksz_tcmb_rms`` argument). If ``ksz_tcmb_rms`` is specified, then
             an independent Gaussian noise realization will be simulated in each call to
             ``SurrogateFactory.simulate()``.
 
-            If ``vr_noise_realization`` is specified, then the same noise realization
+            If ``ksz_tcmb_realization`` is specified, then the same noise realization
             will be recycled in each call to ``SurrogateFactory.simulate()``. This is
             intended for a case where we take the noise realization directly from a
             CMB map, without attempting to model the noise covariance.
@@ -93,7 +125,7 @@ class SurrogateFactory:
             column, and define a spectroscopic catalog using the 'ztrue' column.
 
           - ``deltac`` (float): This parameter is only used if (fnl != 0), to compute
-            non-Gaussian bias from Gaussian bias, using $b_{ng} = \delta_c (b_g - 1)$.
+            non-Gaussian bias from Gaussian bias, using $b_{ng} = delta_c (b_g - 1)$.
 
           - ``kernel`` (string): Interpolation kernel passed to ``kszx.interpolate_points()``.
             when simulating the surrogate field. Currently ``cic`` and ``cubic`` are implemented
@@ -124,36 +156,35 @@ class SurrogateFactory:
         self.kernel = kernel
         # Note: we don't save reference to 'randcat', but we do save references to some of its columns.
         
-        surr_ztrue, surr_zobs, photometric = self._init_redshifts(randcat, photometric)
-        assert np.min(surr_ztrue) >= 0
-        assert np.min(surr_zobs) >= 0
+        ztrue, zobs, photometric = self._init_redshifts(randcat, photometric)
+        assert np.min(ztrue) >= 0
+        assert np.min(zobs) >= 0
         
         self.photometric = photometric
-        self.surr_ra_deg = randcat.ra_deg
-        self.surr_dec_deg = randcat.dec_deg
-        self.surr_ztrue = surr_ztrue
-        self.surr_zobs = surr_zobs
+        self.ztrue = ztrue
+        self.zobs = zobs
 
         # These initializations must be done after calling _init_redshifts()
-        self.bg = bg = self._eval_zfunc(bg, surr_ztrue, 'bg')
-        self.bvr = bvr = self._eval_zfunc(bg, surr_ztrue, 'bvr', allow_none=True)
-        self.vr_rms = vr_rms = self._eval_zfunc(bg, surr_ztrue, 'vr_rms', allow_none=True, non_negative=True)
-        self.vr_noise_realization = vr_noise_realization = self._eval_zarr(vr_noise_realization, 'vr_noise_realization')
-        self.rweights = rweights = self._eval_zfunc(rweights, surr_zobs, 'rweights', allow_none=True, non_negative=True)
+        self.bg = bg = self._eval_zfunc(bg, ztrue, 'bg')
+        self.gweights = gweights = self._eval_zfunc(gweights, zobs, 'gweights', allow_none=True, non_negative=True)
+        self.ksz_gweights = ksz_gweights = self._eval_zfunc(gweights, zobs, 'gweights', allow_none=True, non_negative=True)
+        self.ksz_tcmb_realization = ksz_tcmb_realization = self._eval_zarr(ksz_tcmb_realization, 'ksz_tcmb_realization', allow_none=True)
+        self.ksz_tcmb_rms = ksz_tcmb_rms = self._eval_zfunc(bg, ztrue, 'ksz_tcmb_rms', allow_none=True, non_negative=True)
+        self.ksz_bv = ksz_bv = self._eval_zfunc(bg, ztrue, 'ksz_bv', allow_none=True)
 
-        # Checks: if ksz=True, then bvr is not None, and precisely one of {vr_rms, vr_noise_realization} is None.
+        # Checks: if ksz=True, then ksz_bv is not None, and precisely one of {ksz_tcmb_rms, ksz_tcmb_realization} is None.
         self._check_ksz_args()
 
-        self.surr_D = cosmo.D(z=surr_ztrue, z0norm=True)
-        self.surr_faH = cosmo.f(z=surr_ztrue) * cosmo.H(z=surr_true) / (1+surr_ztrue)
-        self.surr_xyz_true = utils.ra_dec_to_xyz(randcat.ra_deg, randcat.dec_deg, r=cosmo.chi(z=surr_ztrue))
-        self.surr_xyz_obs = utils.ra_dec_to_xyz(randcat.ra_deg, randcat.dec_deg, r=cosmo.chi(z=surr_zobs))
+        self.D = cosmo.D(z=ztrue, z0norm=True)
+        self.faH = cosmo.f(z=ztrue) * cosmo.H(z=surr_true) / (1+ztrue)
+        self.xyz_true = utils.ra_dec_to_xyz(randcat.ra_deg, randcat.dec_deg, r=cosmo.chi(z=ztrue))
+        self.xyz_obs = utils.ra_dec_to_xyz(randcat.ra_deg, randcat.dec_deg, r=cosmo.chi(z=zobs))
         self.sigma2 = self._integrate_kgrid(self.box, cosmo.Plin_z0(self.box.get_k()))
 
         # Check: the following quantity is always nonnegative
         #   <eta^2> = (N_rand/N_gal) - < delta_G^2 >
 
-        bD_max = np.max(bg * self.surr_D)
+        bD_max = np.max(bg * self.D)
         ngal_max = ngal_mean + 3*ngal_rms
         self.nrand_min = int(ngal_max * + 10)
         
@@ -168,53 +199,56 @@ class SurrogateFactory:
         """
         Initializes::
 
-         self.surr_gweights  # needed for CatalogPSE ('weights' argument for surrogate galaxy field)
-         self.surr_gvalues   # needed for CatalogPSE ('values' argument for surrogate galaxy field)
+         self.surr_gal_weights  # needed for CatalogPSE ('weights' argument for surrogate galaxy field)
+         self.surr_gal_values   # needed for CatalogPSE ('values' argument for surrogate galaxy field)
          self.surr_ngal      # not needed for CatalogPSE
 
         If ksz=True, additionally initializes::
         
-         self.surr_bvr       # needed for CatalogPSE ('weights' argument for surrogate vrec field)
-         self.surr_vr        # needed for CatalogPSE ('values' argument for surrogate vrec field)
+         self.surr_vr_weights       # needed for CatalogPSE ('weights' argument for surrogate vrec field)
+         self.surr_vr_values        # needed for CatalogPSE ('values' argument for surrogate vrec field)
         """
 
         t = np.clip(np.random.normal(), -3.0, 3.0)
         ngal = self.ngal_mean + t * self.ngal_rms
-        nsurr = self.nrand
+        nrand = self.nrand
         
         delta0 = simulate_gaussian_field(self.box, self.cosmo.Plin_z0)
         delta0 /= np.sqrt(compensation_kernel(self.box, self.kernel))
 
         # delta_g(k,z) = (bg + 2 fNL deltac (bg-1) / alpha(k,z)) * delta_m(k,z)
         #              = (bg D(z) + 2 fNL deltac (bg-1) / alpha0(k)) * delta0(k)
-        
-        bD = self.bg * self.surr_D
-        deltag = bD * core.interpolate_points(self.box, delta0, self.rcat_xyz_true, self.kernel, fft=True)
+
+        # deltag = (bg * delta_m) = (bg * D * delta0), evaluated on randcat.
+        deltag = self.bg * delta_m * core.interpolate_points(self.box, delta0, self.rcat_xyz_true, self.kernel, fft=True)
 
         if self.fnl != 0:
+            # Add term to deltag:
+            #     2 fNL deltac (bg-1) / alpha(k,z) * delta_m(k,z)
+            #   = 2 fNL deltac (bg-1) / alpha_z0(k) * delta0(k)    [ factor D(z) cancels ]
             phi0 = multiply_kfunc(self.box, delta0, lambda k: 1.0/self.cosmo.alpha_z0(k=k), dc=0)
-            phi0 = core.interpolate_points(self.box, phi0, self.surr_xyz_true, self.kernel, fft=True)
+            phi0 = core.interpolate_points(self.box, phi0, self.xyz_true, self.kernel, fft=True)
             deltag += 2 * self.fnl * self.deltac * (self.bg-1) * phi0
 
         # Add noise to delta_g
-        #  <eta^2> = (nsurr/ngal) - <deltag^2>
-        #          = (nsurr/ngal) - bD^2 self.sigma2
+        #  <eta^2> = (nrand/ngal) - <deltag^2>
+        #          = (nrand/ngal) - bD^2 self.sigma2
 
-        noise_var = (nsurr/ngal) - self.sigma2 * (bD*bD)
+        noise_var = (nrand/ngal) - self.sigma2 * (bD*bD)
         deltag += np.random.normal(scale = np.sqrt(noise_var))
         
-        self.surr_gweights = () * self._xx
-        self.surr_gvalues = self.surr_gweights * deltag
+        self.surr_gal_weights = () * self._xx
+        self.surr_gal_values = self.surr_gal_weights * deltag
         self.surr_ngal = ngal
 
         if self.ksz:
             vr = multiply_kfunc(self.box, delta0, lambda k: 1.0/k, dc=0)   # note wrong normalization (no faHD or faH0)
-            vr = core.interpolate_points(self.box, vr, self.surr_xyz_true, self.kernel, fft=True, spin=1)
-            vr *= (self.bvr * self.surr_faH * self.surr_D)                 # correct normalization
-            nvr = self.vr_noise_realization if (self.vr_noise_realization is not None) else np.random.normal(scale=self.vr_rms)
+            vr = core.interpolate_points(self.box, vr, self.xyz_true, self.kernel, fft=True, spin=1)
+            vr *= (self.bvr * self.faH * self.D)                 # correct normalization
+            nvr = self.ksz_tcmb_realization if (self.ksz_tcmb_realization is not None) else np.random.normal(scale=self.ksz_tcmb_rms)
             
-            self.surr_bvr = (ngal/nsurr) * self.bvr
-            self.surr_vr = (ngal/nsurr)*vr + np.sqrt(ngal/nsurr)*nvr
+            self.surr_vr_weights = (ngal/nrand) * self.bvr
+            self.surr_vr_values = (ngal/nrand)*vr + np.sqrt(ngal/nrand)*nvr
             
 
     ####################################################################################################
@@ -253,7 +287,7 @@ class SurrogateFactory:
 
         
     def _eval_zfunc(self, f, z, name, allow_none=False, non_negative=False):
-        """Helper method for contructor. Used to parse the 'bg', 'bvr', and 'vr_rms' constructor args.
+        """Helper method for contructor. Used to parse the 'bg', 'bvr', and 'ksz_tcmb_rms' constructor args.
 
         Returns an array of length self.nrand (or None, if allow_none=True).
         The 'f' argument is either a callable function z -> f(z), an array of length self.nrand, or a scalar.
@@ -303,17 +337,17 @@ class SurrogateFactory:
 
     def _check_ksz_args(self):
         if not self.ksz:
-            for k in [ 'bvr', 'vr_noise_realization', 'vr_rms' ]:
+            for k in [ 'bvr', 'ksz_tcmb_realization', 'ksz_tcmb_rms' ]:
                 if getattr(self,k) is not None:
                     print(f"SurrogateFactory: warning: '{k}' constructor arg was specified, without also specifying ksz=True")
             return
 
         if self.bvr is None:
             raise RuntimeError("SurrogateFactory: if ksz=True is specified, then 'bvr' constructor arg must also be specified")
-        if (self.vr_noise_realization is None) and (self.vr_rms is None):
-            raise RuntimeError("SurrogateFactory: if ksz=True is specified, then 'vr_noise_realization' or 'vr_rms' constructor arg must also be specified")
-        if (self.vr_noise_realization is not None) and (self.vr_rms is not None):
-            raise RuntimeError("SurrogateFactory: specifying both 'vr_normalization' and 'vr_rms' is not allowed")
+        if (self.ksz_tcmb_realization is None) and (self.ksz_tcmb_rms is None):
+            raise RuntimeError("SurrogateFactory: if ksz=True is specified, then 'ksz_tcmb_realization' or 'ksz_tcmb_rms' constructor arg must also be specified")
+        if (self.ksz_tcmb_realization is not None) and (self.ksz_tcmb_rms is not None):
+            raise RuntimeError("SurrogateFactory: specifying both 'vr_normalization' and 'ksz_tcmb_rms' is not allowed")
         
         
     @staticmethod

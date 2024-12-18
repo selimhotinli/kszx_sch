@@ -58,3 +58,9 @@ exclude_patterns = []
 
 html_theme = 'alabaster'
 html_static_path = ['_static']
+
+# https://stackoverflow.com/questions/77100412
+html_theme_options = {
+    'body_max_width' : 'none',
+    'page_width': 'auto',
+}

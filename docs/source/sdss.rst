@@ -1,5 +1,5 @@
-:mod:`SDSS data`
-================
+:mod:`SDSS`
+===========
 
 .. automodule:: kszx.sdss
 		
