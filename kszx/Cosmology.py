@@ -384,7 +384,7 @@ class Cosmology:
         ommz = omm0 / (omm0 + oml0 * (1+z)**(-3.))
         return ommz**(5./9.)
 
-    
+        
     def alpha(self, *, k, z, kzgrid=False, check=True):
         r"""Return $\alpha(k,z)$, defined by $\delta_m(k,z) = (3/5) \alpha(k,z) \zeta(k)$.
 
@@ -406,22 +406,55 @@ class Cosmology:
         convention is transposed relative to CAMB or hmvec.)
         """
 
-        kpiv = self.params.kpivot
-        Delta2 = self.params.scalar_amp
-        ns = self.params.ns
-
         # Easiest way to compute alpha(k,z):
-        #
         #  alpha(k,z) = (5/3) (Pm(k,z) / Pzeta(k))**0.5
-        #
-        #  Pzeta(k) = (2pi^2 / k^3) * Delta^2 * (k/kpiv)**(ns-1)
-        #  1/Pzeta(k) = (kpiv^3 / (2 pi^2 Delta^2)) * (k/kpiv)**(4-ns)
         
         k, z = np.asarray(k), np.asarray(z)
         Pm = self.Plin(k=k, z=z, kzgrid=kzgrid, check=check)
-        Pz_rec = (kpiv**3 / (2 * np.pi**2 * Delta2)) * (k/kpiv)**(4-ns)   # okay for k=0 (provided ns < 4!)
+        Pz_rec = self._pzeta_rec(k, check=check)
         
         if kzgrid:
             Pz_rec = Pz_rec.reshape(Pz_rec.shape + (-1,)*z.ndim)
 
         return (5/3.) * np.sqrt(Pm * Pz_rec)
+
+
+    def alpha_z0(self, k, check=True):
+        r"""Returns $\alpha(k)$ at $z=0$, defined by $\delta_m(k) = (3/5) \alpha(k) \zeta(k)$.
+
+        Calling ``alpha_z0()`` is slightly faster than calling ``alpha(k,z)`` with k=0,
+        and in most situations, calling ``alpha(k,z)`` is unnecessary, since:
+
+        $$\alpha(k,z) \approx \alpha(k,0) \frac{D(z)}{D(0)}$$
+
+        The function $\alpha(k,z)$ arises in non-Gaussian halo bias as:
+
+        $$b(k,z) = b_g + 2 b_{ng} \frac{fNL}{\alpha(k,z)}$$
+
+        where $b_{ng} = d(\log n)/d(\log \sigma_8) \approx \delta_c (b_g - 1)$.
+        """
+        
+        # Easiest way to compute alpha(k,z):
+        #  alpha(k,z) = (5/3) (Pm(k,z) / Pzeta(k))**0.5
+
+        Pm = self.Plin_z0(k, check=True)
+        Pz_rec = self._pzeta_rec(k, check=True)
+        return (5/3.) * np.sqrt(Pm * Pz_rec)
+
+
+    def _pzeta_rec(self, k, check=True):
+        """Returns 1/P_zeta(k). Intended as a helper for alpha()."""
+
+        if check:
+            assert np.min(k) >= 0.0
+            
+        kpiv = self.params.kpivot
+        Delta2 = self.params.scalar_amp
+        ns = self.params.ns
+        
+        # Pzeta(k) = (2pi^2 / k^3) * Delta^2 * (k/kpiv)**(ns-1)
+        # 1/Pzeta(k) = (kpiv^3 / (2 pi^2 Delta^2)) * (k/kpiv)**(4-ns)
+
+        # Okay for k=0 (provided ns < 4!)
+        return (kpiv**3 / (2 * np.pi**2 * Delta2)) * (k/kpiv)**(4-ns)
+        

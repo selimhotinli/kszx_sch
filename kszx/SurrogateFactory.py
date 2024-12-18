@@ -87,6 +87,9 @@ class SurrogateFactory:
             you plan to analyze galaxy data with FKP weighting, you should also
             use FKP weighting in the ``SurrogateFactory``.
 
+            Note that gweights are optional -- caller could choose to apply them
+            afterwards.
+
           - ``fnl`` (float): The primordial NG parameter $f_{NL}$ (zero by default).
             Currently implemented as a pure scale-dependent galaxy bias, with no effect
             on the velocity field or the matter bispectrum.
@@ -94,6 +97,11 @@ class SurrogateFactory:
           - ``ksz`` (boolean): If True, then a velocity reconstruction surrogate field
             will be simulated (in addition to the galaxy surrogate field). (For details,
             see ``SurrogateFactory.simulate()``.)
+
+          - ``ksz_gweights`` (optional):
+
+            Note that gweights are optional -- caller could choose to apply them
+            afterwards.
 
           - ``ksz_bv``: Bias for the velocity reconstruction. Should be specified iff ``ksz=True``.
             Can be specified in any of the three ways as the ``bg`` argumment (see above).
@@ -142,8 +150,8 @@ class SurrogateFactory:
         assert 'dec_deg' in randcat.col_names
         
         assert ngal_mean > 0
-        assert ngal_rms > 5*ngal_mean
-        assert ngal_mean + 3*ngal_rms <= randcat.size
+        assert ngal_rms < 5*ngal_mean
+        assert ngal_mean + 3.01*ngal_rms <= randcat.size
         
         self.box = box
         self.cosmo = cosmo
@@ -168,15 +176,15 @@ class SurrogateFactory:
         self.bg = bg = self._eval_zfunc(bg, ztrue, 'bg')
         self.gweights = gweights = self._eval_zfunc(gweights, zobs, 'gweights', allow_none=True, non_negative=True)
         self.ksz_gweights = ksz_gweights = self._eval_zfunc(gweights, zobs, 'gweights', allow_none=True, non_negative=True)
-        self.ksz_tcmb_realization = ksz_tcmb_realization = self._eval_zarr(ksz_tcmb_realization, 'ksz_tcmb_realization', allow_none=True)
-        self.ksz_tcmb_rms = ksz_tcmb_rms = self._eval_zfunc(bg, ztrue, 'ksz_tcmb_rms', allow_none=True, non_negative=True)
+        self.ksz_tcmb_rms = ksz_tcmb_rms = self._eval_zfunc(ksz_tcmb_rms, ztrue, 'ksz_tcmb_rms', allow_none=True, non_negative=True)
+        self.ksz_tcmb_realization = ksz_tcmb_realization = self._eval_zarr(ksz_tcmb_realization, 'ksz_tcmb_realization')
         self.ksz_bv = ksz_bv = self._eval_zfunc(bg, ztrue, 'ksz_bv', allow_none=True)
 
         # Checks: if ksz=True, then ksz_bv is not None, and precisely one of {ksz_tcmb_rms, ksz_tcmb_realization} is None.
         self._check_ksz_args()
 
         self.D = cosmo.D(z=ztrue, z0norm=True)
-        self.faH = cosmo.f(z=ztrue) * cosmo.H(z=surr_true) / (1+ztrue)
+        self.faH = cosmo.frsd(z=ztrue) * cosmo.H(z=ztrue) / (1+ztrue)
         self.xyz_true = utils.ra_dec_to_xyz(randcat.ra_deg, randcat.dec_deg, r=cosmo.chi(z=ztrue))
         self.xyz_obs = utils.ra_dec_to_xyz(randcat.ra_deg, randcat.dec_deg, r=cosmo.chi(z=zobs))
         self.sigma2 = self._integrate_kgrid(self.box, cosmo.Plin_z0(self.box.get_k()))
@@ -188,7 +196,7 @@ class SurrogateFactory:
         ngal_max = ngal_mean + 3*ngal_rms
         self.nrand_min = int(ngal_max * + 10)
         
-        if self.nrand < nrand_min:
+        if self.nrand < self.nrand_min:
             raise RuntimeError(f'SurrogateFactory: not enough randoms! This can be fixed by using a larger'
                                + f' random catalog (nrand={self.nrand}, nrand_min={self.nrand_min}),'
                                + f' decreasing {ngal_mean=}, decreasing {ngal_rms=}, or decreasing'
@@ -209,24 +217,27 @@ class SurrogateFactory:
          self.surr_vr_values        # needed for CatalogPSE ('values' argument for surrogate vrec field)
         """
 
-        t = np.clip(np.random.normal(), -3.0, 3.0)
-        ngal = self.ngal_mean + t * self.ngal_rms
-        nrand = self.nrand
+        ngal = self.ngal_mean + (self.ngal_rms * np.clip(np.random.normal(), -3.0, 3.0))
+        ngal = int(ngal+0.5)  # round
         
-        delta0 = simulate_gaussian_field(self.box, self.cosmo.Plin_z0)
-        delta0 /= np.sqrt(compensation_kernel(self.box, self.kernel))
+        nrand = self.nrand
+        assert 0 < ngal <= nrand
+        
+        delta0 = core.simulate_gaussian_field(self.box, self.cosmo.Plin_z0)
+        core.apply_kernel_compensation(self.box, delta0, self.kernel, -0.5)  # multiply by C(k)^(-1/2)
 
         # delta_g(k,z) = (bg + 2 fNL deltac (bg-1) / alpha(k,z)) * delta_m(k,z)
         #              = (bg D(z) + 2 fNL deltac (bg-1) / alpha0(k)) * delta0(k)
 
         # deltag = (bg * delta_m) = (bg * D * delta0), evaluated on randcat.
-        deltag = self.bg * delta_m * core.interpolate_points(self.box, delta0, self.rcat_xyz_true, self.kernel, fft=True)
+        bD = self.bg * self.D
+        deltag = bD * core.interpolate_points(self.box, delta0, self.xyz_true, self.kernel, fft=True)
 
         if self.fnl != 0:
             # Add term to deltag:
             #     2 fNL deltac (bg-1) / alpha(k,z) * delta_m(k,z)
             #   = 2 fNL deltac (bg-1) / alpha_z0(k) * delta0(k)    [ factor D(z) cancels ]
-            phi0 = multiply_kfunc(self.box, delta0, lambda k: 1.0/self.cosmo.alpha_z0(k=k), dc=0)
+            phi0 = core.multiply_kfunc(self.box, delta0, lambda k: 1.0/self.cosmo.alpha_z0(k=k), dc=0)
             phi0 = core.interpolate_points(self.box, phi0, self.xyz_true, self.kernel, fft=True)
             deltag += 2 * self.fnl * self.deltac * (self.bg-1) * phi0
 
@@ -234,21 +245,32 @@ class SurrogateFactory:
         #  <eta^2> = (nrand/ngal) - <deltag^2>
         #          = (nrand/ngal) - bD^2 self.sigma2
 
-        noise_var = (nrand/ngal) - self.sigma2 * (bD*bD)
-        deltag += np.random.normal(scale = np.sqrt(noise_var))
-        
-        self.surr_gal_weights = () * self._xx
+        noise_rms = np.sqrt((nrand/ngal) - (bD*bD) * self.sigma2)
+        deltag += np.random.normal(scale = noise_rms)
+
+        wl = self.gweights if (self.gweights is not None) else 1.0
+        self.surr_gal_weights = (ngal/nrand) * wl
         self.surr_gal_values = self.surr_gal_weights * deltag
         self.surr_ngal = ngal
 
         if self.ksz:
-            vr = multiply_kfunc(self.box, delta0, lambda k: 1.0/k, dc=0)   # note wrong normalization (no faHD or faH0)
+            # We temporarily give vr the wrong normalization (omitting faHD)
+            vr = core.multiply_kfunc(self.box, delta0, lambda k: 1.0/k, dc=0)
             vr = core.interpolate_points(self.box, vr, self.xyz_true, self.kernel, fft=True, spin=1)
-            vr *= (self.bvr * self.faH * self.D)                 # correct normalization
-            nvr = self.ksz_tcmb_realization if (self.ksz_tcmb_realization is not None) else np.random.normal(scale=self.ksz_tcmb_rms)
-            
-            self.surr_vr_weights = (ngal/nrand) * self.bvr
-            self.surr_vr_values = (ngal/nrand)*vr + np.sqrt(ngal/nrand)*nvr
+            vr *= (self.ksz_bv * self.faH * self.D)  # correct normalization
+
+            if self.ksz_tcmb_rms is not None:
+                # Add noise, case 1: use 'ksz_tcmb_rms'
+                vr += np.sqrt(nrand/ngal) * np.random.normal(scale = self.ksz_tcmb_rms)
+            else:
+                # Add noise, case 2: use 'ksz_tcmb_realization'
+                s = np.zeros(nrand)
+                s[:ngal] = 1.0
+                vr += (nrand/ngal) * np.random.permutation(s) * self.ksz_tcmb_realization
+
+            ws = self.ksz_gweights if (self.ksz_gweights is not None) else 1.0
+            self.surr_vr_weights = (ngal/nrand) * ws * self.ksz_bv
+            self.surr_vr_values = (ngal/nrand) * ws * vr
             
 
     ####################################################################################################
@@ -287,7 +309,7 @@ class SurrogateFactory:
 
         
     def _eval_zfunc(self, f, z, name, allow_none=False, non_negative=False):
-        """Helper method for contructor. Used to parse the 'bg', 'bvr', and 'ksz_tcmb_rms' constructor args.
+        """Used to parse constructor args 'gweights', 'ksz_gweights', 'ksz_bv', and 'ksz_tcmb_rms'.
 
         Returns an array of length self.nrand (or None, if allow_none=True).
         The 'f' argument is either a callable function z -> f(z), an array of length self.nrand, or a scalar.
@@ -337,17 +359,17 @@ class SurrogateFactory:
 
     def _check_ksz_args(self):
         if not self.ksz:
-            for k in [ 'bvr', 'ksz_tcmb_realization', 'ksz_tcmb_rms' ]:
+            for k in [ 'ksz_bv', 'ksz_tcmb_realization', 'ksz_tcmb_rms' ]:
                 if getattr(self,k) is not None:
                     print(f"SurrogateFactory: warning: '{k}' constructor arg was specified, without also specifying ksz=True")
             return
 
-        if self.bvr is None:
-            raise RuntimeError("SurrogateFactory: if ksz=True is specified, then 'bvr' constructor arg must also be specified")
+        if self.ksz_bv is None:
+            raise RuntimeError("SurrogateFactory: if ksz=True is specified, then 'ksz_bv' constructor arg must also be specified")
         if (self.ksz_tcmb_realization is None) and (self.ksz_tcmb_rms is None):
             raise RuntimeError("SurrogateFactory: if ksz=True is specified, then 'ksz_tcmb_realization' or 'ksz_tcmb_rms' constructor arg must also be specified")
         if (self.ksz_tcmb_realization is not None) and (self.ksz_tcmb_rms is not None):
-            raise RuntimeError("SurrogateFactory: specifying both 'vr_normalization' and 'ksz_tcmb_rms' is not allowed")
+            raise RuntimeError("SurrogateFactory: specifying both 'ksz_tcmb_realization' and 'ksz_tcmb_rms' is not allowed")
         
         
     @staticmethod

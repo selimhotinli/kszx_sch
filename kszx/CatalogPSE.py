@@ -289,9 +289,6 @@ class CatalogPSE:
         # rweights = length-nfields list of (shape-(nrand,) array or None)
         # wrtot = numpy array of shape (nfields,)
         rpoints, rweights, _, wrtot = self._parse_pwv(rpoints, rweights, None, 'CatalogPSE.__init__()', prefix='r')
-
-        # FIXME when the dust settles, create an interface for compensation_kernel which uses less memory.
-        self.ck = 1.0 / np.sqrt(core.compensation_kernel(box, kernel))
         
         self.rmaps = [ None for _ in range(self.nfields) ]  # real space maps
         self.fmaps = [ None for _ in range(self.nfields) ]  # Fourier space maps
@@ -307,7 +304,7 @@ class CatalogPSE:
             else:
                 self.rmaps[i] = core.grid_points(box, rpoints[i], rweights[i], kernel=kernel)
                 self.fmaps[i] = core.fft_r2c(box, self.rmaps[i])
-                self.fmaps[i] *= ck
+                core.apply_kernel_compensation(box, self.fmaps[i], kernel, -0.5)  # multiply by C(k)^(-1/2)
             
         # FIXME revisit the issue of choosing K!
         K = 0.6 * box.knyq
@@ -365,9 +362,9 @@ class CatalogPSE:
             del m
 
             if self.compensate:
-                fmaps[i] *= self.ck
+                core.apply_kernel_compensation(self.box, fmaps[i], self.kernel, -0.5)  # multiply by C(k)^(-1/2)
 
-        pk = core.estimate_power_spectrum(box, fmaps, self.kbin_edges, use_dc = self.use_dc)
+        pk = core.estimate_power_spectrum(self.box, fmaps, self.kbin_edges, use_dc = self.use_dc)
         assert pk.shape == (self.nfields, self.nfields, self.nkbins)
 
         pk /= np.reshape(wratios, (self.nfields, 1, 1))
@@ -423,14 +420,14 @@ class CatalogPSE:
         
         if not isinstance(points, np.ndarray):
             points = [ utils.asarray(a,caller,argname,float) for a in points ]
-            return self._check_length(points)
+            return self._check_length(points, caller, argname)
 
         points = utils.asarray(points, caller, argname, float)
         
         if (points.ndim == 2) and (points.shape[1] == self.box.ndim):
             return [ points for _ in range(self.nfields) ]
         if (points.ndim == 3) and (points.shape[0] == self.nfields) and (points.shape[2] == self.box.ndim):
-            return self._check_length(list(points))
+            return self._check_length(list(points), caller, argname)
         
         raise RuntimeError(f"{caller}: expected {argname}.shape = ({self.nfields},*,{self.box.ndim}) or (*,{self.box.ndim}),"
                            + f" got shape {points.shape}. (Note that nfields={self.nfields} and box.ndim={self.box.ndim}."
@@ -448,7 +445,7 @@ class CatalogPSE:
         
         if not isinstance(vals, np.ndarray):
             vals = [ utils.asarray(a, caller, argname, float, allow_none=True) for a in vals ]
-            return self._check_length(vals)
+            return self._check_length(vals, caller, argname)
 
         vals = utils.asarray(vals, caller, argname, float)
             

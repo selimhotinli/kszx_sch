@@ -1,3 +1,11 @@
+"""
+The ``kszx.act`` module contains functions for downloading/parsing ACT data products.
+
+References: 
+  https://lambda.gsfc.nasa.gov/product/act/index.html
+  https://lambda.gsfc.nasa.gov/product/act/actadv_prod_table.html (DR5)
+"""
+
 import os
 import zipfile
 import numpy as np

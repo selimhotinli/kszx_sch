@@ -304,6 +304,8 @@ class Catalog:
            rcat_small = rcat_large.make_random_subcatalog(rcat_large.size/10)
         """
 
+        print(f'make_random_subcatalog: {self.name}: {self.size} -> {new_size}')
+
         new_size = int(new_size)
         assert new_size > 0
         assert new_size <= self.size
@@ -393,7 +395,10 @@ class Catalog:
             raise RuntimeError(f'{filename}: file has {len(cols)} columns, {len(col_names)} cols were expected')
 
         cols = dict(((k,v) for (k,v) in zip(col_names,cols) if k is not None))
-        return Catalog(cols, name=name, filename=filename)
+        catalog = Catalog(cols, name=name, filename=filename)
+
+        catalog._announce_file_read()
+        return catalog
 
 
     def show(self):

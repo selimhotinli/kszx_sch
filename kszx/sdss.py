@@ -33,7 +33,7 @@ def read_galaxies(survey, dr=12, download=False):
      ra_deg, dec_deg, z,    # sky location, redshift
      wfkp,                  # FKP weight
      wcp, wzf, wsys,        # systematic weights
-     cboss,                 # completeness
+     cboss,                 # completeness (denoted C_BOSS in papers and COMP in the FITS file)
      id                     # unique identifier
 
     Reminder: SDSS galaxies are usually weighted by ``(wzf + wcp − 1) * wsys * wkp``.
@@ -46,7 +46,10 @@ def read_galaxies(survey, dr=12, download=False):
     """
     
     filename = _galaxy_filename(survey, dr, download)
-    return read_fits_catalog(filename, is_randcat=False)
+    gcat = read_fits_catalog(filename, is_randcat=False)
+    print("Reminder: you probably want to call cat.apply_redshift_cut(zmin,zmax)"
+          + " on the Catalog returned by kszx.sdss.read_galaxies())")
+    return gcat
 
 
 def read_randoms(survey, dr=12, download=False):
@@ -78,7 +81,10 @@ def read_randoms(survey, dr=12, download=False):
     
     filenames = _random_filenames(survey, dr, download)
     catalogs = [ read_fits_catalog(f, is_randcat=True) for f in filenames ]
-    return Catalog.concatenate(catalogs, name=f'{survey} randoms', destructive=True)
+    rcat = Catalog.concatenate(catalogs, name=f'{survey} randoms', destructive=True)
+    print("Reminder: you probably want to call cat.apply_redshift_cut(zmin,zmax)"
+          + " on the Catalog returned by kszx.sdss.read_randoms())")
+    return rcat
 
 
 def read_mask(survey, dr=12, download=False):
