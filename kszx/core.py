@@ -822,24 +822,6 @@ def simulate_gaussian_field(box, pk, pk0=None):
          (\mbox{Fourier-space shape}) &= (n_0, n_1, \cdots, \lfloor n_{d-1}/2 \rfloor + 1)
          \end{align}$$
     """
-    
-    r"""Simulates a Gaussian field with specified power spectrum P(k).
-
-    Function args:
-
-        - ``box`` (kszx.Box): defines pixel size, bounding box size, and location of observer.
-          See :class:`~kszx.Box` for more info.
-
-        pk (either callable, or a scalar). Must be real-valued.
-        pk0 (either scalar, or None)
-
-    Note division by zero.
-    Note units.
-
-    Reminder: our Fourier conventions imply
-    
-        <f(k) f(k')^*> = (box volume) P(k) delta_{kk'}  [ morally P(k) (2pi)^n delta^n(k-k') ]
-    """
 
     assert isinstance(box, Box)
 
@@ -916,7 +898,7 @@ def estimate_power_spectrum(box, map_or_maps, kbin_delim, *, use_dc=False, allow
              see note below.)
 
         - ``kbin_delim`` (1-d array): 1-d array of length (nkbins+1) defining bin endpoints.
-          The i-th bin covers k-range ``kbin_delim[i] <= k < kbin_delim[i+1]``.
+          The i-th bin covers k-range ``kbin_delim[i] <= i < kbin_delim[i+1]``.
 
         - ``use_dc`` (boolean): if False (the default), then the k=0 mode will not be used,
           even if the lowest bin includes k=0.

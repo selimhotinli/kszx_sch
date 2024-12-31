@@ -12,22 +12,21 @@ def read_hfi_galmask(sky_percentage, apodization=0, dtype=None, download=False):
     """Returns an nside=2048 healpix map in RING ordering and Galactic coordinates.
 
     Default dtype is either uint8 or float32 (depending on whether apodization > 0), 
-    but this can be changed with the 'dtype' argument.
+    but this can be changed with the ``dtype`` argument.
 
-    Allowed sky_percentage values: 20, 40, 60, 70, 80, 90, 97, 99
-    Allowed apodization values: 0, 2, 5 (degrees)
+    Allowed ``sky_percentage`` values: 20, 40, 60, 70, 80, 90, 97, 99
+    Allowed ``apodization`` values: 0, 2, 5 (degrees)
+    If ``download`` is True, then data files will be auto-downloaded.
 
     Note that we use Planck release 2, since release 3 doesn't seem to have HFI
     foreground masks (it does have other masks).
     
-    To apply a Planck mask to ACT data, you'll need to rotate/pixellize the mask:
+    To apply a Planck mask to ACT data, you'll need to rotate/pixellize the mask::
 
        pixell_mask = pixell.reproject.healpix2map(
           healpix_mask, shape, wcs, 
           rot='gal,equ',                # NOTE coordinate rotation!!
           method='spline', order=0)     # NOTE method='spline', not method='harm'!
-
-    (See scripts/pixellize_planck_mask.ipynb for some exploratory plots.)
     """
 
     assert sky_percentage in [ 20, 40, 60, 70, 80, 90, 97, 99 ]
@@ -54,6 +53,10 @@ def read_hfi_galmask(sky_percentage, apodization=0, dtype=None, download=False):
 
 
 def download():
+    r"""Downloads Planck galmasks.
+    
+    Can be called from command line: ``python -m kszx download_planck``."""
+
     for apodization in [0,2,5]:
         _hfi_galmask_filename(apodization, download=True)
     
@@ -62,7 +65,6 @@ def download():
 
 
 def _planck_path(relpath, download=False):
-
     if download:
         url = f'https://irsa.ipac.caltech.edu/data/Planck/{relpath}'
         io_utils.wget_if_necessary(abspath, url)
