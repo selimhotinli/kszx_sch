@@ -28,7 +28,7 @@ from .BoundingBox import BoundingBox
 from .Catalog import Catalog
 from .Cosmology import Cosmology, CosmologicalParams
 
-# from .CmbClFitter import CmbClFitter
+from .CmbClFitter import CmbClFitter
 from .CatalogGridder import CatalogGridder
 from .KszPSE import KszPSE
 
@@ -40,4 +40,3 @@ from . import planck
 from . import plot
 from . import sdss
 from . import tests
-
