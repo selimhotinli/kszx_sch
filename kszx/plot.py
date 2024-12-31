@@ -6,6 +6,19 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 from matplotlib import cm
 
 
+def savefig(filename=None, tight_layout=True):
+    if tight_layout:
+        plt.tight_layout()
+    
+    if filename is None:
+        plt.show()
+    else:
+        print(f'Writing {filename}')
+        plt.savefig(filename)
+    
+    plt.clf()
+
+    
 def real_space_plotter(arr, filename=None, axis=None, vmax=None, title=None):
     r"""General purpose function for plotting a real-space field by averaging over specified axes.
     
