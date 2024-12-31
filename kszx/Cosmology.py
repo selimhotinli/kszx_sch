@@ -1,3 +1,4 @@
+import copy
 import camb
 import numpy as np
 import scipy.interpolate
@@ -40,7 +41,8 @@ class CosmologicalParams:
         self.zmax = 10.0
         self.kmax = 100.0
         self.dz = 0.1
-        self.lmax = 5000
+        self.lmax = 5000   # reasonable default?
+        self.Yp = 0.24
 
         # Accuracy settings
         # See sec 5 of https://arxiv.org/abs/2103.05582 for comments on high-l CMB
@@ -91,7 +93,7 @@ class CosmologicalParams:
 
         
 class Cosmology:
-    def __init__(self, params):
+    def __init__(self, params, lmax=None):
         r"""Thin wrapper around CAMB 'results' object, with methods such as H(), Plin(), etc.
 
         Adding a wrapper around CAMB is not really necessary, but I like it for a few reasons:
@@ -101,7 +103,7 @@ class Cosmology:
            - It's a convenient place to add new methods (e.g. frsd(), alpha()).
 
         NOTE: no h-units! All distances are Mpc (not $h^{-1}$ Mpc), and all wavenumbers 
-        are Mpc$^{-1}$ (not h Mpc$^{-1}$).
+        are Mpc$^{-1}$ (not h Mpc$^{-1}$). All masses are Msol.
 
         Constructor args:
         
@@ -110,6 +112,8 @@ class Cosmology:
              The following string names are supported:
                  - ``params='planck18+bao'``: https://arxiv.org/abs/1807.06209 (last column of Table 2)
                  - ``params='hmvec'``: match defaults in Mat's hmvec code (https://github.com/simonsobs/hmvec)
+
+           - lmax (int, optional): if specified, overrides the value of lmax in 'params'.
 
         Note: methods require caller to specify keywords, e.g. caller must call ``Cosmology.Plin(k=xx, z=xx)``
         instead of ``Plin(xx,xx)``. This is intentional, to reduce the chances that I'll create a bug by swapping
@@ -121,6 +125,10 @@ class Cosmology:
         elif not isinstance(params, CosmologicalParams):
             raise RuntimeError("Cosmology constructor: argument must be either a CosmologicalParams, or a string e.g. 'planck18+bao'")
 
+        if lmax is not None:
+            params = copy.copy(params)
+            params.lmax = lmax
+            
         params.validate()
         
         self.params = params
@@ -129,8 +137,23 @@ class Cosmology:
         self.lmax = params.lmax
         self.h = params.h
 
-        # Comoving matter density (z-independent), units Msol Mpc^{-3}
-        self.rhom_comoving = 2.7754e11 * (params.ombh2 + params.omch2)
+        # Some unit conversions:
+        #
+        # u = pint.UnitRegistry()
+        # u.define('solar_mass = 1.989e+30 * kg = Msol')
+        # G = u.gravitational_constant
+        # rho_crit_over_h2 = 3/(8*np.pi*G) * (100*u("km/sec/Mpc"))**2
+        # print(rho_crit_over_h2.to("Msol/Mpc^3"))
+        # print((1*u.proton_mass).to("Msol"))
+
+        rho_crit_over_h2 = 2.7754e11   # Msol / Mpc^3
+        mp = 8.40936e-58               # proton mass in Msol
+
+        # self.rhom_comoving = comoving matter density (z-independent), units Msol Mpc^{-3}
+        self.rhom_comoving = rho_crit_over_h2 * (params.ombh2 + params.omch2)   # (Msol/Mpc^3)
+
+        # self.ne0 = electron density at z=0, units Mpc^{-3}.
+        self.ne0 = (1-self.params.Yp/2) * rho_crit_over_h2 * params.ombh2 / mp
 
         # CAMB code below loosely follows:
         # https://camb.readthedocs.io/en/latest/CAMBdemo.html
@@ -173,8 +196,7 @@ class Cosmology:
         
         camb_params.set_matter_power(redshifts=z_pk, kmax=params.kmax)
 
-        # print(f'Running CAMB')
-        
+        print(f'Running CAMB')
         camb_results = camb.get_results(camb_params)
 
         # self._sigma8_z = 1-d array of redshifts (ordered from highest to lowest)
@@ -457,4 +479,21 @@ class Cosmology:
 
         # Okay for k=0 (provided ns < 4!)
         return (kpiv**3 / (2 * np.pi**2 * Delta2)) * (k/kpiv)**(4-ns)
+        
+
+    def K(self, *, z):
+        """Returns the kSZ radial weight K(z) = -T_CMB sigma_T n_{e0} x_e(z) e^{-tau(z)} (1+z)^2 in units (uK/Mpc).
+        
+        For now, we approximate x_e=1 and tau=0. Then K(z) is just proportional to (1+z)^2. I'll improve this later!
+        Note that K(z) is negative.
+        """
+
+        # FIXME put tcmb in CosmologicalParams?
+        tcmb = 2.726e6   # uK
+
+        # u = pint.UnitRegistry()
+        # print(float(u.thomson_cross_section / u("Mpc^2")))
+        sigmaT = 6.986845e-74
+        
+        return -tcmb * sigmaT * self.ne0 * (1+z)**2
         
