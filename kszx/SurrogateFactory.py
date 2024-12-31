@@ -178,7 +178,7 @@ class SurrogateFactory:
         self.ksz_gweights = ksz_gweights = self._eval_zfunc(gweights, zobs, 'gweights', allow_none=True, non_negative=True)
         self.ksz_tcmb_rms = ksz_tcmb_rms = self._eval_zfunc(ksz_tcmb_rms, ztrue, 'ksz_tcmb_rms', allow_none=True, non_negative=True)
         self.ksz_tcmb_realization = ksz_tcmb_realization = self._eval_zarr(ksz_tcmb_realization, 'ksz_tcmb_realization')
-        self.ksz_bv = ksz_bv = self._eval_zfunc(bg, ztrue, 'ksz_bv', allow_none=True)
+        self.ksz_bv = ksz_bv = self._eval_zfunc(ksz_bv, ztrue, 'ksz_bv', allow_none=True)
 
         # Checks: if ksz=True, then ksz_bv is not None, and precisely one of {ksz_tcmb_rms, ksz_tcmb_realization} is None.
         self._check_ksz_args()

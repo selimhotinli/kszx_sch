@@ -157,7 +157,7 @@ some examples:
 
     $$R(x) = \sum_{j\in rand} W_j^{rand} \delta^3(x-x_j)$$
      
-  - When CatalogPSE.simulate() is called, each field is represented by ``points``
+  - When CatalogPSE.apply() is called, each field is represented by ``points``
     $x_i$, ``weights`` $W_i$, and ``values`` $V_i$. (Note that the values array can
     be None.) Define $W_{tot}$ and $W_{rtot}$ by:
 
@@ -317,8 +317,8 @@ class CatalogPSE:
         for i in range(self.nfields):
             for j in range(i+1):
                 r = self.A[i,j] / np.sqrt(self.A[i,i] * self.A[j,j])
-                if r < 0.03:
-                    print(f'CatalogPSE: fields {(j,i)} have non-overlapping footprints, cross power will not be estiamted')
+                if np.abs(r) < 0.03:
+                    print(f'CatalogPSE: fields {(j,i)} have non-overlapping footprints, cross power will not be estimated')
                 else:
                     self.Ainv[i,j] = self.Ainv[j,i] = 1.0 / self.A[i,j]
 
@@ -481,8 +481,10 @@ class CatalogPSE:
                     raise RuntimeError(f"{caller}: expected {prefix}weights to be a 1-d array, got shape {w.shape}")
                 if p.shape[0] != w.shape[0]:
                     raise RuntimeError(f"{caller}: {prefix}points/{prefix}weights arrays have unequal lengths ({p.shape[0]}, {w.shape[0]})")
-                if np.min(w) < 0:
-                    raise RuntimeError(f"{caller}: {prefix}weights array has negative value(s)")
+                
+                # Removed this test, since kSZ velocity reconstruction has negative bv.
+                # if np.min(w) < 0:
+                #    raise RuntimeError(f"{caller}: {prefix}weights array has negative value(s)")
                 
             if v is not None:
                 if v.ndim != 1:
@@ -492,7 +494,7 @@ class CatalogPSE:
                 
             wtot[i] = np.sum(w) if (w is not None) else len(p)
 
-        if np.min(wtot) <= 0:
+        if np.min(wtot) == np.max(wtot) == 0:
             raise RuntimeError(f"{caller}: {prefix}weights array is all zeros")
             
         return points, weights, values, wtot
