@@ -2,8 +2,9 @@
 The ``kszx.act`` module contains functions for downloading/parsing ACT data products.
 
 References: 
-  https://lambda.gsfc.nasa.gov/product/act/index.html
-  https://lambda.gsfc.nasa.gov/product/act/actadv_prod_table.html (DR5)
+  - https://lambda.gsfc.nasa.gov/product/act/index.html
+  - https://lambda.gsfc.nasa.gov/product/act/actadv_prod_table.html (DR5)
+  - https://portal.nersc.gov/project/act (cluster masks from https://arxiv.org/abs/2307.01258)
 """
 
 import os
@@ -15,21 +16,43 @@ from . import io_utils
 
 
 def read_cmb(freq, dr, download=False):
-    """Returns a pixell map. We currently only support DR5 act_planck_daynight_srcfree maps."""
+    r"""Returns a pixell map. We currently only support DR5 act_planck_daynight_srcfree maps.
+
+    Function args:
+    
+      - ``freq`` (integer): either 90, 150, or 220.
+      - ``dr`` (integer): currently, only ``dr=5`` is supported.
+      - ``download`` (boolean): if True, then all needed data files will be auto-downloaded.
+    """
     
     filename = _cmb_filename(freq, dr, download)
     return _read_map(filename)
 
 
 def read_ivar(freq, dr, download=False):
-    """Returns a pixell map. We currently only support DR5 act_planck_daynight_srcfree maps."""
+    r"""Returns a pixell map. We currently only support DR5 act_planck_daynight_srcfree maps.
+
+    Function args:
+    
+      - ``freq`` (integer): either 90, 150, or 220.
+      - ``dr`` (integer): currently, only ``dr=5`` is supported.
+      - ``download`` (boolean): if True, then all needed data files will be auto-downloaded.
+    """
     
     filename = _ivar_filename(freq, dr, download)
     return _read_map(filename)
 
 
 def read_beam(freq, dr, lmax=None, download=False):
-    """Returns a 1-d numpy array of length (lmax+1). We currently only support DR5 daynight beams."""
+    r"""Returns a 1-d numpy array of length (lmax+1). We currently only support DR5 daynight beams.
+
+    Function args:
+    
+      - ``freq`` (integer): either 90, 150, or 220.
+      - ``dr`` (integer): currently, only ``dr=5`` is supported.
+      - ``lmax`` (integer): if None, then a large lmax will be used.
+      - ``download`` (boolean): if True, then all needed data files will be auto-downloaded.
+    """
 
     filename = _beam_filename(freq, dr, download)
         
@@ -49,16 +72,22 @@ def read_beam(freq, dr, lmax=None, download=False):
 
 
 def read_cluster_mask(download=False):
+    r"""Returns the cluster mask from https://arxiv.org/abs/2307.01258 as a pixell map."""
     filename = _cluster_mask_filename(download)
     return pixell.enmap.read_map(filename)
 
 
 def read_nilc_wide_mask(download=False):
+    r"""Returns the Galactic mask from https://arxiv.org/abs/2307.01258 as a pixell map."""
     filename = _nilc_wide_mask_filename(download)
     return pixell.enmap.read_map(filename)
 
 
 def download(dr, freq_list=None, cmb=True, ivar=True, beams=True):
+    r"""Downloads ACT data products (cmb, ivar, beam) for a given survey.
+        
+    Can be called from command line: ``python -m kszx download_act``."""
+
     if freq_list is None:
         freq_list = [ 90, 150, 220 ]
 
@@ -79,8 +108,8 @@ def _act_path(relpath, dr, download=False, is_aux=False):
     """
 
     assert dr == 5    # currently, only support DR5
-    act_base_dir = os.path.join(io_utils.get_data_dir(), 'act')
-    abspath = os.path.join(act_base_dir, 'dr5.01', relpath)
+    act_base_dir = os.path.join(io_utils.get_data_dir(), 'act', 'dr5.01')
+    abspath = os.path.join(act_base_dir, relpath)
 
     if (not download) or os.path.exists(abspath):
         return abspath
@@ -101,7 +130,7 @@ def _act_path(relpath, dr, download=False, is_aux=False):
         f.extractall(act_base_dir)
 
     if not os.path.exists(abspath):
-        raise RuntimeError(f"File '{relname}' not found in zip file '{zip_filename}'")
+        raise RuntimeError(f"File '{relpath}' not found in zip file '{zip_filename}'")
     
     return abspath
 
