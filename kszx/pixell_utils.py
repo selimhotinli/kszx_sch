@@ -62,7 +62,8 @@ def _accum_catalog(ret, shape, wcs, catalog, weights, allow_outliers, normalize_
 
     if not allow_outliers:
         # Note: if allow_outliers is False, then pixell_utils.ang2pix() returns (idec, ira).
-        idec, ira = ang2pix(shape, wcs, catalog.ra_deg, catalog.dec_deg, allow_outliers=False)
+        msg = "kszx.pixell_utils.map_from_catalog(): some points were out-of-bounds, you may want allow_outliers=True"
+        idec, ira = ang2pix(shape, wcs, catalog.ra_deg, catalog.dec_deg, allow_outliers=False, outlier_errmsg=msg)
     else:
         # Note: if allow_outliers is True, then pixell_utils.ang2pix() returns (idec, ira, mask).
         idec, ira, mask = ang2pix(shape, wcs, catalog.ra_deg, catalog.dec_deg, allow_outliers=True)
@@ -115,24 +116,41 @@ def map_from_catalog(shape, wcs, gcat, weights=None, rcat=None, rweights=None, n
     return pixell.enmap.enmap(ret, wcs=wcs)
 
 
-def eval_map_on_catalog(m, catalog, allow_outliers=True):
-    """Returns 1-d array of map_vals if allow_outliers is False, or (map_vals, mask) if allow_outliers is True."""
+def eval_map_on_catalog(m, catalog, pad=None, return_mask=False):
+    """Evaluates pixell map 'm' at (ra,dec) values from catalog, and returns a 1-d array.
+
+    Since pixell maps can be partial-sky, some of the (ra,dec) pairs may be "outliers",
+    i.e. outside the map footprint. If pad=None (the default), this raises an exception.
+    If 'pad' is specified (e.g. pad=0.0) then outlier values are replaced by 'pad'.
+
+    If return_mask=False (the default), returns a 1-d array 'map_vals'.
+
+    If return_mask=True, returns (map_vals, mask), where 'mask' is a 1-d boolean array which
+    is True for non-outliers, False for outliers.
+    """
 
     assert isinstance(m, pixell.enmap.ndmap)
+    assert isinstance(catalog, Catalog)
 
+    if return_mask and (pad is None):
+        raise RuntimeError("kszx.pixell_utils.eval_map_on_catalog(): if return_mask=True, then 'pad' must be specified")
+    if pad is not None:
+        pad = float(pad)
+    
     # pixell_utils.ang2pix() is defined later in this file.
     # It returns (idec,ira) if allow_outliers is False, or (idec,ira,mask) if allow_outliers is True.
+
+    msg = "kszx.pixell_utils.eval_map_on_catalog(): some points are out-of-bounds, you may want to specify the 'pad' arugment"
+    t = ang2pix(m.shape, m.wcs, catalog.ra_deg, catalog.dec_deg, allow_outliers=(pad is not None), outlier_errmsg=msg)
     
-    t = ang2pix(m.shape, m.wcs, catalog.ra_deg, catalog.dec_deg, allow_outliers=allow_outliers)
     idec, ira = t[0], t[1]
+    mask = t[2] if (len(t) > 2) else None
     map_vals = m[idec,ira]
 
-    if allow_outliers:
-        mask = t[2]
-        map_vals = np.where(mask, map_vals, 0.)
-        return map_vals, mask
-    else:
-        return map_vals
+    if pad is not None:
+        map_vals = np.where(mask, map_vals, pad)
+
+    return (map_vals, mask) if return_mask else map_vals
     
 
 ####################################################################################################
@@ -144,7 +162,7 @@ def alm2map(alm, shape, wcs):
     
     alm = np.asarray(alm)
     assert alm.ndim == 1
-    assert alm.dtype == complex
+    assert (alm.dtype == complex) or (alm.dtype == np.complex64)
 
     m = pixell.enmap.enmap(np.zeros(shape), wcs=wcs)
     pixell.curvedsky.alm2map(alm, m)
@@ -160,7 +178,7 @@ def map2alm(m, lmax):
 ####################################################################################################
 
 
-def ang2pix(shape, wcs, ra_deg, dec_deg, allow_outliers=False):
+def ang2pix(shape, wcs, ra_deg, dec_deg, allow_outliers=False, outlier_errmsg=None):
     """Returns (idec,ira) if allow_outliers is False, or (idec,ira,mask) if allow_outliers is True.
 
     Roughly equivalent to healpy.ang2pix(..., latlon=True).
@@ -216,7 +234,47 @@ def ang2pix(shape, wcs, ra_deg, dec_deg, allow_outliers=False):
     
     if allow_outliers:
         return idec, ira, mask
-    elif not np.all(mask):
-        raise RuntimeError('kszx.pixell_utils.ang2pix(): called with allow_outliers=False, and some points are out-of-bounds')
-    else:
+    elif np.all(mask):
         return idec, ira
+
+    if outlier_errmsg is None:
+        outlier_errmsg = 'kszx.pixell_utils.ang2pix(): called with allow_outliers=False, and some points are out-of-bounds'
+    raise RuntimeError(outlier_errmsg)
+
+
+####################################################################################################
+
+
+def uK_arcmin_from_ivar(ivar, max_uK_arcmin=1.0e6):
+    """Given an inverse variance `ivar`, returns associated RMS map (in uK-arcmin).
+
+    Based on Mat's orphics library:
+       https://github.com/msyriac/orphics/blob/master/orphics/maps.py
+
+    Function args:
+    
+      - `ivar` (pixell map): inverse variance map, units (uK)^{-2}.
+
+      - `max_uK_arcmin` (float): max allowed value in the return map (prevents
+        dividing by zero).
+
+    Return value is a pixell map with units uK-arcmin.
+
+    Equivalent to::
+    
+       ps = ivar.pixsizemap()
+       uK_arcmin = sqrt(ps/ivar) * (60*180/np.pi)
+       return np.minimum(uK_arcmin, max_uK_arcmin)
+
+    but regulated to avoid dividing by zero.
+    """
+
+    assert isinstance(ivar, pixell.enmap.ndmap)
+    assert max_uK_arcmin > 0
+
+    a = 60*180/np.pi
+    ps = ivar.pixsizemap()
+    epsilon = 0.9 * np.min(ps) * (a/max_uK_arcmin)**2
+    
+    uK_arcmin = a * np.sqrt(ps / np.maximum(ivar,epsilon))
+    return np.minimum(uK_arcmin, max_uK_arcmin)
