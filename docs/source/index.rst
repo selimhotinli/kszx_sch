@@ -35,8 +35,9 @@ kszx documentation
    :maxdepth: 2
    :caption: High-level features:
 
-   catalog_pse
-   surrogate_factory
+   catalog_gridder
+   ksz_pse
+   cmb_cl_fitter
    plot
    ksz_desils
 
@@ -44,5 +45,8 @@ kszx documentation
    :maxdepth: 2
    :caption: Datasets:
 
-   sdss
+   act
    desils_lrg
+   planck
+   sdss
+
