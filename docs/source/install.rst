@@ -19,13 +19,17 @@ Installation
      conda activate kszx
 
   Or build your own conda env with::
-    
-    conda create -n kszx -c conda-forge \
-      python==3.12.6 \
-      jupyterlab jupytext \
-      gxx_linux-64 pybind11 \
-      sphinx sphinx-math-dollar \
-      h5py python-wget astropy camb fitsio healpy pixell
+
+     # Note: gcc 14 conflicts with camb (or at least conda thinks so), so force gcc==13.
+     # Note: jupyterlab is only needed if you're running jupyterlab locally.
+     # Note: sphinx packages are only needed if you're building sphinx docs locally.
+
+     conda create -n kszx -c conda-forge \
+       gxx_linux-64==13.3.0 \
+       python==3.12.6 pybind11 \
+       jupyterlab \
+       sphinx sphinx-math-dollar \
+       h5py python-wget astropy camb fitsio healpy pixell
 
     conda activate kszx
 
@@ -58,14 +62,21 @@ Installation
     most current::
 
       # PyPI install (may not be current)
-      pip install kszx
+      pip install -v kszx
 
 - Step 3: I recommend testing that the install worked, with::
 
     # Just runs some unit tests
     python -m kszx test
 
-- Step 4: You'll probably want to use kszx from a jupyter notebook, so you'll
+- Step 4 (optional): install Mat Madhavacheril's ``hmvec`` library. This library
+  isn't currently used in ``kszx`` itself, but is used in some of the notebooks
+  (https://github.com/kmsmith137/kszx_notebooks/)::
+
+    # Optional: install hmvec
+    pip install -v git+https://github.com/simonsobs/hmvec
+ 
+- Step 5: You'll probably want to use kszx from a jupyter notebook, so you'll
   want to make sure you can ``import kszx`` from jupyter.
 
   The details of the setup will depend on how you're running jupyter, so

@@ -68,6 +68,10 @@ which read large data files), so you don't need to set it up right away.
 Authors
 -------
 
+Alphabetical:
+
  - Selim Hotinli (https://github.com/selimhotinli)
- - Kendrick Smith (https://github.com/kmsmith137/)
+ - Alex Laguë (https://github.com/alexlague)
+ - Mat Madhavacheril (https://github.com/msyriac)
+ - Kendrick Smith (https://github.com/kmsmith137)
  - Your name here??

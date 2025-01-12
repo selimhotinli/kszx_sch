@@ -7,8 +7,8 @@
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
 project = 'kszx'
-copyright = '2024 Selim, Kendrick, et al'
-author = 'Selim, Kendrick, et al'
+copyright = '2024 Selim, Alex, Mat, Kendrick, et al'
+author = 'Selim, Alex, Mat, Kendrick, et al'
 
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
