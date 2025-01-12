@@ -17,40 +17,87 @@ _curr_nthreads = os.cpu_count()
 def get_nthreads():
     """Returns default number of threads, for functions which are multithreaded (e.g. scipy.fft).
 
-    Currently equal to os.cpu_count(), except for worker tasks in a multiprocessing pool.
+    Currently equal to ``os.cpu_count()``, except for worker tasks in a multiprocessing pool.
     In that case, we divide the number of threads by the number of workers in the pool.
 
-    Note: for this to work, you should construct the pool with kszx.utils.Pool(), not
-    multiprocessing.Pool().
+    Note: for this to work, you should construct the pool with :func:`kszx.utils.Pool()`, 
+    not ``multiprocessing.Pool()``!
     """
     
     return _curr_nthreads
 
 
-def set_nthreads(n):
-    """Sets the default number of threads. Use with caution!
+def set_nthreads(nthreads, reseed_numpy_rng=False):
+    """Sets the default number of threads. Not intended to be called directly -- use with caution!
 
-    This function is not really intended to be called directly -- the intended use case is
-    the 'initializer' argument to multiprocessing.Pool(). (See kszx.utils.Pool() source.)
+    (The intended use case for this function is in :func:`kszx.utils.Pool()`, when initializing
+    worker threads. In particular, the ``reseed_numpy_rng`` arg isn't really related to threads,
+    but is included for convenience in kszx.utils.Pool().)
     """
 
+    assert nthreads > 0
+    assert nthreads <= os.cpu_count()
+    
     global _curr_nthreads
-    _curr_nthreads = n
+    _curr_nthreads = nthreads
+
+    # FIXME more code needed here, to propagate new 'nthreads' to all libraries (e.g. blas).
+    # Here's a library that looks helpful: https://github.com/joblib/threadpoolctl
+    
+    if reseed_numpy_rng:
+        # I think this is the best way to reseed numpy's global RNG.
+        # Note that the global RNG is an MT19937, with 624 bytes of state.
+        ss = np.random.SeedSequence(pool_size=8)
+        np.random.seed(ss.generate_state(624))
 
     
-def Pool(ntasks=None):
-    """Thin wrapper around multiprocessing.Pool(), which sets the default nthreads in each worker."""
+def Pool(processes=None, reseed_numpy_rng=True):
+    """Wrapper around multiprocessing.Pool(), which reseeds the numpy RNG and calls set_nthreads() in each worker.
 
-    if ntasks is None:
-        # FIXME assumes hyperthreading enabled -- is there an easy way to check this?
-        ntasks = max(get_nthreads() // 2, 1)
+    This function addresses some issues with multiprocessing.Pool:
+
+       - By default, workers inherit a copy of the parent's global RNG state, so functions
+         like ``np.random.normal()`` produce the same random numbers in each worker. This can
+         be a huge problem -- e.g. a Pool which makes Monte Carlo sims will generate the same
+         realization multiple times. We address this by re-seeding numpy's default RNG state
+         in each worker.
+
+       - Functions which use a thread pool (e.g. :func:`kszx.core.fft_r2c()`) should use fewer 
+         threads when called from workers, in order to avoid oversubscription issues.
+
+       - (Minor.) If the number of workers (``processes`` arg) is unspecified, then I'd prefer
+         to use the number of CPU cores, not the value of ``os.cpu_count()`` (which is usually twice
+         the number of cores, since hyperthreading is usually enabled).
+
+    Function arguments:
+
+       - ``processes`` (int): number of worker subprocesses. If None, then we use the number
+         of CPU cores (which is usually half the value of os.cpu_count()).
+
+       - ``reseed_numpy_rng`` (boolean): if True (the default), then numpy's global RNG will 
+         be re-seeded in each worker thread. You should always do this, unless you're confident
+         that the workers won't use the global RNG.
+    """
+
+    if processes is None:
+        # FIXME assumes that hyperthreading is enabled, so that the number of threads
+        # is twice the number of cores. Is there an easy way to check this? (Could do
+        # it by reading and parsing /proc/cpuinfo, but that's a pain.)
+        processes = max(get_nthreads() // 2, 1)
         
-    assert ntasks > 0
-    assert ntasks == int(ntasks)
-    worker_nthreads = max(get_nthreads() // int(ntasks), 1)
+    assert processes > 0
+    assert processes == int(processes)
+    worker_nthreads = max(get_nthreads() // int(processes), 1)
     
-    print(f'Creating multiprocessing pool with {ntasks} worker processes, and {worker_nthreads} threads/worker')
-    return multiprocessing.Pool(ntasks, initializer=set_nthreads, initargs=(worker_nthreads,))
+    print(f'Creating multiprocessing pool with {processes} worker processes, and {worker_nthreads} threads/worker.')
+
+    if reseed_numpy_rng:
+        print('Global numpy RNG will be re-seeded in each worker process.')
+    else:
+        print('Warning: global numpy RNG is shared between worker process! (reseed_numpy_rng=False)')
+    
+    initargs = (worker_nthreads, reseed_numpy_rng)   # arguments to set_nthreads() called in each worker
+    return multiprocessing.Pool(processes, initializer=set_nthreads, initargs=initargs)
 
 
 ####################################################################################################
