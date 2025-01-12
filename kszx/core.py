@@ -23,7 +23,7 @@ def fft_r2c(box, arr, spin=0, threads=None):
         - ``spin`` (integer): currently only spin=0 and spin=1 are supported.
 
         - ``threads`` (integer or None): number of parallel threads used.
-          If ``threads=None``, then number of threads defaults to ``os.cpu_count()``.
+          If ``threads=None``, then number of threads defaults to :func:`~kszx.utils.get_nthreads()`.
 
     Returns a numpy array representing a Fourier-space map (dtype=complex).
 
@@ -68,7 +68,7 @@ def fft_r2c(box, arr, spin=0, threads=None):
     assert box.is_real_space_map(arr)   # check shape and dtype of input array
 
     if threads is None:
-        threads = os.cpu_count()
+        threads = utils.get_nthreads()
     
     if spin == 0:
         # Currently using scipy.fft instead of pyfftw.
@@ -107,7 +107,7 @@ def fft_c2r(box, arr, spin=0, threads=None):
         - ``spin``: currently only spin=0 and spin=1 are supported.
 
         - ``threads`` (integer or None): number of parallel threads used.
-          If ``threads=None``, then number of threads defaults to ``os.cpu_count()``.
+          If ``threads=None``, then number of threads defaults to :func:`~kszx.utils.get_nthreads()`.
 
     Returns a numpy array representing a real-space map (dtype=float).
 
@@ -152,7 +152,7 @@ def fft_c2r(box, arr, spin=0, threads=None):
     assert box.is_fourier_space_map(arr)   # check shape and dtype of input array
 
     if threads is None:
-        threads = os.cpu_count()
+        threads = utils.get_nthreads()
 
     if spin == 0:
         # Currently using scipy.fft instead of pyfftw.
