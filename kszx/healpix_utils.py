@@ -9,7 +9,7 @@ from .Catalog import Catalog
 
 
 def read_map(filename):
-    print(f'Reading {filename}')
+    print(f'Reading {filename}\n', end='')
     
     # Suppress superfluous warnings from healpy.fitsfunc.read_map():
     #   .../healpy/fitsfunc.py:391: UserWarning: NSIDE = 4
@@ -25,7 +25,7 @@ def read_map(filename):
 
 
 def write_map(filename, m):
-    print(f'Writing {filename}')
+    print(f'Writing {filename}\n', end='')
     io_utils.mkdir_containing(filename)
         
     # Supply (dtype=m.dtype, overwrite=True).
@@ -74,7 +74,7 @@ def map_from_catalog(nside, gcat, weights=None, rcat=None, rweights=None, normal
 
 
 def read_alm(filename):
-    print(f'Reading {filename}')
+    print(f'Reading {filename}\n', end='')
 
     alm, mmax = healpy.read_alm(filename, return_mmax=True)
     expected_nelts = ((mmax+1) * (mmax+2)) // 2

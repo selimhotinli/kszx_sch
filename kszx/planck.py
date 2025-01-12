@@ -33,7 +33,7 @@ def read_hfi_galmask(sky_percentage, apodization=0, dtype=None, download=False):
     
     abspath = _hfi_galmask_filename(apodization, download)
     col_name = f'GAL0{sky_percentage}'
-    print(f'Reading {abspath} ({col_name=})')
+    print(f'Reading {abspath} ({col_name=})\n', end='')
     
     with fitsio.FITS(abspath) as f:
         if col_name not in f[1].get_colnames():

@@ -107,7 +107,7 @@ def read_mask(survey, dr=12, download=False):
     """
     import pymangle
     filename = _mask_filename(survey, dr, download)
-    print(f'Reading {filename}')
+    print(f'Reading {filename}\n', end='')
     return pymangle.Mangle(filename)
 
 
@@ -255,7 +255,7 @@ def read_fits_catalog(filename, is_randcat, name=None, extra_columns=[]):
     Returns a :class:`kszx.Catalog` object.
     """
 
-    print(f'Reading {filename}')
+    print(f'Reading {filename}\n', end='')
     catalog = Catalog(name=name, filename=filename)
 
     with fitsio.FITS(filename) as f:

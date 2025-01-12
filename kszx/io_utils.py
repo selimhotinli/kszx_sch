@@ -13,32 +13,31 @@ import wget as wget_module
 
 
 def read_pickle(filename):
-    print(f'Reading {filename}')
+    print(f'Reading {filename}\n', end='')
     with open(filename, 'rb') as f:
         return pickle.load(f)
 
 
 def write_pickle(filename, x):
     mkdir_containing(filename)
-    print(f'Writing {filename}')    
+    print(f'Writing {filename}\n', end='') 
     with open(filename, 'wb') as f:
         pickle.dump(x, f)
 
 
-def read_npy(filename, verbose=True):
-    print(f'Reading {filename}')
+def read_npy(filename):
+    print(f'Reading {filename}\n', end='')
     return np.load(filename, allow_pickle=True)
 
 
-def write_npy(filename, arr, verbose=True):
+def write_npy(filename, arr):
     mkdir_containing(filename)
-    print(f'Writing {filename}')    
+    print(f'Writing {filename}\n', end='') 
     np.save(filename, arr)
 
     
-def read_npz(filename, verbose=True):
-    """
-    Reminder: returns a dictionary-like object (NpzFile) which maps names to arrays.
+def read_npz(filename):
+    """Returns a dictionary-like object (NpzFile) which maps names to arrays.
 
     Some arrays may have special names 'arr_0', 'arr_1', ... 
     This happens for arrays which were positional (not keyword) arguments to write_npz().
@@ -46,12 +45,11 @@ def read_npz(filename, verbose=True):
 
     # read_npy() and read_npz() can be the same function,
     # since np.load() works for both .npy and .npz files.
-    return read_npy(filename, verbose=verbose)
+    return read_npy(filename)
 
 
 def write_npz(filename, *args, **kwds):
-    """
-    Example: write_npz('file.npz', a, b, xarr=x, yarr=y), where (a,b,x,y) are numpy arrays.
+    """Example: write_npz('file.npz', a, b, xarr=x, yarr=y), where (a,b,x,y) are numpy arrays.
 
     In this example, when 'file.npz' is read (with np.load() or kszx.read_npz()), the return 
     value is a dictionary-like object (NpzFile) with keys 'arr_0', 'arr_1', 'xarr', 'yarr'.
@@ -59,7 +57,7 @@ def write_npz(filename, *args, **kwds):
     """
 
     mkdir_containing(filename)
-    print(f'Writing {filename}')    
+    print(f'Writing {filename}\n', end='')
     np.savez(filename, *args, **kwds)
 
 

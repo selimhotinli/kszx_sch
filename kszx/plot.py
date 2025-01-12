@@ -13,7 +13,7 @@ def savefig(filename=None, tight_layout=True):
     if filename is None:
         plt.show()
     else:
-        print(f'Writing {filename}')
+        print(f'Writing {filename}\n', end='')
         plt.savefig(filename)
     
     plt.clf()
@@ -71,7 +71,7 @@ def real_space_plotter(arr, filename=None, axis=None, vmax=None, title=None):
 
     # Save or show plot (depending on whether filename is None)
     if filename is not None:
-        print(f'Writing {filename}')
+        print(f'Writing {filename}\n', end='')
         plt.savefig(filename)
     else:
         plt.show()

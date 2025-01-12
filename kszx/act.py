@@ -56,8 +56,8 @@ def read_beam(freq, dr, lmax=None, download=False):
 
     filename = _beam_filename(freq, dr, download)
         
-    print(f'Reading {filename}')
-            
+    print(f'Reading {filename}\n', end='')
+    
     a = np.loadtxt(filename)
     assert (a.ndim==2) and (a.shape[1]==2)
     assert np.all(a[:,0] == np.arange(len(a)))
@@ -172,7 +172,7 @@ def _nilc_wide_mask_filename(download=False):
 def _read_map(filename):
     """Called by read_cmb() and read_ivar()."""
     
-    print(f'Reading {filename}')
+    print(f'Reading {filename}\n', end='')
 
     # FIXME is there a way to avoid reading TQU, if we only want T?
     m = pixell.enmap.read_map(filename)

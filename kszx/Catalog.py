@@ -324,7 +324,7 @@ class Catalog:
     def from_h5(filename):
         r"""Reads FITS file in HDF5 format (written by ``catalog.write_h5()``), and returns a Catalog object."""
         
-        print(f'Reading {filename}')
+        print(f'Reading {filename}\n', end='')
         
         with h5py.File(filename, 'r') as f:
             catalog = Catalog(
@@ -342,7 +342,7 @@ class Catalog:
         r"""Writes a Catalog to disk, in an HDF5 file format (readable with ``Catalog.read_h5()``)."""
         
         io_utils.mkdir_containing(filename)
-        print(f'Writing {filename}')
+        print(f'Writing {filename}\n', end='')
         
         with h5py.File(filename, 'w') as f:
             f.attrs.create('size', self.size)
@@ -368,7 +368,7 @@ class Catalog:
         if name is None:
             name = os.path.basename(filename)
             
-        print(f'Reading {filename}')
+        print(f'Reading {filename}\n', end='')
         catalog = Catalog(name=name, filename=filename)
         
         with fitsio.FITS(filename) as f:
@@ -388,7 +388,7 @@ class Catalog:
             name = os.path.basename(filename)
             
         # Note: we copy the transposed array, to get contiguous 1-d arrays.
-        print(f'Reading {filename}')
+        print(f'Reading {filename}\n', end='')
         cols = [ np.copy(x) for x in np.loadtxt(filename).T ]
 
         if len(cols) != len(col_names):

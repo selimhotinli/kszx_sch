@@ -262,7 +262,7 @@ def read_stardens_map(download=False):
     
     filename = _desils_lrg_path('misc/pixweight-dr7.1-0.22.0_stardens_64_ring.fits', download=True)
     
-    print(f'Reading {filename}')
+    print(f'Reading {filename}\n', end='')
     f = fitsio.read(filename)
 
     nside = 64
