@@ -1,9 +1,56 @@
 """The ``kszx.utils`` module contains miscelleanous utilities, that didn't really fit in elsewhere."""
 
+import os
 import numpy as np
 import scipy.special
 import scipy.integrate
 import scipy.interpolate
+import multiprocessing
+
+
+####################################################################################################
+
+
+_curr_nthreads = os.cpu_count()
+
+
+def get_nthreads():
+    """Returns default number of threads, for functions which are multithreaded (e.g. scipy.fft).
+
+    Currently equal to os.cpu_count(), except for worker tasks in a multiprocessing pool.
+    In that case, we divide the number of threads by the number of workers in the pool.
+
+    Note: for this to work, you should construct the pool with kszx.utils.Pool(), not
+    multiprocessing.Pool().
+    """
+    
+    return _curr_nthreads
+
+
+def set_nthreads(n):
+    """Sets the default number of threads. Use with caution!
+
+    This function is not really intended to be called directly -- the intended use case is
+    the 'initializer' argument to multiprocessing.Pool(). (See kszx.utils.Pool() source.)
+    """
+
+    global _curr_nthreads
+    _curr_nthreads = n
+
+    
+def Pool(ntasks=None):
+    """Thin wrapper around multiprocessing.Pool(), which sets the default nthreads in each worker."""
+
+    if ntasks is None:
+        # FIXME assumes hyperthreading enabled -- is there an easy way to check this?
+        ntasks = max(get_nthreads() // 2, 1)
+        
+    assert ntasks > 0
+    assert ntasks == int(ntasks)
+    worker_nthreads = max(get_nthreads() // int(ntasks), 1)
+    
+    print(f'Creating multiprocessing pool with {ntasks} worker processes, and {worker_nthreads} threads/worker')
+    return multiprocessing.Pool(ntasks, initializer=set_nthreads, initargs=(worker_nthreads,))
 
 
 ####################################################################################################
