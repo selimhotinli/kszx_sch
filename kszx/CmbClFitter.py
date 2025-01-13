@@ -11,75 +11,166 @@ import matplotlib.pyplot as plt
 
 
 class CmbClFitter:
-    def __init__(self, cosmo, cmb_map, weight_map, bl, lmin, lmax, ivar=None, iterative=False, fit_cmb_amplitude=False, fit_alpha=True, fit_lred=True, beamed_red_noise=True, alpha_fid=-3, lred_fid=1500, lpad=1000):
-        """Given a CMB map, fit a power spectrum of the form C_l^{CAMB} + (power law) + (white noise).
+    def __init__(self, cosmo, cmb_map, weight_map, bl, lmin, lmax, ivar=None, iterative=False, fit_cmb_amplitude=False, fit_alpha=True, fit_lred=True, beamed_red_noise=True, uniform_lweight=False, alpha_fid=-3, lred_fid=1500, lpad=1000):
+        r"""Given a CMB map, fit a power spectrum of the form $C_l=$ (lensed Cls) + (power-law red noise) + (white noise).
         
         Based on utils.get_single_frequency_alms() in Alex + Mat's kSZquest software:
             https://github.com/alexlague/kSZquest/blob/main/utils.py
 
-        **Placeholder docstring -- proper docstring coming soon.**
+        **To do: add link to jupyter notebook**
 
-        Intended for fitting high-l tail of the CMB, so choose lmin ~ 10^3.
+        With default constructor arguments, the CmbClFitter fits the power spectrum of the
+        specified ``cmb_map`` (with pixel weighting specified by ``weight_map``, and for 
+        $l_{\rm min} \le l \le l_{\rm max}$) to a model of the form:
 
-        NOTE: currently assumes that 'cmb_map' and 'weight_map' pixell maps, but could
+        $$\begin{align}
+        C_l &= b_l^2 C_l^{\rm CAMB} + A_{\rm red} b_l^2 \max\left( \frac{l}{l_{\rm red}}, 1 \right)^\alpha + A_{\rm white}
+        \end{align}$$
+        with parameters $(A_{\rm red}, A_{\rm white}, \alpha, l_{\rm red})$. Here, $C_l^{CAMB}$ is the 
+        **lensed** CMB power spectrum, and does not include kSZ or foregrounds.
+
+        I experimented with a lot of flags that turned out not to really matter. The default
+        constructor arguments above (with ``lmin=1500`` and ``lmax=8000``) are what I've been
+        using for ACT. 
+
+        If you want to reproduce Alex + Mat's fits from kSZquest, use the following arguments 
+        (only args which differ from default values are shown):
+
+           - lmin = 1000
+           - lmax = 8000
+           - fit_cmb_amplitude = True
+           - fit_alpha = False
+           - fit_lred = False
+           - beamed_red_noise = False
+           - uniform_lweight = True
+
+        **Note:** CmbClFitter currently uses pixell maps (for ``cmb_map``, ``weight_map``, ``ivar``), but could
         easily be modified to allow healpix maps -- let me know if this would be useful.
-        
+            
+        The output of the fitting procedure is contained in the following class members, which are initialized
+        by the constructor::
+
+            # Scalar params
+            self.alpha           # spectral index of red noise (see above)
+            self.red_ampl        # coefficient A_red of red noise contribution to C_l (see above)
+            self.write_ampl      # coefficient A_white of white noise contribution to C_l (see above)
+            self.cmb_ampl        # coefficient A_cmb of CMB contribution to C_l (see 'fit_cmb_amplitude' below)
+            self.l_knee          # value of l where white/red noise are equal
+            self.uK_arcmin       # equivalent to A_white, just reparameterized as noise RMS
+            self.ivar_uK_arcmin  # equivalent white noise level of ivar map (if ivar is specified)
+
+            # Model power spectra
+            self.cl_beamed_cmb    # beam-convolved, noise-free
+            self.cl_red_noise     # power-law in l (possibly beam-convolved, see 'beamed_red_noise' below)
+            self.cl_white_noise   # constant in l
+            self.cl_tot           # sum of previous 3 contributions
+
+            # Weighted or "pseudo" power spectra. These are used by CmbClFitter.plot(), but are probably
+            # not useful otherwise. For now, I'm converting model Cls to pseudo Cls by running on simulation.
+            # Some day I'll improve this, by implementing the pseudo-Cl transfer matrix.
+            
+            self.pcl_beamed_cmb   # beam-convolved, noise-free, from one sim
+            self.pcl_red_noise    # power spectrum of red noise, from one sim
+            self.pcl_white_noise  # constant in l
+            self.pcl_tot          # sum of previous 3 contributions
+            self.pcl_data         # empirical spectrum of cmb map
+
+        Constructor arguments:
+
+          - ``cosmo`` (:class:`~kszx.Cosmology`): only needed for CAMB lensed $C_l$s.
+
+          - ``cmb_map`` (pixell.enmap.ndmap): CMB temperature map with units $\mu$K
+            (e.g. from calling :func:`~kszx.act.read_cmb()`).
+
           - ``weight_map`` (pixell.enmap.ndmap): applied to all maps before computing
             alms or cls. Recommend including a foreground mask, multiplied by some 
             downweighting of noisy regions (e.g. hard cutoff, ivar weighting, or FKP
             weighting).
 
-          - ``lpad``: only used if ``use_sims=True``.
-            
-        The constructor initializes the following members:: 
+          - ``bl`` (1-d numpy array): beam transfer function (e.g. from calling 
+            :func:`~kszx.act.read_ivar()`).
 
-            self.lmin
-            self.lmax
-            self.alpha            # spectral index of red noise (currently -3)
-            self.bl
+          - ``lmin``, ``lmax`` (integers): range of $l$-values over which fit is performed.
+            For ACT I've been using ``lmin=1500`` and ``lmax=8000`` (note that the CmbClFitter
+            is intended to fit high $l$-values).
 
-            # "Theory" power spectra (weight_map not applied).
-            
-            self.cl_beamed_cmb    # beam-convolved, noise-free
-            self.cl_red_noise     # power-law in l
-            self.cl_white_noise   # constant in l
-            self.cl_tot           # sum of prev 3 contributions
+          - ``ivar`` (pixell.enmap.ndmap, optional): inverse variance map (e.g. from calling
+            :func:`~kszx.act.read_ivar()`). This is not used in the fitting procedure! If ivar
+            is specified, then the constructor will initialize ``self.ivar_uK_arcmin``, which
+            can be compared to ``self.uK_arcmin``, to get a sense for how well the fitted white
+            noise level $A_{\rm white}$ compares to the ivar map.
 
-            # Weighted or "pseudo" power spectra, intended for plot().
-            # Note: just using one sim for now. Some day I'll improve this, by
-            # implementing the pseudo-Cl transfer matrix.
-            
-            self.pcl_beamed_cmb   # beam-convolved, noise-free, from one sim
-            self.pcl_red_noise    # power spectrum of red noise, from one sim
-            self.pcl_white_noise  # constant in l
-            self.pcl_tot          # sum of prev 3 contributions
-            self.pcl_data         # from 'cmb_map' constructor arg
-            
-            # Scalars
+          - ``iterative`` (boolean, default False): If False, then we assume that pseudo-Cls and
+            true Cls are related by a factor $W_2 = \int d^2\theta W(\theta)^2/4\pi$, where $W(\theta)$
+            is the ``weight_map``. If True, then we try to improve this approximation using a Monte
+            Carlo based, iterative approach. This turned out to make almost no difference, so I don't
+            recommend that you use ``iterative=True``!
+
+          - ``fit_cmb_amplitude`` (boolean, default False): If True, then the amplitude of the
+            CMB power spectrum is a free (fitted) parameter, i.e. the CMB term is 
+            $(A_{\rm cmb} b_l^2 C_l^{\rm CAMB})$ rather than $(b_l^2 C_l^{\rm CAMB})$.
+
+          - ``fit_alpha`` (boolean, default True): If True, then the spectral index $\alpha$
+            of the red noise is a free (fitted) parameter. If False, then $\alpha$ is fixed
+            to the value ``alpha_fid`` (another constructor argument, see below).
+
+          - ``fit_lred`` (boolean, default True): The $l_{\rm red}$ parameter regulates the
+            red noise at low $l$ (see equation near the beginning of this docstring).
+            If ``fit_red=True``, then $l_{\rm red}$ is a free (fitted) parameter. If ``fit_red=False``,
+            then $l_{\rm red}$ is fixed to the value ``lred_fid`` (another constructor argument,
+            see below).
+
+          - ``beamed_red_noise`` (boolean, default True): If True, then the red noise is a 
+            beam-convolved power law $C_l = (A_{\rm red} b_l^2 \max(l/l_{\rm red},1)^\alpha)$.
+            If False, then the red noise is a power law $C_l = (A_{\rm red} \max(l/l_{\rm red},1)^\alpha)$.
+
+          - ``uniform_lweight`` (boolean, default False): determines how $\chi^2$ is defined 
+            (the fit is implemented by minimizing $chi^2$).
+
+               - if False, then $\chi^2 = \sum_{l=l_{min}}^{l_{max}} (\Delta C_l)^2$.
+
+               - if True, then $\chi^2 = \sum_{l=l_{min}}^{l_{max}} (\Delta C_l)^2/(l C_l^2)$.
+
+          - ``alpha_fid`` (float, default -3): Fiducial value of red noise spectral index $\alpha$.
+            (If ``fit_alpha=True``, then the value of ``alpha_fid`` shouldn't matter -- we only use it
+            to set initial parameter values for the $\chi^2$ minimization.)
+
+          - ``lred`` (float, default 1500): Fiducial value of the $l_{\rm red}$ parameter, which
+            regulates the red noise at low $l$ (see equation near the beginning of this docstring).
+            (if ``fit_lred=True``, then the value of ``lred`` shouldn't matter -- we only use it to
+            to set initial parameter values for the $\chi^2$ minimization.)
         
-            self.l_knee           # value of l where white/red noise are equal
-            self.uK_arcmin        # reparameterization of self.cl_white_noise
-            self.ivar_uK_arcmin   # equivalent white noise level of ivar map
+          - ``lpad`` (integer, default 1000): After doing the fit, we validate the fit by comparing
+            the empirical pseudo-$C_l$s of the data to a simulation of the model. We simulate the
+            CMB to a multipole $(l_{\rm max} + l_{\rm pad})$ which is larger than the maximum
+            multipole $l_{\rm max}$ of the power spectrum estimation/fitting.
         """
 
         # Argument checking starts here.
+        
         bl = utils.asarray(bl, 'CmbClFitter', 'bl', dtype=float)
         
         assert isinstance(cosmo, Cosmology)
         assert isinstance(cmb_map, pixell.enmap.ndmap)
         assert isinstance(weight_map, pixell.enmap.ndmap)
+        assert cmb_map.ndim == 2
+        assert weight_map.ndim == 2
         assert 2 <= lmin < lmax
         assert lmin <= lred_fid < lmax
         assert alpha_fid < 0
         assert bl.ndim == 1
         assert lpad > 0
         
+        beam_lmax = len(bl)-1
+        assert beam_lmax >= (lmax + lpad)
+        
         if ivar is not None:
             assert isinstance(ivar, pixell.enmap.ndmap)
-
-        beam_lmax = len(bl)-1
-        assert cosmo.lmax >= (lmax + lpad)
-        assert beam_lmax >= (lmax + lpad)
+            assert ivar.ndim == 2
+            
+        if cosmo.lmax < (lmax + lpad):
+            raise RuntimeError(f"CmbClFitter: {cosmo.lmax=} must be >= {(lmax+lpad)=}. To increase cosmo.lmax,"
+                               + f" call the Cosmology constructor with the 'lmax' argument specified")
         
         # Argument checking ends here.
         
@@ -92,6 +183,7 @@ class CmbClFitter:
         self.fit_alpha = fit_alpha
         self.fit_cmb_amplitude = fit_cmb_amplitude
         self.beamed_red_noise = beamed_red_noise
+        self.uniform_lweight = uniform_lweight
         self.iterative = iterative
         self.bl = bl[:(lmax+lpad+1)]
         
@@ -102,7 +194,7 @@ class CmbClFitter:
         
         self._init_white_noise(weight_map, ivar)
 
-        # Must come after _init_white_noise()
+        # _pcl_from_weighted_map() must come after _init_white_noise()
         self.pcl_data = self._pcl_from_weighted_map(cmb_map * weight_map)
         
         # self._do_fit() initializes or updates the following members:
@@ -116,7 +208,9 @@ class CmbClFitter:
         #  self.l_knee          # value of l where white/red noise are equal
         #  self.uK_arcmin       # reparameterization of self.white_ampl
 
-        self._do_fit(cosmo, weight_map)
+        niter = 2 if iterative else 1
+        for _ in range(niter):
+            self._do_fit(cosmo, weight_map)
         
         # Done -- just need to initialize remaining members.
         
@@ -135,9 +229,9 @@ class CmbClFitter:
     def make_plots(self, filename_prefix=None, suffix='pdf', s=30):
         """Make three diagnostic plots, either on-screen (filename_prefix=None) or saved to disk.
         
-          - Plot 1: pseudo-Cls, data vs model ``{filename_prefix}_pcl.{suffix}``
-          - Plot 2: pseudo-Cls, data/model ``{filename_prefix}_pcl_ratio.{suffix}``
-          - Plot 3: Model Cls, normalized to uK^2 ``{filename_prefix}_cl.{suffix}``
+          - Plot 1: pseudo-Cls, data vs model (filename ``{filename_prefix}_pcl.{suffix}``).
+          - Plot 2: pseudo-Cls, data/model ratio (filename ``{filename_prefix}_pcl_ratio.{suffix}``).
+          - Plot 3: Model Cls (filename ``{filename_prefix}_cl.{suffix}``).
         """
 
         filename = (filename_prefix + '_pcl' + suffix) if (filename_prefix is not None) else None
@@ -155,7 +249,7 @@ class CmbClFitter:
 
         filename = (filename_prefix + '_pcl_ratio' + suffix) if (filename_prefix is not None) else None
         self._plot_smoothed(self.pcl_data/self.pcl_tot, s, label='data/model')
-        plt.title(r'(Data $C_l$) / (Model $C_l$)')
+        plt.title(r'(Data pseudo $C_l$) / (Model pseudo $C_l$)')
         plt.legend(loc='lower right')
         plt.xlabel(r'$l$')
         plot.savefig(filename)
@@ -200,11 +294,12 @@ class CmbClFitter:
         cmb_template = getattr(self, 'cmb_template', cl_cmb[:(lmax+1)])
         
         # ninv = inverse variance of C_l, used to determine weighting in fit.
-        # I thought it made more conceptual sense to take ninv= (2*l+1)/C_l^2, but
-        # I got better results using ierr = 1. (Overall normalization is not important.)
         ninv = np.zeros(lmax+1)
-        # ninv[lmin:] = np.sqrt(2*np.arange(lmax+1)+1) / self.pcl_data[lmin:]
-        ninv[lmin:] = 1.0
+
+        if self.uniform_lweight:
+            ninv[lmin:] = 1.0
+        else:
+            ninv[lmin:] = 1.0 / (np.arange(lmin,lmax+1) * self.pcl_data[lmin:]**2)
 
         if False:
             # d = data vector (pcl_data - cmb_template)
@@ -243,7 +338,7 @@ class CmbClFitter:
 
             rcl = self.pcl_data - cmb_template
 
-            # Treatment of red noise is a little awkward
+            # Note: calling _cl_red_noise() at current (alpha,lred), not (self.alpha,self.lred).
             red_cl_ratio = self._cl_red_noise(alpha=alpha,lred=lred) / cl_red
             rcl -= x[0] * red_cl_ratio * red_template
             rcl -= x[1]   # white noise template is C_l = 1
