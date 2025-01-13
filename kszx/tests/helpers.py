@@ -52,17 +52,17 @@ def random_box(ndim=None, nmin=2):
     return Box(npix, pixsize, cpos)
 
 
-def random_kbin_delim(box, nbins=None):
+def random_kbin_edges(box, nbins=None):
     if nbins is None:
         nbins = np.random.randint(2, 11)
     
     kmax = 1.1 * np.sqrt(box.ndim) * box.knyq
-    kbin_delim = np.random.uniform(0.0, kmax, nbins+1)
-    kbin_delim = np.sort(kbin_delim)
-    kbin_delim += np.linspace(0.0, 1.0e-10 * kmax, nbins+1)
-    kbin_delim[0] = kbin_delim[0] if (np.random.uniform() < 0.5) else 0.0
+    kbin_edges = np.random.uniform(0.0, kmax, nbins+1)
+    kbin_edges = np.sort(kbin_edges)
+    kbin_edges += np.linspace(0.0, 1.0e-10 * kmax, nbins+1)
+    kbin_edges[0] = kbin_edges[0] if (np.random.uniform() < 0.5) else 0.0
     
-    return kbin_delim
+    return kbin_edges
 
 
 def map_dot_product(box, arr1, arr2, normalize=True):

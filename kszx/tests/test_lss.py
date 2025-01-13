@@ -221,7 +221,7 @@ def monte_carlo_simulate_gaussian(npix, pixsize):
 ####################################################################################################
 
 
-def _test_estimate_power_spectrum(box, kbin_delim, nmaps=None, use_dc=False):
+def _test_estimate_power_spectrum(box, kbin_edges, nmaps=None, use_dc=False):
     """Compares estimate_power_spectrum() to a reference implementation.
     
     Note that nmaps=1 is slightly different from nmaps=None. 
@@ -235,9 +235,9 @@ def _test_estimate_power_spectrum(box, kbin_delim, nmaps=None, use_dc=False):
     maps = np.array([ core.simulate_white_noise(box, fourier=True) for _ in range(M) ])
     
     map_arg = maps if (nmaps is not None) else maps[0]
-    pk, bc = core.estimate_power_spectrum(box, map_arg, kbin_delim, use_dc=use_dc, allow_empty_bins=True, return_counts=True)
+    pk, bc = core.estimate_power_spectrum(box, map_arg, kbin_edges, use_dc=use_dc, allow_empty_bins=True, return_counts=True)
     
-    nbins = len(kbin_delim) - 1
+    nbins = len(kbin_edges) - 1
     ref_pk = np.zeros((M,M,nbins))
     ref_bc = np.zeros(nbins, dtype=int)
 
@@ -251,7 +251,7 @@ def _test_estimate_power_spectrum(box, kbin_delim, nmaps=None, use_dc=False):
         k = np.minimum(k, box.npix - k)
         k *= (2*np.pi) / box.boxsize
         k = np.dot(k,k)**0.5
-        b = np.searchsorted(kbin_delim, k, side='right')-1
+        b = np.searchsorted(kbin_edges, k, side='right')-1
         
         if (b < 0) or (b >= nbins):
             continue
@@ -287,14 +287,14 @@ def test_estimate_power_spectrum():
     
     for iouter in range(100):
         box = helpers.random_box()
-        kbin_delim = helpers.random_kbin_delim(box)
+        kbin_edges = helpers.random_kbin_edges(box)
         use_dc = (np.random.uniform() < 0.5)
 
         # Note: C++ kernel calls different functions for M=1, M=2, M=3, M=4, and M>4.
         nmaps = np.random.randint(1,8) if (np.random.uniform() < 0.95) else None
         # print(f'{nmaps=}')
 
-        _test_estimate_power_spectrum(box, kbin_delim, nmaps=nmaps, use_dc=use_dc)
+        _test_estimate_power_spectrum(box, kbin_edges, nmaps=nmaps, use_dc=use_dc)
         
     print('test_estimate_power_spectrum(): pass')
 
@@ -302,7 +302,7 @@ def test_estimate_power_spectrum():
 ####################################################################################################
 
 
-def _test_kbin_average(box, kbin_delim, use_dc=False):
+def _test_kbin_average(box, kbin_edges, use_dc=False):
     """Compares kbin_average() to a reference implementation.
     
     In principle, there is a small chance that this test can fail, if kbin_average() 
@@ -321,9 +321,9 @@ def _test_kbin_average(box, kbin_delim, use_dc=False):
             ret += coeffs[i] * np.cos(rvals[i]*k)
         return ret
 
-    fmean, bc = core.kbin_average(box, f, kbin_delim, use_dc=use_dc, allow_empty_bins=True, return_counts=True)
+    fmean, bc = core.kbin_average(box, f, kbin_edges, use_dc=use_dc, allow_empty_bins=True, return_counts=True)
 
-    nbins = len(kbin_delim) - 1
+    nbins = len(kbin_edges) - 1
     ref_fk = f(box.get_k())
     ref_fmean = np.zeros(nbins)
     ref_bc = np.zeros(nbins, dtype=int)
@@ -338,7 +338,7 @@ def _test_kbin_average(box, kbin_delim, use_dc=False):
         k = np.minimum(k, box.npix - k)
         k *= (2*np.pi) / box.boxsize
         k = np.dot(k,k)**0.5
-        b = np.searchsorted(kbin_delim, k, side='right')-1
+        b = np.searchsorted(kbin_edges, k, side='right')-1
         
         if (b < 0) or (b >= nbins):
             continue
@@ -368,8 +368,8 @@ def test_kbin_average():
     
     for iouter in range(100):
         box = helpers.random_box()
-        kbin_delim = helpers.random_kbin_delim(box)
+        kbin_edges = helpers.random_kbin_edges(box)
         use_dc = (np.random.uniform() < 0.5)
-        _test_kbin_average(box, kbin_delim, use_dc=use_dc)
+        _test_kbin_average(box, kbin_edges, use_dc=use_dc)
         
     print('test_kbin_average(): pass')
