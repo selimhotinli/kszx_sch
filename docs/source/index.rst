@@ -35,8 +35,8 @@ kszx documentation
    :maxdepth: 2
    :caption: High-level features:
 
-   catalog_gridder
    ksz_pse
+   catalog_gridder
    cmb_cl_fitter
    plot
    ksz_desils

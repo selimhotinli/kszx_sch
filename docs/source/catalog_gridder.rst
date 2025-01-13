@@ -12,6 +12,8 @@
 Details
 -------
 
+In this appendix, we explain what CatalogGridder actualy computes.
+
 The estimator $\hat P_{ff'}^{\rm nrand}(k)$
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 

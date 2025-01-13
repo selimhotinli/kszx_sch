@@ -32,7 +32,7 @@ class CatalogGridder:
           2. A "sampled" field is obtained from an underlying continuous field $F(x)$,
              by sampling at discrete points $x_i$ with sampling weights $w_i$:
 
-             $$f(x) = \sum_i c_i \delta^3(x-x_i) \hspace{1cm} \mbox{where } c_i = w_i F(x_i)$$
+             $$f(x) = \sum_i c_i \delta^3(x-x_i) \hspace{1cm} \mbox{where } c_i = w_i F(x_i) + (\mbox{noise})$$
         
         For a density field, we're interested in clustering statistics of the tracers themselves.
         For a sampled field, we're interested in clustering statsitics of the underlying continuous 
@@ -214,7 +214,7 @@ class CatalogGridder:
             self.fmaps[i] = core.fft_r2c(box, self.rmaps[i])
 
             assert self.rwsum[i] != 0
-            core.apply_kernel_compensation(box, self.fmaps[i], kernel, -0.5)  # multiply by C(k)^(-1/2)
+            core.apply_kernel_compensation(box, self.fmaps[i], kernel)
 
             if not self.save_rmaps[i]:
                 self.rmaps[i] = None
@@ -295,17 +295,17 @@ class CatalogGridder:
         rmap -= self.rmaps[footprint_index]   # subtract randoms
 
         fmap = core.fft_r2c(self.box, rmap)
-        core.apply_kernel_compensation(self.box, fmap, self.kernel, -0.5)  # multiply by C(k)^(-1/2)
+        core.apply_kernel_compensation(self.box, fmap, self.kernel)
         return fmap
 
 
     def grid_sampled_field(self, gcat, coeffs, wsum, footprint_index, spin=0, zcol_name='z'):
-        r"""Grids a sampled field $f(x) = \sum_i C_i \delta^3(x-x_i)$, and returns a Fourier-space map.
+        r"""Grids a sampled field $f(x) = \sum_i c_i \delta^3(x-x_i)$, and returns a Fourier-space map.
 
         A "sampled" field is obtained from an underlying continuous field $F(x)$, by sampling
-        at discrete points $x_i$ with weights $W_i$:
+        at discrete points $x_i$ with weights $w_i$:
 
-        $$f(x) = \sum_i c_i \delta^3(x-x_i) \hspace{1cm} \mbox{where } c_i = w_i F(x_i)$$
+        $$f(x) = \sum_i c_i \delta^3(x-x_i) \hspace{1cm} \mbox{where } c_i = w_i F(x_i) + (\mbox{noise})$$
 
         For example, kSZ velocity reconstruction (summarizing discussion from the class 
         :class:`~kszx.CatalogGridder` docstring):
@@ -363,7 +363,7 @@ class CatalogGridder:
         coeffs = self._parse_coeffs(gcat, coeffs, 'CatalogGridder.grid_sampled_field()', 'coeffs')
 
         fmap = core.grid_points(self.box, points, (rwsum/wsum) * coeffs, kernel=self.kernel, fft=True, spin=spin)
-        core.apply_kernel_compensation(self.box, fmap, self.kernel, -0.5)  # multiply by C(k)^(-1/2)
+        core.apply_kernel_compensation(self.box, fmap, self.kernel)
         return fmap
         
 

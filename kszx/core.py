@@ -220,13 +220,16 @@ def interpolate_points(box, arr, points, kernel, fft=False, spin=0, periodic=Fal
 
         - 1-d numpy array with length npoints, containing interpolated values.
  
-    Note: 
+    Notes: 
 
        - The ``points`` array should be specified in "observer coordinates", not "grid coordinates".
 
          (Reminder: in observer coordinates, the observer is at the origin, coordinates have units
          of distance, and the corners of the box are at ``box.{lpos,rpos}``. 
          See :class:`~kszx.Box` for more info.)
+
+       - Before calling ``interpolate_points()``, you may want to call :func:`~kszx.apply_kernel_compensation()`
+         to mitigate high-$k$ biases. See :func:`~kszx.apply_kernel_compensation()` docstring for more info.
     """
 
     if not isinstance(box, Box):
@@ -338,7 +341,7 @@ def grid_points(box, points, weights=None, rpoints=None, rweights=None, kernel=N
         (\mbox{Fourier-space shape}) &= (n_0, n_1, \cdots, \lfloor n_{d-1}/2 \rfloor + 1)
         \end{align}$$
 
-    Note:
+    Notes:
 
        - The ``points`` array should be specified in "observer coordinates", not "grid coordinates".
 
@@ -356,6 +359,9 @@ def grid_points(box, points, weights=None, rpoints=None, rweights=None, kernel=N
          $$f(k) = \sum_j w_j \exp(-i{\bf k}\cdot {\bf x_j})$$
     
          with no factor of box or pixel volume.
+
+       - After calling ``grid_points()``, you may want to call :func:`~kszx.apply_kernel_compensation()`
+         to mitigate high-$k$ biases. See :func:`~kszx.apply_kernel_compensation()` docstring for more info.
     """
 
     if not isinstance(box, Box):
@@ -392,14 +398,41 @@ def grid_points(box, points, weights=None, rpoints=None, rweights=None, kernel=N
     return fft_r2c(box,grid,spin=spin) if fft else grid
 
 
-def apply_kernel_compensation(box, arr, kernel, exponent):
-    r"""Multiplies Fourier-space map 'arr' by C(k)**exponent.
+def apply_kernel_compensation(box, arr, kernel, exponent=-0.5):
+    r"""Modifies Fourier-space map 'arr' in-place, to debias interpolation/gridding.
 
-    Here, C(k) denotes the power spectrum compensation factor for the specified gridding kernel.
+    Context: gridding kernels (see :func:`~kszx.grid_points()`) multiplicatively bias 
+    power spectrum estimation,
 
-    The most common case is multiplying Fourier-space maps by C(k)**(-1/2), i.e. taking
-    ``exponent=-0.5``, before interpolating or estimating the power spectrum,
+    $$<P(k)>_{\rm estimated} = C(k) \, P(k)_{true}$$
 
+    Here, $C(k)$ is a "compensation factor" satisfying $0 \le C(k) \le 1$ which depends 
+    on both the magnitude and orientation of $k$.
+
+    There is a similar bias which pertains to interpolation kernels, rather than gridding
+    kernels (see :func:`~kszx.interpolate_points()`). Suppose we start with a Fourier-space
+    map $f(k)$, then Fourier transform and interpolate at random locations. One would
+    expect that an interpolated value $f_{\rm interp}$ has variance
+
+    $$\langle f_{\rm interp}^2 \rangle = \int \frac{d^3k}{(2\pi)^3} \, f(k)^2$$
+
+    However, the interpolation kernel produces a bias: the actual variance is
+
+    $$\langle f_{\rm interp}^2 \rangle = \int \frac{d^3k}{(2\pi)^3} \, C(k) f(k)^2$$
+
+    The function ``apply_kernel_compensation`` multiplies Fourier-space map ``arr``
+    in-place by $C(k)^p$, where $p$ is the ``exponent`` argument.  Here are two 
+    common applications:
+
+      1. Before calling :func:`~kszx.estimate_power_spectrum()` on one or more Fourier-space 
+         maps, you should call ``apply_kernel_compensation()`` on each map, to multiply by
+         $C(k)^{-1/2}$. This will mitigate the power spectrum estimation bias noted above.
+
+      2. Before calling :func:`~kszx.interpolate_points()` on a map, you should call
+         ``apply_kernel_compensation()`` on the map, to multiply by $C(k)^{-1/2}$. 
+         This will mitigate the interpolation bias noted above. (This assumes that 
+         you start with the map in Fourier space, and FFT before interpolating.)
+    
     Function args:
 
         - ``box`` (kszx.Box): defines pixel size, bounding box size, and location of observer.
@@ -410,9 +443,10 @@ def apply_kernel_compensation(box, arr, kernel, exponent):
 
         - ``kernel`` (string): either ``'cic'`` or ``'cubic'`` (more options will be defined later).
 
-        - ``exponent'' (float): array will be multiplied by C(k)**exponent.
-
-    Return value: None (the ``arr`` argument is modified in-place, by multiplying by C(k)**exponent).
+        - ``exponent`` (float): array will be multiplied by ``C(k)**exponent``. (The default value
+          is ``exponent = -0.5``, since this value arises in both applications above.)
+    
+    Return value: None (the ``arr`` argument is modified in-place, by multiplying by ``C(k)**exponent``).
 
     Reminder: real-space and Fourier-space array shapes are given by ``box.real_space_shape``
     and ``box.fourier_space_shape``, and are related as follows:
@@ -947,6 +981,9 @@ def estimate_power_spectrum(box, map_or_maps, kbin_delim, *, use_dc=False, allow
          (\mbox{real-space shape}) &= (n_0, n_1, \cdots, n_{d-1}) \\
          (\mbox{Fourier-space shape}) &= (n_0, n_1, \cdots, \lfloor n_{d-1}/2 \rfloor + 1)
          \end{align}$$
+
+       - Before calling ``estimate_power_spectrum()``, you may want to call :func:`~kszx.apply_kernel_compensation()`
+         to mitigate high-$k$ biases. See :func:`~kszx.apply_kernel_compensation()` docstring for more info.
     """
 
     kbin_delim = _check_kbin_delim(box, kbin_delim, use_dc)

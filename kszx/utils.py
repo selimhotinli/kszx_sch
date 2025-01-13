@@ -69,6 +69,14 @@ def Pool(processes=None, reseed_numpy_rng=True):
          to use the number of CPU cores, not the value of ``os.cpu_count()`` (which is usually twice
          the number of cores, since hyperthreading is usually enabled).
 
+    Usage is the same as ``multiprocessing.Pool()``::
+
+      def func(i):
+          return i*i
+
+      with kszx.utils.Pool() as pool:
+          squares = pool.map(func, range(100))   # returns [0,1,4,9,...,9801]
+
     Function arguments:
 
        - ``processes`` (int): number of worker subprocesses. If None, then we use the number
