@@ -10,7 +10,7 @@ from .Catalog import Catalog
 
 
 def read_map(filename):
-    print(f'Reading {filename}')
+    print(f'Reading {filename}\n', end='')
     assert filename.endswith('.fits')
     return pixell.enmap.read_map(filename)
 
@@ -21,7 +21,7 @@ def write_map(filename, m):
     # WCS which causes some pixell functions to fail later, with cryptic error messages.
     assert isinstance(m, pixell.enmap.ndmap)
     
-    print(f'Writing {filename}')
+    print(f'Writing {filename}\n', end='')
     assert filename.endswith('.fits')
     io_utils.mkdir_containing(filename)
     pixell.enmap.write_map(filename, m)
@@ -48,7 +48,7 @@ def plot_map(m, downgrade, nolabels=True, filename=None, **kwds):
     if filename is None:
         pixell.enplot.show(bunch)
     else:
-        print(f'Writing {filename}')
+        print(f'Writing {filename}\n', end='')
         assert filename.endswith('.png')
         io_utils.mkdir_containing(filename)
         pixell.enplot.write(filename[:-4], bunch)
@@ -246,16 +246,20 @@ def ang2pix(shape, wcs, ra_deg, dec_deg, allow_outliers=False, outlier_errmsg=No
 
 
 def uK_arcmin_from_ivar(ivar, max_uK_arcmin=1.0e6):
-    """Given an inverse variance `ivar`, returns associated RMS map (in uK-arcmin).
+    r"""Given an inverse variance map (ivar), returns associated RMS map (in uK-arcmin).
 
     Based on Mat's orphics library:
        https://github.com/msyriac/orphics/blob/master/orphics/maps.py
 
+    **Note:** currently uses pixell maps, but could easily be modified to allow healpix
+    maps -- let me know if this would be useful.
+
     Function args:
     
-      - `ivar` (pixell map): inverse variance map, units (uK)^{-2}.
+      - ``ivar`` (pixell map): inverse variance map, units (uK)^{-2}.
+        (For example, the return value from :func:`~kszx.act.read_ivar()`.)
 
-      - `max_uK_arcmin` (float): max allowed value in the return map (prevents
+      - ``max_uK_arcmin`` (float): max allowed value in the return map (prevents
         dividing by zero).
 
     Return value is a pixell map with units uK-arcmin.
@@ -278,3 +282,60 @@ def uK_arcmin_from_ivar(ivar, max_uK_arcmin=1.0e6):
     
     uK_arcmin = a * np.sqrt(ps / np.maximum(ivar,epsilon))
     return np.minimum(uK_arcmin, max_uK_arcmin)
+
+
+def fkp_from_ivar(ivar, cl0, normalize=True, return_wvar=False):
+    r"""Given an inverse variance map (ivar), returns associated FKP weighting.
+
+    $$\begin{align}
+    W(\theta) &= \frac{1}{C_l^{(0)} + N(\theta)} \\
+    N(\theta) &\equiv \frac{\mbox{Pixel area}}{\mbox{ivar}(\theta)} \hspace{1cm} \mbox{``Local'' noise power spectrum}
+    \end{align}$$
+
+    **Note:** currently uses pixell maps, but could easily be modified to allow healpix
+    maps -- let me know if this would be useful.
+
+    Function args:
+
+      - ``ivar`` (pixell map): inverse variance map, units (uK)^{-2}.
+        (For example, the return value from :func:`~kszx.act.read_ivar()`.)
+
+      - ``cl0`` (float): FKP weight function parameter $C_l^{(0)}$.
+
+          - Intuitively, ``cl0`` = "fiducial signal $C_l$ at wavenumber $l$ of interest".
+          - ``cl0=0`` corresponds to inverse noise weighting.
+          - Large ``cl0`` corresponds to uniform weighing (but ``cl0=np.inf`` won't work).
+          - I usually use ``cl0 = 0.01`` for plotting all-sky CMB temperature maps.
+          - For kSZ filtering, ``cl0=3e-5`` is a reasonable choice.
+
+      - ``normalize`` (boolean): if True, then we normalize the weight function 
+        so that $\max(W(\theta))=1$.
+
+      - ``return_wvar`` (boolean): if True, then we return $W(\theta) / ivar(\theta)$,
+        instead of returning $W(\theta)$.
+    
+    Returns a pixell map.
+
+    In implementation, in order to avoid divide-by-zero for ivar=0, we compute
+    $W(\theta)$ equivalently as:
+    
+    $$W(\theta) = \frac{\mbox{ivar}(\theta)}{(\mbox{pixel area}) + C_l^{(0)} \mbox{ivar}(\theta)}$$
+    """
+    
+    assert isinstance(ivar, pixell.enmap.ndmap)
+    assert ivar.ndim == 2
+    assert np.all(ivar >= 0.0)
+    assert cl0 >= 0.0
+
+    wvar = 1.0 / (ivar.pixsizemap() + cl0 * ivar)
+    w = wvar * ivar
+    
+    wmax = np.max(w)
+    assert wmax > 0.0
+
+    ret = wvar if return_wvar else w
+    
+    if normalize:
+        ret /= wmax
+
+    return ret
