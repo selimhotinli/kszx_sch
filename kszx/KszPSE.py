@@ -219,7 +219,7 @@ class KszPSE:
         self.box = box
         self.cosmo = cosmo
         self.randcat = randcat
-        self.kbin_edges = core._check_kbin_delim(box, kbin_edges, use_dc)
+        self.kbin_edges = core._check_kbin_edges(box, kbin_edges, use_dc)
         self.nkbins = len(kbin_edges)-1
         self.nksz = nksz
         self.surr_ngal_mean = surr_ngal_mean

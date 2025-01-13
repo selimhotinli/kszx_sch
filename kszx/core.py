@@ -877,22 +877,22 @@ def simulate_gaussian_field(box, pk, pk0=None):
 ####################################################################################################
 
 
-def _check_kbin_delim(box, kbin_delim, use_dc):
-    """Helper for estimate_power_spectrum() and kbin_average(). Returns new kbin_delim."""
+def _check_kbin_edges(box, kbin_edges, use_dc):
+    """Helper for estimate_power_spectrum() and kbin_average(). Returns new kbin_edges."""
 
-    kbin_delim = np.asarray(kbin_delim, dtype=float)
+    kbin_edges = np.asarray(kbin_edges, dtype=float)
     
     assert isinstance(box, Box)
-    assert kbin_delim.ndim == 1
-    assert len(kbin_delim) >= 2    
-    assert kbin_delim[0] >= 0.
-    assert utils.is_sorted(kbin_delim)
+    assert kbin_edges.ndim == 1
+    assert len(kbin_edges) >= 2    
+    assert kbin_edges[0] >= 0.
+    assert utils.is_sorted(kbin_edges)
         
-    if (not use_dc) and (kbin_delim[0] == 0):
-        kbin_delim = np.copy(kbin_delim)
-        kbin_delim[0] = min(np.min(box.kfund), kbin_delim[1]) / 2.
+    if (not use_dc) and (kbin_edges[0] == 0):
+        kbin_edges = np.copy(kbin_edges)
+        kbin_edges[0] = min(np.min(box.kfund), kbin_edges[1]) / 2.
 
-    return kbin_delim
+    return kbin_edges
     
     
 def _parse_map_or_maps(box, map_or_maps):
@@ -913,7 +913,7 @@ def _parse_map_or_maps(box, map_or_maps):
     return (map_list, True)
     
 
-def estimate_power_spectrum(box, map_or_maps, kbin_delim, *, use_dc=False, allow_empty_bins=False, return_counts=False):
+def estimate_power_spectrum(box, map_or_maps, kbin_edges, *, use_dc=False, allow_empty_bins=False, return_counts=False):
     r"""Computes power spectrum $P(k)$ for one or more maps (including cross-spectra). The window function is not deconvolved.
 
     Function args:
@@ -931,8 +931,8 @@ def estimate_power_spectrum(box, map_or_maps, kbin_delim, *, use_dc=False, allow
              (Each map in the list should have shape ``box.fourier_space_shape`` and dtype ``complex``,
              see note below.)
 
-        - ``kbin_delim`` (1-d array): 1-d array of length (nkbins+1) defining bin endpoints.
-          The i-th bin covers k-range ``kbin_delim[i] <= i < kbin_delim[i+1]``.
+        - ``kbin_edges`` (1-d array): 1-d array of length (nkbins+1) defining bin endpoints.
+          The i-th bin covers k-range ``kbin_edges[i] <= i < kbin_edges[i+1]``.
 
         - ``use_dc`` (boolean): if False (the default), then the k=0 mode will not be used,
           even if the lowest bin includes k=0.
@@ -986,7 +986,7 @@ def estimate_power_spectrum(box, map_or_maps, kbin_delim, *, use_dc=False, allow
          to mitigate high-$k$ biases. See :func:`~kszx.apply_kernel_compensation()` docstring for more info.
     """
 
-    kbin_delim = _check_kbin_delim(box, kbin_delim, use_dc)
+    kbin_edges = _check_kbin_edges(box, kbin_edges, use_dc)
     map_list, multi_map_flag = _parse_map_or_maps(box, map_or_maps)
     
     if len(map_list) == 0:
@@ -1001,7 +1001,7 @@ def estimate_power_spectrum(box, map_or_maps, kbin_delim, *, use_dc=False, allow
                            + " This is a temporary problem that I'll fix later. It needs minor changes"
                            + " to the C++ code.")
     
-    pk, bin_counts = cpp_kernels.estimate_power_spectrum(map_list, kbin_delim, box.npix, box.kfund, box.box_volume)
+    pk, bin_counts = cpp_kernels.estimate_power_spectrum(map_list, kbin_edges, box.npix, box.kfund, box.box_volume)
 
     if (not allow_empty_bins) and (np.min(bin_counts) == 0):
         raise RuntimeError('kszx.estimate_power_spectrum(): some k-bins were empty')
@@ -1012,7 +1012,7 @@ def estimate_power_spectrum(box, map_or_maps, kbin_delim, *, use_dc=False, allow
     return (pk, bin_counts) if return_counts else pk
 
 
-def kbin_average(box, f, kbin_delim, *, use_dc=False, allow_empty_bins=False, return_counts=False):
+def kbin_average(box, f, kbin_edges, *, use_dc=False, allow_empty_bins=False, return_counts=False):
     """Averages a real-valued array/function f(k) in k-bins.
 
     Function args:
@@ -1023,8 +1023,8 @@ def kbin_average(box, f, kbin_delim, *, use_dc=False, allow_empty_bins=False, re
         - ``f`` (function or array): the quantity f(k) to be averaged, represented either
           as a real-valued array of shape ``box.fourier_space_shape``, or a function k -> f(k).
 
-        - ``kbin_delim``: 1-d array of length (nkbins+1) defining bin endpoints.
-          The i-th bin covers k-range kbin_delim[i] <= k < kbin_delim[i+1].
+        - ``kbin_edges``: 1-d array of length (nkbins+1) defining bin endpoints.
+          The i-th bin covers k-range kbin_edges[i] <= k < kbin_edges[i+1].
 
         - ``use_dc`` (boolean): if False (the default), then the k=0 mode will not be used,
           even if the lowest bin includes k=0.
@@ -1059,17 +1059,17 @@ def kbin_average(box, f, kbin_delim, *, use_dc=False, allow_empty_bins=False, re
          box or pixel size). It is just a straightforward average of f() values over each k-bin.
     """
 
-    kbin_delim = _check_kbin_delim(box, kbin_delim, use_dc)
+    kbin_edges = _check_kbin_edges(box, kbin_edges, use_dc)
 
     if callable(f):
         fk = _eval_kfunc(box, f, dc = (None if use_dc else 0.))
         assert fk.shape == box.fourier_space_shape
         assert fk.dtype == float
     else:
-        fk = utils.asarray(f, 'kszx.kbin_delim', 'f', dtype=float)
+        fk = utils.asarray(f, 'kszx.kbin_edges', 'f', dtype=float)
         assert fk.shape == box.fourier_space_shape
 
-    fk_mean, bin_counts = cpp_kernels.kbin_average(fk, kbin_delim, box.npix, box.kfund)
+    fk_mean, bin_counts = cpp_kernels.kbin_average(fk, kbin_edges, box.npix, box.kfund)
 
     if (not allow_empty_bins) and (np.min(bin_counts) == 0):
         raise RuntimeError('kszx.kbin_average(): some k-bins were empty')
