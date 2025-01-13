@@ -992,14 +992,6 @@ def estimate_power_spectrum(box, map_or_maps, kbin_edges, *, use_dc=False, allow
     if len(map_list) == 0:
         raise RuntimeError("kszx.estimate_power_spectrum(): expected 'map_or_maps' arg to be either"
                            + "a Fourier-space map, or an iterable returning Fourier-space maps")
-
-    
-    if len(map_list) > 4:
-        # Note: If the C++ code is modified to allow larger numbers of maps,,
-        # make sure to update the unit test too (test_estimate_power_spectrum()).
-        raise RuntimeError("kszx.estimate_power_spectrum(): we currently only support nmaps <= 4."
-                           + " This is a temporary problem that I'll fix later. It needs minor changes"
-                           + " to the C++ code.")
     
     pk, bin_counts = cpp_kernels.estimate_power_spectrum(map_list, kbin_edges, box.npix, box.kfund, box.box_volume)
 

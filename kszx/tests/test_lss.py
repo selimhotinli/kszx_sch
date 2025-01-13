@@ -271,7 +271,7 @@ def _test_estimate_power_spectrum(box, kbin_delim, nmaps=None, use_dc=False):
         ref_pk = ref_pk[0,0,:]
     
     tol = 1.0e-10 * (bc + ref_bc)**0.5
-
+    
     assert np.all(bc == ref_bc)
     assert np.all(np.abs(pk - ref_pk) <= tol)
 
@@ -290,9 +290,8 @@ def test_estimate_power_spectrum():
         kbin_delim = helpers.random_kbin_delim(box)
         use_dc = (np.random.uniform() < 0.5)
 
-        # Note! Currently assuming nmaps=4 is max value supported by kernel.
-        # If the kernel changes in the future, make sure to update the line below.
-        nmaps = np.random.randint(1,5) if (np.random.uniform() < 0.95) else None
+        # Note: C++ kernel calls different functions for M=1, M=2, M=3, M=4, and M>4.
+        nmaps = np.random.randint(1,8) if (np.random.uniform() < 0.95) else None
         # print(f'{nmaps=}')
 
         _test_estimate_power_spectrum(box, kbin_delim, nmaps=nmaps, use_dc=use_dc)

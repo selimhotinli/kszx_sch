@@ -23,6 +23,8 @@ struct pse_args
     long          *out_bcounts;  // length nkbins
     long           nkbins;
     const double  *k2_delim;     // length (nkbins+1)
+    const cplx   **mtmp;         // length M
+    cplx          *ztmp;         // length M
 };
 
 
@@ -82,6 +84,8 @@ struct pse_args
 //
 //      NOTE: if the C++ code is modified to allow higher Mmax, make sure to
 //      update the unit test (test_estimate_power_spectrum()).
+//
+// FIXME use C++ templates to reduce cut-and-paste between different pse_1d<> funcs.
 
 
 template<long M>
@@ -107,15 +111,15 @@ template<> inline void pse_1d<1> (const pse_args &args, double curr_k2, long cur
 	    if (++curr_bin == nkbins)
 		return;
 	
-	long m = ((ik==0) || (2*ik==np)) ? 1 : 2;
+	long mc = ((ik==0) || (2*ik==np)) ? 1 : 2;  // mode count
 	cplx z = map[0];
 	map += s;
 	
 	if (curr_bin < 0)
 	    continue;
 
-	out_pk[curr_bin] += m * mult_zz(z, z);
-	out_bcounts[curr_bin] += m;
+	out_pk[curr_bin] += mc * mult_zz(z, z);
+	out_bcounts[curr_bin] += mc;
     }
 }
 
@@ -141,7 +145,7 @@ template<> inline void pse_1d<2> (const pse_args &args, double curr_k2, long cur
 	    if (++curr_bin == nkbins)
 		return;
 
-	long m = ((ik==0) || (2*ik==np)) ? 1 : 2;
+	long mc = ((ik==0) || (2*ik==np)) ? 1 : 2;  // mode count
 	cplx z0 = map0[0];
 	cplx z1 = map1[0];
 	map0 += s0;
@@ -150,10 +154,10 @@ template<> inline void pse_1d<2> (const pse_args &args, double curr_k2, long cur
 	if (curr_bin < 0)
 	    continue;
 
-	out_pk[3*curr_bin] += m * mult_zz(z0,z0);
-	out_pk[3*curr_bin+1] += m * mult_zz(z0,z1);
-	out_pk[3*curr_bin+2] += m * mult_zz(z1,z1);
-	out_bcounts[curr_bin] += m;
+	out_pk[3*curr_bin] += mc * mult_zz(z0,z0);
+	out_pk[3*curr_bin+1] += mc * mult_zz(z0,z1);
+	out_pk[3*curr_bin+2] += mc * mult_zz(z1,z1);
+	out_bcounts[curr_bin] += mc;
     }
 }
 
@@ -181,7 +185,7 @@ template<> inline void pse_1d<3> (const pse_args &args, double curr_k2, long cur
 	    if (++curr_bin == nkbins)
 		return;
 
-	long m = ((ik==0) || (2*ik==np)) ? 1 : 2;
+	long mc = ((ik==0) || (2*ik==np)) ? 1 : 2;
 	cplx z0 = map0[0];
 	cplx z1 = map1[0];
 	cplx z2 = map2[0];
@@ -192,13 +196,13 @@ template<> inline void pse_1d<3> (const pse_args &args, double curr_k2, long cur
 	if (curr_bin < 0)
 	    continue;
 
-	out_pk[6*curr_bin] += m * mult_zz(z0,z0);
-	out_pk[6*curr_bin+1] += m * mult_zz(z0,z1);
-	out_pk[6*curr_bin+2] += m * mult_zz(z1,z1);
-	out_pk[6*curr_bin+3] += m * mult_zz(z0,z2);
-	out_pk[6*curr_bin+4] += m * mult_zz(z1,z2);
-	out_pk[6*curr_bin+5] += m * mult_zz(z2,z2);
-	out_bcounts[curr_bin] += m;
+	out_pk[6*curr_bin] += mc * mult_zz(z0,z0);
+	out_pk[6*curr_bin+1] += mc * mult_zz(z0,z1);
+	out_pk[6*curr_bin+2] += mc * mult_zz(z1,z1);
+	out_pk[6*curr_bin+3] += mc * mult_zz(z0,z2);
+	out_pk[6*curr_bin+4] += mc * mult_zz(z1,z2);
+	out_pk[6*curr_bin+5] += mc * mult_zz(z2,z2);
+	out_bcounts[curr_bin] += mc;
     }
 }
 
@@ -228,7 +232,7 @@ template<> inline void pse_1d<4> (const pse_args &args, double curr_k2, long cur
 	    if (++curr_bin == nkbins)
 		return;
 
-	long m = ((ik==0) || (2*ik==np)) ? 1 : 2;
+	long mc = ((ik==0) || (2*ik==np)) ? 1 : 2;
 	cplx z0 = map0[0];
 	cplx z1 = map1[0];
 	cplx z2 = map2[0];
@@ -241,19 +245,64 @@ template<> inline void pse_1d<4> (const pse_args &args, double curr_k2, long cur
 	if (curr_bin < 0)
 	    continue;
 
-	out_pk[10*curr_bin] += m * mult_zz(z0,z0);
-	out_pk[10*curr_bin+1] += m * mult_zz(z0,z1);
-	out_pk[10*curr_bin+2] += m * mult_zz(z1,z1);
-	out_pk[10*curr_bin+3] += m * mult_zz(z0,z2);
-	out_pk[10*curr_bin+4] += m * mult_zz(z1,z2);
-	out_pk[10*curr_bin+5] += m * mult_zz(z2,z2);
-	out_pk[10*curr_bin+6] += m * mult_zz(z0,z3);
-	out_pk[10*curr_bin+7] += m * mult_zz(z1,z3);
-	out_pk[10*curr_bin+8] += m * mult_zz(z2,z3);
-	out_pk[10*curr_bin+9] += m * mult_zz(z3,z3);	
-	out_bcounts[curr_bin] += m;
+	out_pk[10*curr_bin] += mc * mult_zz(z0,z0);
+	out_pk[10*curr_bin+1] += mc * mult_zz(z0,z1);
+	out_pk[10*curr_bin+2] += mc * mult_zz(z1,z1);
+	out_pk[10*curr_bin+3] += mc * mult_zz(z0,z2);
+	out_pk[10*curr_bin+4] += mc * mult_zz(z1,z2);
+	out_pk[10*curr_bin+5] += mc * mult_zz(z2,z2);
+	out_pk[10*curr_bin+6] += mc * mult_zz(z0,z3);
+	out_pk[10*curr_bin+7] += mc * mult_zz(z1,z3);
+	out_pk[10*curr_bin+8] += mc * mult_zz(z2,z3);
+	out_pk[10*curr_bin+9] += mc * mult_zz(z3,z3);	
+	out_bcounts[curr_bin] += mc;
     }
 }
+
+
+// "Large" M (i.e. M known at runtime, not compile time).
+inline void pse_1d_largeM(int M, const pse_args &args, double curr_k2, long curr_bin, long np, double kf, const cplx **maps, const long *strides)
+{
+    double *out_pk = args.out_pk;
+    long *out_bcounts = args.out_bcounts;
+    const cplx **mtmp = args.mtmp;
+    cplx *ztmp = args.ztmp;
+    int M2 = (M*(M+1)) / 2;
+    
+    long nkbins = args.nkbins;
+    const double *k2_delim = args.k2_delim;
+
+    for (int m = 0; m < M; m++)
+	mtmp[m] = maps[m];
+    
+    for (long ik = 0; 2*ik <= np; ik++) {
+	// Update curr_bin.
+	double k2 = curr_k2 + square(ik*kf);
+	while (k2 >= k2_delim[curr_bin+1])
+	    if (++curr_bin == nkbins)
+		return;
+
+	long mc = ((ik==0) || (2*ik==np)) ? 1 : 2;
+
+	for (int m = 0; m < M; m++) {
+	    ztmp[m] = mtmp[m][0];
+	    mtmp[m] += strides[m];
+	}
+	
+	if (curr_bin < 0)
+	    continue;
+
+	double *p = out_pk + (M2 * curr_bin);
+	for (int m = 0; m < M; m++)
+	    for (int m2 = 0; m2 <= m; m2++)
+		*(p++) += mc * mult_zz(ztmp[m], ztmp[m2]);
+	
+	out_bcounts[curr_bin] += mc;
+    }    
+}
+
+
+// -------------------------------------------------------------------------------------------------
 
 
 template<long M>
@@ -293,6 +342,43 @@ static void pse(const pse_args &args, double curr_k2, long curr_bin, long ndim, 
 }
 
 
+// "Large" M (i.e. M known at runtime, not compile time).
+static void pse_largeM(int M, const pse_args &args, double curr_k2, long curr_bin, long ndim, const long *np, const double *kf, const cplx **maps, const long *strides)
+{
+    long np0 = np[0];
+    double kf0 = kf[0];
+
+    if (ndim == 1) {
+	pse_1d_largeM(M, args, curr_k2, curr_bin, np0, kf0, maps, strides);
+	return;
+    }
+    
+    long nkbins = args.nkbins;
+    const double *k2_delim = args.k2_delim;
+    
+    for (long m = 0; m < M; m++)
+	maps[M+m] = maps[m];
+    
+    for (long ik0 = 0; ik0 < np0; ik0++) {
+	long ik = std::min(ik0, np0-ik0);;
+	double k2 = curr_k2 + square(ik*kf0);
+
+	// Update curr_bin
+	while ((curr_bin >= 0) && (k2 < k2_delim[curr_bin]))
+	    curr_bin--;   // search down
+	while ((curr_bin < nkbins) && (k2 >= k2_delim[curr_bin+1]))
+	    curr_bin++;   // search up
+
+	// Call pse_largeM() recursively, with ndim -> (ndim-1).
+	if (curr_bin < nkbins)
+	    pse_largeM(M, args, k2, curr_bin, ndim-1, np+1, kf+1, maps+M, strides+M);
+
+	for (long m = 0; m < M; m++)
+	    maps[m+M] += strides[m];
+    }
+}
+
+
 // -------------------------------------------------------------------------------------------------
 
 
@@ -324,9 +410,6 @@ py::tuple estimate_power_spectrum(py::list map_list, py::array_t<const double> &
 	throw runtime_error("estimate_power_spectrum: expected len(k_delim) >= 2");
     if (nmaps < 1)
 	throw runtime_error("estimate_power_spectrum: expected map_list to be a nonempty list");
-    if (nmaps > 4)
-	throw runtime_error("estimate_power_spectrum: We currently only support nmaps <= 4!"
-			    " This is easy to change, but requires minor modifications to the C++ code");
 
     // Allocate some arrays needed by the PSE kernel.
     // Note: 'map_vec' is length (ndim * nmaps), but only the first nmaps entries will be
@@ -386,12 +469,16 @@ py::tuple estimate_power_spectrum(py::list map_list, py::array_t<const double> &
     long M2 = ((nmaps) * (nmaps+1)) / 2;
     vector<double> tmp_pk(nkbins * M2);
     py::array_t<long> ret_bcounts({nkbins});
+    vector<const cplx *> mtmp(nmaps, 0);
+    vector<cplx> ztmp(nmaps, {0,0});
 
     pse_args args;
     args.out_pk = &tmp_pk[0];
     args.out_bcounts = ret_bcounts.mutable_data();
     args.nkbins = nkbins;
     args.k2_delim = &k2_delim[0];
+    args.mtmp = &mtmp[0];
+    args.ztmp = &ztmp[0];
 
     memset(args.out_pk, 0, nkbins * M2 * sizeof(*args.out_pk));
     memset(args.out_bcounts, 0, nkbins * sizeof(*args.out_bcounts));
@@ -406,7 +493,7 @@ py::tuple estimate_power_spectrum(py::list map_list, py::array_t<const double> &
     else if (nmaps == 4)
 	pse<4> (args, 0.0, curr_bin, ndim, &np[0], kf.data(), &map_vec[0], &strides[0]);
     else
-	throw runtime_error("estimate_power_spectrum: unsupported 'nmaps'");
+	pse_largeM(nmaps, args, 0.0, curr_bin, ndim, &np[0], kf.data(), &map_vec[0], &strides[0]);
 
     // Copy tmp_pk -> ret_pk (array orderings are different), and apply normalization.
     
