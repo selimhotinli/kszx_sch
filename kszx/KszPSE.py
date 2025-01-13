@@ -10,19 +10,19 @@ from . import core
 
 
 class KszPSE:
-    def __init__(self, box, cosmo, randcat, kbin_edges, surr_ngal_mean, surr_ngal_rms, surr_bg, surr_bv=1.0, rweights=None, nksz=0, ksz_rweights=None, ksz_bv=None, ksz_tcmb_realization=None, photometric=None, deltac=1.68, kernel='cubic', use_dc=False):
-        r"""KszPSE: High-level pipeline class (built on top of :class:`~kszx.CatalogGridder`) for $P_{gg}$, $P_{gv}$, and $P_{vv}$.
+    def __init__(self, box, cosmo, randcat, kbin_edges, surr_ngal_mean, surr_ngal_rms, surr_bg, surr_bv=1.0, rweights=None, nksz=0, ksz_rweights=None, ksz_bv=None, ksz_tcmb_realization=None, ztrue_col='z', zobs_col='z', deltac=1.68, kernel='cubic', use_dc=False):
+        r"""KszPSE ("KSZ power spectrum estimator"): a high-level pipeline class for $P_{gg}$, $P_{gv}$, and $P_{vv}$.
 
         Features:
 
           - Processes multiple velocity reconstructions efficiently in parallel -- for example,
             separate velocity reconstructions for 90 and 150 GHz. This feature can also be used
             to efficiently explore multiple possibilities for the foreground mask, CMB filtering,
-            etc.
+            etc, by defining more velocity reconstructions.
 
-          - Runs "surrogate" sims (see overleaf) to characterize the survey window function 
+          - Runs "surrogate" sims (see overleaf) to characterize the survey window function,
             and assign error bars to power spectra.
-
+ 
           - Surrogate sims allow $f_{NL} \ne 0$, to characterize effect of $f_{NL}$ on windowed power 
             spectra, down to arbitrarily low $k$.
 
@@ -30,19 +30,25 @@ class KszPSE:
             using the observed CMB realization. This automatically incorporates noise inhomogeneity
             and "striping", and captures correlations e.g. between 90 and 150 GHz.
 
-          - The galaxy catalog can be spectroscopic or photometric. Surrogate sims will capture
-            the effect of photo-z errors.
+          - The galaxy catalog can be spectroscopic or photometric (via the ``ztrue_col`` and 
+            ``zobs_col`` constructor args). Surrogate sims will capture the effect of photo-z errors.
 
           - The windowed power spectra $P_{gg}$, $P_{gv}$, $P_{vv}$ use a normalization which
-            should be approximately correct. Thie normalization is an ansatz which is imperfect,
+            should be approximately correct. The normalization is an ansatz which is imperfect,
             especially on large scales, so surrogate sims should still be used to compare power
             spetra to models. (However, it's convenient to have a normalization which is not
             "off" by orders of magnitude!) Eventually, we'll implement precise window function
             deconvolution.
+        
+            Power spectra also include "compensation factors" (see :func:`~kszx.apply_kernel_compensation()`)
+            to mitigate interpolation/gridding biases at high $k$.
+
+          - We currently assume only one galaxy field (and only one random field) for simplicity,
+            whereas we allow multiple velocity reconstructions. This could be generalized if needed.
 
         Usage:
 
-          - Construct a KszPSE object.
+          - Construct a KszPSE object (see constructor syntax below).
 
           - To evaluate power spectra ($P_{gg}$, $P_{gv}$, or $P_{vv}$) on **data or a mock**, 
             call :meth:`KszPSE.eval_pk()` with a galaxy catalog (``gcat``), and filtered CMB 
@@ -51,24 +57,30 @@ class KszPSE:
           - To evaluate power spectra on a **surrogate simulation**, call 
             :meth:`KszPSE.simulate_surrogate()` to make the simulation, then call
             :meth:`KszPSE.eval_pk_surrogate()` to estimate power spectra.
+
+            Note: Surrogates are factored into two functions (``simulate_surrogate()``
+            and ``eval_pk_surrogate()`` so that the caller can put filtering logic in
+            between, by operating directly on the ``self.Sg_coeffs`` and ``self.Sv_coeffs``
+            arrays (see :meth:`KszPSE.simulate_surrogate()` docstring). An example of 
+            filtering logic is subtracting the mean $\hat v_r$ in redshift bins, in 
+            order to mitigate foregrounds.
         
         For examples of KszPSE in action, see:
 
           - **Add links to jupyter notebook(s) here**
 
-        For a formal specification of what KszPSE computes, see ":ref:`ksz_pse_details`" 
+        The KszPSE computes power spectra involving a galaxy density field $\rho_g$,
+        one or more kSZ velocity reconstructions $\hat v_r$, and surrogate fields $S_g, S_v$.
+        Definitions of these fields are given in the overleaf, and can be summarized as follows:
+
+        $$\begin{align}
+        \rho_g(x) &= \bigg( \sum_{i\in \rm gal} W_i^L \, \delta^3(x-x_i) \bigg) - \frac{N_g}{N_r} \bigg( \sum_{j\in \rm rand} W_j^L \, \delta^3(x-x_j) \bigg) \\
+        \hat v_r(x) &= \sum_{i\in \rm gal} W_i^S \, \tilde T(\theta_i) \, \delta^3(x-x_i) \\
+        S_g(x) &= \sum_{j\in \rm rand} \frac{N_g}{N_r} W_j^L \big( b_j^G \delta_m(x_j) + \eta_j \big) \delta^3(x-x_j) \\
+        S_v(x) &= \sum_{j\in\rm rand} \bigg( \frac{N_g}{N_r} W_j^S b_j^v v_r(x_j) + M_j W_j^S \tilde T(\theta_j) \bigg)  \delta^3(x-x_j)
+        \end{align}$$
+        For more details, and a formal specification of what KszPSE computes, see ":ref:`ksz_pse_details`" 
         in the sphinx docs.
-
-        **Explain per-object bias $b_i^v$, with equations.**
-
-        **Explain bootstrap method for the noise (``ksz_tcmb_realization``).**
-
-        **We assume only one galaxy field (and only one random field) for simplicity.
-        (This could easily be generalized if needed.)**
-
-        **Discussion of surrogate $N_{gal}$ Gaussian distribution.**
-
-        **Make the point somewhere that surrogates are factored into two functions on purpose.**
 
         Constructor args:
 
@@ -76,27 +88,26 @@ class KszPSE:
 
           - ``cosmo`` (:class:`~kszx.Cosmology`).
 
-          - ``randcat`` (:class:`~kszx.Catalog`): random catalog, defines survey footprint (including
-            redshift distribution). The randcat must contain columns ``ra_deg`` and ``dec_deg``, and
-            either:
+          - ``randcat`` (:class:`~kszx.Catalog`): random catalog, defines survey footprint and redshift
+            distribution. The randcat must contain columns ``ra_deg`` and ``dec_deg``.
 
-              1. A redshift column ``z``, but not ``ztrue`` or ``zobs`` (spectroscopic catalog).
-
-              2. Redshift columns ``ztrue`` and ``zobs``, but not ``z`` (photometric catalog).
-                 In this case, the random catalog must accurately simulate the joint 
-                 $(z_{true}, z_{obs})$ distribution of the galaxies.
-        
-            (Reminder: you can use ``Catalog.add_column()`` and ``Catalog.remove_column()``
-            to manipulate Catalog columns.)
+            **Note:** By default, the galaxy survey is assumed spectroscopic, with a single redshift
+            column ``z``. If the catalog is photometric (or if the redshift column is not named ``z``),
+            then you'll want to specify the ``ztrue_col`` and ``zobs_col`` constructor args (see below).
 
           - ``kbin_edges`` (array): 1-d array of length (nkbins+1) defining $k$-bin endpoints for
-            power spectrum estimation. The i-th bin covers k-range ``kbin_delim[i] <= i < kbin_delim[i+1]``.
+            power spectrum estimation. The i-th bin covers k-range ``kbin_edges[i] <= i < kbin_edges[i+1]``.
 
-          - ``surr_ngal_mean`` (float): Mean of Gaussian $N_{gal}$ distribution for 
-            surrogate sims (see above).
+          - ``surr_ngal_mean`` and ``surr_ngal_rms`` (float): In the surrogate sims, I decided to allow $N_{\rm gal}$
+            to vary from one surrogate sim to the next. (The idea is to make the surrogate sims more similar to
+            mocks, where $N_{\rm gal}$ varies between mocks. Indeed, I find that allowing $N_{\rm gal}$ to vary
+            in the surrogate sims does improve overall agreement with mocks.)
 
-          - ``surr_ngal_rms`` (float): RMS width of Gaussian $N_{gal}$ distribution for 
-            surrogate sims (see above).
+            In each surrogate sim, $N_{\rm gal}$ is a Gaussian random variable with mean/rms given by
+            the ``surr_ngal_mean`` and ``surr_ngal_rms`` constructor args. If mocks are available, then 
+            one way to get sensible values for these arguments is to use the mean/variance in the mocks.
+            As a simple placeholder, you could also take ``surr_ngal_rms=0`` (to disable varying $N_{\rm gal}$
+            entirely) or ``surr_ngal_rms = sqrt(surr_ngal_mean)`` (Poisson statistics).
 
           - ``surr_bg``: Galaxy bias $b_g$ used in surrogate sims. Can be specified as either:
 
@@ -104,12 +115,13 @@ class KszPSE:
                2. a callable function $z \rightarrow f(z)$, if $b_g$ only depends on $z$.
                3. a scalar, if $b_g$ is the same for all galaxies.
 
-          - ``surr_bv`` (float, optional): KSZ velocity reconstruction bias in surrogate sims.
-            This is multiplied by the bias specified in ``ksz_bv``, which represents bias computed
-            from a fiducial $P_{ge}(k)$. The ``surr_bv`` argument should be specified if you want
-            the surrogate sims to have a $b_v$ which differs from its fiducial value.
+          - ``surr_bv`` (optional): KSZ velocity reconstruction bias in surrogate sims. This parameter
+            controls the actual level of velocity power in the surrogate sims, and is 1 by default.
+            For more discussion, see the similarly-named ``ksz_bv`` constructor arg below.
+            Can be either a scalar, or a 1-d numpy array of length ``self.nksz``.
 
-          - ``rweights`` (optional): Galaxy weighting $W_i^L$ used for the large-scale galaxy field $\delta_g(x)$.
+          - ``rweights`` (optional): Galaxy weighting $W_i^L$ used for the large-scale galaxy field $\delta_g(x)$
+            (see equations earlier in this docstring, or ":ref:`ksz_pse_details`" in the sphinx docs).
             Can be specified as either:
 
                1. an array of length ``randcat.size``, to represent an arbitrary per-object $W_i^L$.
@@ -117,13 +129,14 @@ class KszPSE:
                3. a scalar, if $W_i^L$ is the same for all galaxies.
                4. None (equivalent to ``rweights=1.0``).
 
-            (Note that there is also a galaxy weighting $W_i^S$ used in the kSZ velocity reconstruction $\hat v_r(x)$.
-            This weighting is independent, and is specified as the ``ksz_rweights`` constructor arg, see beow.)
+            **Note:** there is also a galaxy weighting $W_i^S$ used in the kSZ velocity reconstruction $\hat v_r(x)$.
+            The weighting $W_i^S$ is specified as the ``ksz_rweights`` constructor arg, see below.
+            The weightings $W_i^L$ and $W_i^S$ are independent.
 
           - ``nksz`` (integer): Number of kSZ velocity reconstruction fields $\hat v_r(x)$.
             For example, to separate velocity reconstructions from 90 and 150 GHz, use ``nksz=2``.
-            See above for more discussion. If ``nksz`` is zero or unspecified, then the KszPSE will
-            estimate the power spectrum of a galaxy field $\delta_g$, but no $\hat v_r$ fields.
+            If ``nksz`` is zero or unspecified, then the KszPSE will estimate the power spectrum of 
+            a galaxy field $\delta_g$, but no $\hat v_r$ fields.
 
           - ``ksz_rweights`` (optional): Galaxy weighting $W_i^S$ used for the kSZ velocity reconstruction $\hat v_r(x)$.
             Can be specified as either:
@@ -135,29 +148,48 @@ class KszPSE:
               5. a length-``nksz`` list (or iterable) of any of 1-4, if $W_i^S$ is not the same for all
                  velocity reconstructions being processed.
 
-          - ``ksz_bv``: Fiducial KSZ velocity bias $b_v$. See above for more discsusion, and some key equations
-            showing how to compute $b_v$. Can be specified as either:
+          - ``ksz_bv``: Per-object KSZ velocity bias $b_v^j$, defined by the equation 
+            $\tilde T(\theta_j) = b_v^j v_r(x_j) + (\mbox{noise})$. This is only used to assign a normalization
+            to power spectra $P_{gv}$ and $P_{vv}$. Can be specified as either:
 
               1. an array of length ``randcat.size``, to represent an arbitrary per-object $b_v$.
               2. a callable function $z \rightarrow f(z)$, if $b_v$ only depends on $z$.
               3. a scalar, if $b_v$ is the same for all galaxies.
-              4. a length-``nksz`` list (or iterable) of any of 1-3, if $b_v$ is not the samee for all
-                 velocity reconstructions bing processed. (This will usually be the case.)
+              4. a length-``nksz`` list (or iterable) of any of 1-3, if $b_v$ is not the same for all
+                 velocity reconstructions being processed. (This will usually be the case, see next paragraph.)
 
-            The fiducial bias $b_v$ will depend on a choice of fiducual $P_{ge}(k)$, as well as the filter
-            applied to $T_{CMB}$. (Note that each velocity reconstruction can use a different CMB filter, so
-            $b_v$ can depend on an index ``0 <= i < nksz``, in addition to an index ``0 <= j < randcat.size``)
-        
+            The fiducial bias $b_v$ will depend on a choice of fiducial $P_{ge}(k)$, as well as the filter
+            applied to $T_{CMB}$. (Since different velocity reconstructions use different CMB filters, $b_v$
+            will usually depend on the velocity reconstruction.)
+
+            One reasonable way of initializing $b_v$ is to use the following approximate expression
+            from the overleaf:
+            $$\begin{align}
+            b_j^v &\approx B_v(z_j) \, W_{\rm CMB}(\theta_j) \\
+            B_v(\chi) &\equiv \frac{K(\chi)}{\chi^2} \int \frac{d^2L}{(2\pi)^2} \, b_L F_L \, P_{ge}^{\rm true}(k,\chi)_{k=L/\chi}
+            \end{align}$$
+
+            Note the distinction between the ``surr_bv`` (see above) and ``ksz_bv`` constructor args. The ``ksz_bv`` 
+            arg is a per-object bias which relates $\tilde T(\theta_i)$ to the true velocity $v_r(x_i)$. This is used
+            to convert estimated power spectra to normalized estimates of $P_{gv}$ or $P_{vv}$, for all types of
+            catalogs (data/mocks/surrogates). The ``surr_bv`` arugment is only used when simulating surrogates,
+            is the same for all objects, and controls the actual level of velocity power in the surrogate fields.
+
           - ``ksz_tcmb_realization``: 2-d array of shape ``(nksz, randcat.size)``. This is the filtered CMB $\tilde T$, 
-            evaluated at locations of the randoms. (Note that each velocity reconstruction can use a different CMB filter,
-            so $\tilde T$ can depend on an index ``0 <= i < nksz``, in addition to an index ``0 <= j < randcat.size``)
+            evaluated at locations of the randoms. This is used when making surrogate sims, to generate bootstrap realizations
+            of the reconstruction noise.
 
-          - ``photometric`` (boolean, optional): Indicates whether galaxy catalog is photometric
-            or spectroscopic. The default (``photometric=None``) is to autodetect whether
-            the randcat is photometric, based on which redshift columns are defined (see
-            ``randcat`` above). However, if the randcat is photometric and you specify
-            ``photometric=False``, then the SurrogateFactory will ignore the 'zobs'
-            column, and define a spectroscopic catalog using the 'ztrue' column.
+            Note that each velocity reconstruction can use a different CMB filter. This is why $\tilde T$ is a 2-d
+            array, indexed by ``0 <= i < nksz``, in addition to an index ``0 <= j < randcat.size``.
+
+          - ``ztrue_col`` and ``zobs_col`` (strings): In general, the KszPSE allows the galaxy catalog to be
+            photometric, with distinct redshifts $z_{\rm true}, z_{\rm obs}$. A spectroscopic catalog is the
+            special case $z_{\rm true} = z_{\rm obs}$.
+
+            The ``ztrue_col`` and ``zobs_col`` args are the names of the $z_{\rm true}, z_{\rm obs}$ columns
+            in ``randcat``. The defaults (``ztrue_col = zobs_col = 'z'``) correspond to a spectroscopic catalog,
+            with a column ``'z'`` containing redshifts. If the catalog is photometric (or if the redshift column
+            is not ``z``), then you'll want to use something different.
 
           - ``deltac`` (float, default=1.68): This parameter is only used in surrogate sims with $f_{NL} \ne 0$, 
             to compute non-Gaussian bias from Gaussian bias, using $b_{ng} = delta_c (b_g - 1)$.
@@ -178,7 +210,7 @@ class KszPSE:
         assert randcat.size >= 1000
         assert 'ra_deg' in randcat.col_names
         assert 'dec_deg' in randcat.col_names
-        
+
         assert surr_ngal_mean > 0
         assert surr_ngal_rms < 5*surr_ngal_mean
         assert surr_ngal_mean + 3.01*surr_ngal_rms <= randcat.size
@@ -193,17 +225,14 @@ class KszPSE:
         self.surr_ngal_mean = surr_ngal_mean
         self.surr_ngal_rms = surr_ngal_rms
         self.nrand = randcat.size
+        self.ztrue_col = ztrue_col
+        self.zobs_col = zobs_col
         self.deltac = deltac
         self.kernel = kernel
         self.use_dc = use_dc
-        
-        ztrue, zobs, photometric = self._init_redshifts(randcat, photometric)
-        assert np.min(ztrue) >= 0
-        assert np.min(zobs) >= 0
-        
-        self.photometric = photometric
-        self.ztrue = ztrue
-        self.zobs = zobs
+
+        ztrue = self._get_zcol(randcat, 'ztrue_col', ztrue_col)
+        zobs = self._get_zcol(randcat, 'zobs_col', zobs_col)
 
         # Small optimization here: if (ztrue is zobs), then don't call ra_dec_to_xyz() twice.
         self.rcat_xyz_true = utils.ra_dec_to_xyz(randcat.ra_deg, randcat.dec_deg, r=cosmo.chi(z=ztrue))
@@ -219,7 +248,7 @@ class KszPSE:
         # Length-nksz lists of (1-d array or None)
         self.ksz_bv = self._parse_ksz_arg(ksz_bv, fname, 'ksz_bv', nrand, z=ztrue, allow_none=False)
         self.ksz_rweights = self._parse_ksz_arg(ksz_rweights, fname, 'ksz_rweights', nrand, z=ztrue, allow_none=True)
-        self.ksz_tcmb_realization = self._parse_ksz_arg(ksz_tcmb_realization, fname, 'ksz_tcmb_realization', nrand, z=None, allow_none=False)
+        self.ksz_tcmb_realization = self._parse_tcmb_arg(ksz_tcmb_realization, fname, 'ksz_tcmb_realization', nrand)
         assert len(self.ksz_bv) ==  len(self.ksz_rweights) == len(self.ksz_tcmb_realization) == self.nksz
 
         # 1-d array of length nksz.
@@ -254,13 +283,13 @@ class KszPSE:
             randcat = randcat,
             rweights = pse_rweights,
             nfootprints = nksz + 1,
-            zcol_name = ('zobs' if photometric else 'z'),
+            zcol_name = zobs_col,   # not ztrue_col
             save_rmaps = [True] + [False]*nksz,
             kernel = self.kernel
         )
 
     
-    def eval_pk(self, gcat, gweights=None, ksz_gweights=None, ksz_bv=None, ksz_tcmb=None, zcol_name='z'):
+    def eval_pk(self, gcat, gweights=None, ksz_gweights=None, ksz_bv=None, ksz_tcmb=None, zobs_col=None):
         r"""Computes $P_{gg}$, $P_{gv}$, and $P_{vv}$ from data or a mock (not a surrogate sim).
 
         Function args:
@@ -276,8 +305,8 @@ class KszPSE:
               4. None (equivalent to ``gweights=1.0``).
 
             The ``gweights`` passed to ``eval_pk()`` should reflect as closely as possible the ``rweights``
-            passed to the :class:`~kszx.KszPSE` constructor. For example, if one is FKP-weighted, then the
-            other should also be FKP-weighted. (Warning: even a small mismatch between the weighting of
+            passed to the :class:`~kszx.KszPSE` constructor. For example, if randoms are FKP-weighted, then
+            galaxies should also be FKP-weighted. (Warning: even a small mismatch between the weighting of
             galaxies/randoms can produce a large contribution to $P_{gg}$!)
 
           - ``ksz_gweights`` (optional): Galaxy weighting $W_i^S$ used for the kSZ velocity reconstruction $\hat v_r(x)$.
@@ -293,36 +322,28 @@ class KszPSE:
             The ``ksz_gweights`` passed to ``eval_pk()`` should reflect as closely as possible the 
             ``ksz_rweights`` passed to the :class:`~kszx.KszPSE` constructor.
     
-          - ``ksz_bv``: Fiducial KSZ velocity bias $b_v$. See above for more discsusion, and some key equations
-            showing how to compute $b_v$. Can be specified as either:
+          - ``ksz_bv``: Per-object KSZ velocity bias $b_v^i$. For more discsusion, and some key equations
+            showing how to approximate $b_v$, see the ``ksz_bv`` argument in the :class:`~kszx.KszPSE`
+            constructor docstring. Can be specified as either:
 
               1. an array of length ``gcat.size``, to represent an arbitrary per-object $b_v$.
               2. a callable function $z \rightarrow f(z)$, if $b_v$ only depends on $z$.
               3. a scalar, if $b_v$ is the same for all galaxies.
-              4. a length-``nksz`` list (or iterable) of any of 1-3, if $b_v$ is not the samee for all
+              4. a length-``nksz`` list (or iterable) of any of 1-3, if $b_v$ is not the same for all
                  velocity reconstructions bing processed. (This will usually be the case.)
-
-            The fiducial bias $b_v$ will depend on a choice of fiducual $P_{ge}(k)$, as well as the filter
-            applied to $T_{CMB}$. (Note that each velocity reconstruction can use a different CMB filter, so
-            $b_v$ can depend on an index ``0 <= i < nksz``, in addition to an index ``0 <= j < randcat.size``)
 
             The ``ksz_bv`` argument passed to ``eval_pk()`` should reflect as closely as possible the 
             ``ksz_bv`` argument passed to the :class:`~kszx.KszPSE` constructor. (Same filtering, etc.)
 
-          - ``ksz_tcmb``: 2-d array of shape ``(nksz, gcat.size)``.  This is the filtered CMB $\tilde T$, 
-            evaluated at the location of the galaxies. (Note that each velocity reconstruction can use a different CMB filter,
-            so $\tilde T$ can depend on an index ``0 <= i < nksz``, in addition to an index ``0 <= j < gcat.size``)
+          - ``ksz_tcmb``: 2-d array of shape ``(nksz, gcat.size)``.
+            Note that each velocity reconstruction can use a different CMB filter. This is why $\tilde T$ is a 2-d
+            array, indexed by ``0 <= i < nksz``, in addition to an index ``0 <= j < gcat.size``.
 
             The ``ksz_tcmb`` argument passed to ``eval_pk()`` should reflect as closely as possible the 
             ``ksz_tcmb_realization`` argument passed to the :class:`~kszx.KszPSE` constructor. (Same filtering, etc.)
         
-          - ``zcol_name`` (string): The galaxy catalog ``gcat`` must contain columns ``'ra_deg'``,
-            ``'dec_deg'``, and a redshift column which is ``'z'`` by default, but this can
-            be overridden by specifying the ``zcol_name`` argument.
-
-            For example, in a photometric catalog, you might have two columns ``'ztrue'``
-            and ``'zobs'``. In this case, you probably want ``zcol_name = 'zobs'``, in
-            order to grid the catalog at observed redshifts, not true (unobserved) redshifts.
+          - ``zobs_col`` (string): name of column containing observed redshifts in ``gcat``.
+            By default, we use the value ``zcol_obs`` that was specified when the constructor was called.
 
         Return value:
 
@@ -332,31 +353,33 @@ class KszPSE:
         """
 
         assert isinstance(gcat, Catalog)
-        assert zcol_name in gcat.col_names
 
-        z = getattr(gcat, zcol_name)
-        gcat_xyz = gcat.get_xyz(self.cosmo, zcol_name)
+        if zobs_col is None:
+            zobs_col = self.zobs_col
+            
+        z = self._get_zcol(gcat, 'zobs_col', zobs_col)
+        gcat_xyz = gcat.get_xyz(self.cosmo, zcol_name=zobs_col)
 
         # Parse the 'gweights', 'ksz_gweights', 'ksz_bv', and 'ksz_tcmb' args.
         # (Same parsing logic as 'rweights', 'ksz_rweights', 'ksz_bv', and 'ksz_tcmb_realization' in __init__().)
 
         fname = 'KszPSE.eval_pk()'
+        gweights = self._parse_gal_arg(gweights, fname, 'gweights', gcat.size, z, non_negative=True, allow_none=True)
         ksz_bv = self._parse_ksz_arg(ksz_bv, fname, 'ksz_bv', gcat.size, z, allow_none=False)
         ksz_gweights = self._parse_ksz_arg(ksz_gweights, fname, 'ksz_gweights', gcat.size, z, allow_none=True)
-        ksz_tcmb = self._parse_ksz_arg(ksz_tcmb, fname, 'ksz_tcmb', gcat.size, z=None, allow_none=False)
-        gweights = self._parse_gal_arg(gweights, fname, 'gweights', gcat.size, z, non_negative=True, allow_none=True)
+        ksz_tcmb = self._parse_tcmb_arg(ksz_tcmb, fname, 'ksz_tcmb', gcat.size)
         assert len(ksz_bv) == len(ksz_gweights) == len(ksz_tcmb) == self.nksz
 
         # Initialize fmaps.
 
         gweights = gweights if (gweights is not None) else 1.0
-        fmaps = [ self.catalog_gridder.grid_density_field(gcat, gweights, 0, zcol_name=zcol_name) ]
+        fmaps = [ self.catalog_gridder.grid_density_field(gcat, gweights, 0, zcol_name=zobs_col) ]
 
         for i in range(self.nksz):
             w, bv, t = ksz_gweights[i], ksz_bv[i], ksz_tcmb[i]
             coeffs = (w*t) if (w is not None) else t
             wsum = np.dot(w,bv) if (w is not None) else np.sum(bv)
-            fmaps += [ self.catalog_gridder.grid_sampled_field(gcat, coeffs, wsum, i+1, spin=1, zcol_name=zcol_name) ]
+            fmaps += [ self.catalog_gridder.grid_sampled_field(gcat, coeffs, wsum, i+1, spin=1, zcol_name=zobs_col) ]
 
         # FIXME need some sort of CatalogPSE helper function here.
         pk = core.estimate_power_spectrum(self.box, fmaps, self.kbin_edges)
@@ -374,19 +397,23 @@ class KszPSE:
 
         Initializes the following class members:
 
-          - ``self.surr_ngal`` (integer):
+          - ``self.surr_ngal`` (integer): value of $N_{\rm gal}$ in the surrogate sim. (Recall that
+            the value of $N_{\rm gal}$ in each surrogate sim is a Gaussian random variable. See
+            ``surr_ngal_mean`` and ``surr_ngal_rms`` in the :class:`~kszx.KszPSE` constructor
+            docstring for more info.)
 
           - ``self.Sg_coeffs`` (1-d array of length ``self.nrand``): Coefficients $S_g^j$ above.
 
           - ``self.Sv_coeffs`` (shape-``(self.nksz, self.nrand)`` array): Coefficients $S_v^j$ above.
-            (Note that each velocity reconstruction uses different bias and noise, so $S_v^j$
-            depends on an index``0 <= i < nksz``, in addition to an index ``0 <= j < randcat.size``)
 
           - ``self.dSg_dfNL`` (1-d array of length ``self.nrand``): Derivative $dS_g^j/df_{NL}$,
             only computed if ``enable_fnl=True``.
 
-        For a formal specification of what KszPSE computes, see ":ref:`ksz_pse_details`" 
-        in the sphinx docs.
+        Note: Surrogates are factored into two functions (``simulate_surrogate()``
+        and ``eval_pk_surrogate()`` so that the caller can put filtering logic in
+        between, by operating directly on the ``self.Sg_coeffs`` and ``self.Sv_coeffs``
+        arrays. An example of filtering logic is subtracting the mean $\hat v_r$ in
+        redshift bins, in order to mitigate foregrounds.
         """
 
         ngal = self.surr_ngal_mean + (self.surr_ngal_rms * np.clip(np.random.normal(), -3.0, 3.0))
@@ -397,7 +424,7 @@ class KszPSE:
         assert 0 < ngal <= nrand
                 
         delta0 = core.simulate_gaussian_field(self.box, self.cosmo.Plin_z0)
-        core.apply_kernel_compensation(self.box, delta0, self.kernel, -0.5)  # multiply by C(k)^(-1/2)
+        core.apply_kernel_compensation(self.box, delta0, self.kernel)
 
         # delta_g(k,z) = (bg + 2 fNL deltac (bg-1) / alpha(k,z)) * delta_m(k,z)
         #              = (bg D(z) + 2 fNL deltac (bg-1) / alpha0(k)) * delta0(k)
@@ -451,6 +478,10 @@ class KszPSE:
     def eval_pk_surrogate(self, fnl=0.0):
         r"""Computes $P_{gg}$, $P_{gv}$, $P_{vv}$ from a surrogate sim (from the most recent call to :meth:`simulate_surrogate()`).
 
+        Note that :meth:`simulate_surrogate()` saves the surrogate sim by initializing class members
+        (``self.Sg_coeffs``, ``self.Sv_coeffs``, etc.). So it is not necessary to pass this data to
+        ``eval_pk_surrogates()`` as function arguments.
+
         If the ``fnl`` argument is a scalar, then the return value from ``eval_pk_surrogate()`` is an array ``pk`` with 
         shape ``(nksz+1, nksz+1, nkbins)``. The first two indices are field indices, with ordering (galaxy field, vrec 
         fields). Thus the ``pk`` array contains all auto and cross power spectra $P_{gg}$, $P_{gv_i}$, $P_{v_iv_j}$.
@@ -475,18 +506,17 @@ class KszPSE:
         
         Nr = self.nrand
         Ng = self.surr_ngal
-        zcol_name = ('zobs' if self.photometric else 'z')
         
         Sg_wsum = ((Ng/Nr) * np.sum(self.rweights)) if (self.rweights is not None) else Ng
-        fmaps = [ self.catalog_gridder.grid_sampled_field(self.randcat, self.Sg_coeffs, Sg_wsum, 0, zcol_name=zcol_name) ]
+        fmaps = [ self.catalog_gridder.grid_sampled_field(self.randcat, self.Sg_coeffs, Sg_wsum, 0, zcol_name=self.zobs_col) ]
             
         for i in range(self.nksz):
             w, bv = self.ksz_rweights[i], self.ksz_bv[i]
             Sv_wsum = (Ng/Nr) * (np.dot(w,bv) if (w is not None) else np.sum(bv))
-            fmaps += [ self.catalog_gridder.grid_sampled_field(self.randcat, self.Sv_coeffs[i,:], Sv_wsum, i+1, spin=1, zcol_name=zcol_name) ]
+            fmaps += [ self.catalog_gridder.grid_sampled_field(self.randcat, self.Sv_coeffs[i,:], Sv_wsum, i+1, spin=1, zcol_name=self.zobs_col) ]
         
         if fnl_is_nonzero:
-            fmaps += [ self.catalog_gridder.grid_sampled_field(self.randcat, self.dSg_dfnl, Sg_wsum, 0, zcol_name=zcol_name) ]
+            fmaps += [ self.catalog_gridder.grid_sampled_field(self.randcat, self.dSg_dfnl, Sg_wsum, 0, zcol_name=self.zobs_col) ]
 
         nfnl = fnl.size
         fnl_1d = np.reshape(fnl, (nfnl,))
@@ -517,37 +547,23 @@ class KszPSE:
         
     ####################################################################################################
 
-    
-    def _init_redshifts(self, randcat, photometric):
-        """Helper method called by constructor. Returns (rcat_ztrue, rcat_zobs, photometric). 
 
-        The 'photometric' arg can be None (for "autodetect from randcat")."""
+    def _get_zcol(self, catalog, zcol_argname, zcol_name):
+        """Helper method called by constructor, to check that column exists in catalog."""
 
-        zcols = set(['z','ztrue','zobs'])
-        zcols = zcols.intersection(randcat.col_names)
+        if not isinstance(zcol_name, str):
+            raise RuntimeError(f"KszPSE: expected argument {zcol_argname}={zcol_name} to be a string")
 
-        # Case 1: spectroscopic catalog.
-        if zcols == set(['z']):
-            if photometric is None:
-                print("KszPSE: setting photometric=False (randcat contains 'z' but not ztrue/zobs)")
-            elif photometric:
-                raise RuntimeError("photometric=True was specified, but randcat only contains 'z' column")
-            return randcat.z, randcat.z, False
+        if zcol_name not in catalog.col_names:
+            raise RuntimeError(f"KszPSE: catalog does not contain column '{zcol_name}' (specified as argument '{zcol_argname}')")
 
-        # Case 2: photometric catalog.
-        if zcols == set(['ztrue','zobs']):
-            if photometric is None:
-                print("KszPSE: setting photometric=True (catalog contains ztrue/zobs but not 'z')")
-            elif not photometric:
-                print("KszPSE: randcat is photometric, but photometric=False was specified,"
-                      " setting zobs=ztrue to mimic spectroscopic catalog")
-                return randcat.ztrue, randcat.ztrue, False
-            else:
-                return randcat.ztrue, randcat.zobs, True
+        z = getattr(catalog, zcol_name)
+        zmin = np.min(z)
+        
+        if zmin <= 0:
+            raise RuntimeError(f"KszPSE: expected all redshifts to be positive (got min(catalog.{zcol_name}) = {zmin})")
 
-        raise RuntimeError("Expected one of two cases: (1) spectroscopic randcat containing 'z' but not ('ztrue','zobs'),"
-                           + " or (2) photometric randcat containing ('ztrue','zobs') but not 'z'. Actual randcat contains"
-                           + f" the following columns: {sorted(randcat.col_names)}")
+        return z
 
     
     def _parse_gal_arg(self, f, funcname, argname, ngal, z, allow_none=False, non_negative=False):
@@ -633,13 +649,29 @@ class KszPSE:
                                + " expected iterable, function, scalar, or None)")
 
         if flen != self.nksz:
-            raise RuntimeError(f"{funcname}: couldn't parse constructor arg '{argname}' (got length-{flen} iterable non-array,"
+            raise RuntimeError(f"{funcname}: couldn't parse argument '{argname}' (got length-{flen} iterable non-array,"
                                + f" expected array, function, scalar, None, or iterable with length nksz={self.nksz})")
 
         # This case can be handled by multiple calls to self._parse_gal_arg().
         return [ self._parse_gal_arg(x, funcname, f'{argname}[{i}]', ngal, z, allow_none=allow_none, non_negative=non_negative) for i,x in enumerate(f) ]
 
+    
+    def _parse_tcmb_arg(self, x, funcname, argname, ngal):
+        """Used to parse 'ksz_tcmb_realization' constructor arg, or 'ksz_tcmb' arg to eval_pk()."""
+        
+        if self.nksz == 0:
+            if (x is None) or self._is_empty_array(f):
+                return np.zeros((self.nksz,ngal), dtype=float)
+            raise RuntimeError(f"{funcname}: argument '{argname}' was specified, but 'nksz' constructor arg was unspecified (or zero)")
 
+        x = utils.asarray(x, funcname, argname, dtype=float)
+
+        if x.shape == (self.nksz, ngal):
+            return x
+        
+        raise RuntimeError(f"{funcname}: expected argument '{argname}' to have shape (nksz,ngal)={(self.nksz,ngal)}, got shape {x.shape}")
+
+        
     def _parse_surr_bv(self, surr_bv):
         if surr_bv is None:
             surr_bv = 1.0
@@ -665,6 +697,16 @@ class KszPSE:
             pass
         return False
 
+    
+    @staticmethod
+    def _is_empty_array(x):
+        try:
+            if np.asarray(x).size == 0:
+                return True
+        except:
+            pass
+        return False
+    
     
     @staticmethod
     def _is_scalar(f):
