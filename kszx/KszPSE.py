@@ -65,9 +65,9 @@ class KszPSE:
             filtering logic is subtracting the mean $\hat v_r$ in redshift bins, in 
             order to mitigate foregrounds.
         
-        For examples of KszPSE in action, see:
+        An example notebook where KszPSE is used (but not until later in the notebook):
 
-          - **Add links to jupyter notebook(s) here**
+           https://github.com/kmsmith137/kszx_notebooks/blob/main/05_sdss_pipeline/05_exploratory_plots.ipynb
 
         The KszPSE computes power spectra involving a galaxy density field $\rho_g$,
         one or more kSZ velocity reconstructions $\hat v_r$, and surrogate fields $S_g, S_v$.

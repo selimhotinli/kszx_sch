@@ -17,7 +17,8 @@ class CmbClFitter:
         Based on utils.get_single_frequency_alms() in Alex + Mat's kSZquest software:
             https://github.com/alexlague/kSZquest/blob/main/utils.py
 
-        **To do: add link to jupyter notebook**
+        An example notebook where CmbClFitter is used:
+            https://github.com/kmsmith137/kszx_notebooks/blob/main/05_sdss_pipeline/03_prepare_cmb_weighting.ipynb
 
         With default constructor arguments, the CmbClFitter fits the power spectrum of the
         specified ``cmb_map`` (with pixel weighting specified by ``weight_map``, and for 
