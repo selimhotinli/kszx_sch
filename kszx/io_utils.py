@@ -249,7 +249,7 @@ def _show_h5(x, prefix=None, file=None, indent='  '):
             except:
                 s = ''
             print(f"{prefix}Dataset '{k}': shape={v.shape}, dtype={v.dtype}{s}", file=file)
-            _show_h5_attrs(v, prefix + indent, file, indent)
+            _show_h5_attrs(v, prefix + indent, file)
         elif not isinstance(v, h5py.Group):
             print(f"{prefix}Unrecognized element '{k}': type={type(v)}", file=file)
 
