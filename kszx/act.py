@@ -15,35 +15,37 @@ import pixell.enmap
 from . import io_utils
 
 
-def read_cmb(freq, dr, download=False):
+def read_cmb(freq, dr, *, night=False, download=False):
+    r"""Returns a pixell map. We currently only support DR5 act_planck_*_srcfree maps.
+
+    Function args:
+    
+      - ``freq`` (integer): either 90, 150, or 220.
+      - ``dr`` (integer): currently, only ``dr=5`` is supported.
+      - ``night`` (boolean): either True (for night) or False (for daynight).
+      - ``download`` (boolean): if True, then all needed data files will be auto-downloaded.
+    """
+    
+    filename = _cmb_filename(freq, dr, night=night, download=download)
+    return _read_map(filename)
+
+
+def read_ivar(freq, dr, *, night=False, download=False):
     r"""Returns a pixell map. We currently only support DR5 act_planck_daynight_srcfree maps.
 
     Function args:
     
       - ``freq`` (integer): either 90, 150, or 220.
       - ``dr`` (integer): currently, only ``dr=5`` is supported.
+      - ``night`` (boolean): either True (for night) or False (for daynight).
       - ``download`` (boolean): if True, then all needed data files will be auto-downloaded.
     """
     
-    filename = _cmb_filename(freq, dr, download)
+    filename = _ivar_filename(freq, dr, night=night, download=download)
     return _read_map(filename)
 
 
-def read_ivar(freq, dr, download=False):
-    r"""Returns a pixell map. We currently only support DR5 act_planck_daynight_srcfree maps.
-
-    Function args:
-    
-      - ``freq`` (integer): either 90, 150, or 220.
-      - ``dr`` (integer): currently, only ``dr=5`` is supported.
-      - ``download`` (boolean): if True, then all needed data files will be auto-downloaded.
-    """
-    
-    filename = _ivar_filename(freq, dr, download)
-    return _read_map(filename)
-
-
-def read_beam(freq, dr, lmax=None, download=False):
+def read_beam(freq, dr, lmax=None, *, night=False, download=False):
     r"""Returns a 1-d numpy array of length (lmax+1). We currently only support DR5 daynight beams.
 
     Function args:
@@ -51,10 +53,11 @@ def read_beam(freq, dr, lmax=None, download=False):
       - ``freq`` (integer): either 90, 150, or 220.
       - ``dr`` (integer): currently, only ``dr=5`` is supported.
       - ``lmax`` (integer): if None, then a large lmax will be used.
+      - ``night`` (boolean): either True (for night) or False (for daynight).
       - ``download`` (boolean): if True, then all needed data files will be auto-downloaded.
     """
 
-    filename = _beam_filename(freq, dr, download)
+    filename = _beam_filename(freq, dr, night=night, download=download)
         
     print(f'Reading {filename}\n', end='')
     
@@ -83,7 +86,7 @@ def read_nilc_wide_mask(download=False):
     return pixell.enmap.read_map(filename)
 
 
-def download(dr, freq_list=None, cmb=True, ivar=True, beams=True):
+def download(dr, freq_list=None, night=False, cmb=True, ivar=True, beams=True):
     r"""Downloads ACT data products (cmb, ivar, beam) for a given survey.
         
     Can be called from command line: ``python -m kszx download_act``."""
@@ -92,9 +95,9 @@ def download(dr, freq_list=None, cmb=True, ivar=True, beams=True):
         freq_list = [ 90, 150, 220 ]
 
     for freq in freq_list:
-        _cmb_filename(freq, dr, download=cmb)
-        _ivar_filename(freq, dr, download=ivar)
-        _beam_filename(freq, dr, download=beams)
+        _cmb_filename(freq, dr, night=night, download=cmb)
+        _ivar_filename(freq, dr, night=night, download=ivar)
+        _beam_filename(freq, dr, night=night, download=beams)
 
 
 ####################################################################################################
@@ -150,17 +153,20 @@ def _act_nersc_path(relpath, download=False):
     return abspath
     
 
-def _cmb_filename(freq, dr, download=False):
+def _cmb_filename(freq, dr, night=False, download=False):
     assert dr == 5   # currently, only support DR5
-    return _act_path(f'act_planck_dr5.01_s08s18_AA_f{freq:03d}_daynight_map_srcfree.fits', dr, download)
+    daynight = 'night' if night else 'daynight'
+    return _act_path(f'act_planck_dr5.01_s08s18_AA_f{freq:03d}_{daynight}_map_srcfree.fits', dr, download)
 
-def _ivar_filename(freq, dr, download=False):
+def _ivar_filename(freq, dr, night=False, download=False):
     assert dr == 5   # currently, only support DR5
-    return _act_path(f'act_planck_dr5.01_s08s18_AA_f{freq:03d}_daynight_ivar.fits', dr, download)
+    daynight = 'night' if night else 'daynight'
+    return _act_path(f'act_planck_dr5.01_s08s18_AA_f{freq:03d}_{daynight}_ivar.fits', dr, download)
 
-def _beam_filename(freq, dr, download=False):
+def _beam_filename(freq, dr, night=False, download=False):
     assert dr == 5   # currently, only support DR5
-    return _act_path(f'beams/act_planck_dr5.01_s08s18_f{freq:03d}_daynight_beam.txt', dr, download, is_aux=True)
+    daynight = 'night' if night else 'daynight'
+    return _act_path(f'beams/act_planck_dr5.01_s08s18_f{freq:03d}_{daynight}_beam.txt', dr, download, is_aux=True)
 
 def _cluster_mask_filename(download=False):
     return _act_nersc_path('dr6_nilc/ymaps_20230220/masks/cluster_mask.fits', download)
