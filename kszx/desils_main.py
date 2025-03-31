@@ -14,9 +14,15 @@ def download_south_randoms(dr):
         _desils_path(f'south/randoms/randoms-south-1-{i}.fits', dr, download=True)
 
         
-def _desils_path(relpath, dr, download=False):
+def _desils_path(relpath, dr, download=False, dlfunc=None):
     """Example: _desils_path('randoms/randoms-1-0.fits', dr=10).
-    Intended to be called through wrapper, e.g. _random_filename()."""
+    
+    Intended to be called through wrapper, e.g. _random_filename().
+    
+    Here and in other parts of kszx, the 'dlfunc' argument gives the name of a transitive caller that
+    expects the file to be present, and has a 'download=False' optional argument. This information is
+    only used when generating exception-text (to tell the user how to download the file).
+    """
     
     assert dr == 10    # placeholder for future expansion
     relpath = os.path.join('dr10', relpath)
@@ -24,7 +30,7 @@ def _desils_path(relpath, dr, download=False):
     desils_base_dir = os.path.join(io_utils.get_data_dir(), 'desils')
     abspath = os.path.join(desils_base_dir, relpath)
 
-    if download and not os.path.exists(abspath):
+    if io_utils.do_download(abspath, download, dlfunc):
         url = f'https://portal.nersc.gov/cfs/cosmo/data/legacysurvey/{relpath}'
         io_utils.wget(abspath, url)   # calls assert os.path.exists(...) after downloading
     

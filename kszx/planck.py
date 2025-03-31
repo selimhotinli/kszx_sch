@@ -31,7 +31,7 @@ def read_hfi_galmask(sky_percentage, apodization=0, dtype=None, download=False):
 
     assert sky_percentage in [ 20, 40, 60, 70, 80, 90, 97, 99 ]
     
-    abspath = _hfi_galmask_filename(apodization, download)
+    abspath = _hfi_galmask_filename(apodization, download, dlfunc='kszx.planck.read_hfi_galmask')
     col_name = f'GAL0{sky_percentage}'
     print(f'Reading {abspath} ({col_name=})\n', end='')
     
@@ -64,20 +64,16 @@ def download():
 ####################################################################################################
 
 
-def _planck_path(relpath, download=False):
-    if download:
-        url = f'https://irsa.ipac.caltech.edu/data/Planck/{relpath}'
-        io_utils.wget_if_necessary(abspath, url)
-
-    return abspath
-
-
-def _hfi_galmask_filename(apodization, download=False):
+def _hfi_galmask_filename(apodization, download=False, dlfunc=None):
     """
     Allowed apodization values: 0, 2, 5 (degrees)
 
     Note that we use Planck release 2, since release 3 doesn't seem to have HFI
     foreground masks (it does have other masks).
+    
+    Here and in other parts of kszx, the 'dlfunc' argument gives the name of a transitive caller that
+    expects the file to be present, and has a 'download=False' optional argument. This information is
+    only used when generating exception-text (to tell the user how to download the file).
     """
 
     assert apodization in [0, 2, 5]    
@@ -86,7 +82,7 @@ def _hfi_galmask_filename(apodization, download=False):
     planck_base_dir = os.path.join(io_utils.get_data_dir(), 'planck')
     abspath = os.path.join(planck_base_dir, relpath)
 
-    if download and not os.path.exists(abspath):
+    if io_utils.do_download(abspath, download, dlfunc):
         url = f'https://irsa.ipac.caltech.edu/data/Planck/{relpath}'
         io_utils.wget(abspath, url)
     

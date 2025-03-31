@@ -49,18 +49,18 @@ def read_galaxies(extended, download=False):
     cols += [ (f'nobs_{x}', f'PIXEL_NOBS_{x.upper()}') for x in ['g','r','z'] ]
     cols += [ ('ebv','EBV'), ('lrg_mask','lrg_mask'), ('pz_bin','pz_bin') ]
     cols += [ ('maskbits','MASKBITS'), ('photsys','PHOTSYS') ]
-    filename = _catalog_filename(extended, download=download)
+    filename = _catalog_filename(extended, download=download, dlfunc='kszx.desils_lrg.read_galaxies')
     catalog = Catalog.from_fits(filename, cols)
 
     # Read zerr column (photo-z error) from the "pz" FITS file.
-    filename = _catalog_filename(extended, suffix='pz', download=download)
+    filename = _catalog_filename(extended, suffix='pz', download=download, dlfunc='kszx.desils_lrg.read_galaxies')
     ctmp = Catalog.from_fits(filename, [('zerr','Z_PHOT_STD')])
     catalog.absorb_columns(ctmp, destructive=True)
 
     # Read GALDEPTH_{G,R,Z} and PSFSIZE_{G,R,Z} cols from the "more_2" FITS file.
     cols = [ (f'galdepth_{x}', f'GALDEPTH_{x.upper()}') for x in ['g','r','z'] ]
     cols += [ (f'psfsize_{x}', f'PSFSIZE_{x.upper()}') for x in ['g','r','z'] ]
-    filename = _catalog_filename(extended, suffix='more_2', download=download)
+    filename = _catalog_filename(extended, suffix='more_2', download=download, dlfunc='kszx.desils_lrg.read_galaxies')
     ctmp = Catalog.from_fits(filename, cols)
     catalog.absorb_columns(ctmp, destructive=True)
 
@@ -100,11 +100,11 @@ def read_randoms(ix_list, download=False):
         cols += [ (f'nobs_{x}', f'NOBS_{x.upper()}') for x in ['g','r','z'] ]
         cols += [ ('maskbits','MASKBITS') ]
     
-        filename = _random_filename(ix, mflag=False, download=download)
+        filename = _random_filename(ix, mflag=False, download=download, dlfunc='kszx.desils_lrg.read_galaxies')
         catalog = Catalog.from_fits(filename, cols)
 
         # lrg_mask
-        filename2 = _random_filename(ix, mflag=True, download=download)
+        filename2 = _random_filename(ix, mflag=True, download=download, dlfunc='kszx.desils_lrg.read_galaxies')
         ctmp = Catalog.from_fits(filename2, [('lrg_mask','lrg_mask')])
         catalog.add_column('lrg_mask', ctmp.lrg_mask)
 
@@ -146,7 +146,7 @@ def compute_imaging_weights(gcat, extended, ebv=True, download=False):
     weight = np.zeros(gcat.size)
 
     # Load weights (linear_coeffs yaml file)
-    weights_path = _linear_coeffs_filename(extended, ebv, download)
+    weights_path = _linear_coeffs_filename(extended, ebv, download, dlfunc='kszx.desils_lrg.read_galaxies')
     with open(weights_path, "r") as f:
         linear_coeffs = yaml.safe_load(f)
 
@@ -260,7 +260,7 @@ def read_stardens_map(download=False):
 
     Intended as a helper for apply_quality_cuts(), but may be independently useful."""
     
-    filename = _desils_lrg_path('misc/pixweight-dr7.1-0.22.0_stardens_64_ring.fits', download=True)
+    filename = _desils_lrg_path('misc/pixweight-dr7.1-0.22.0_stardens_64_ring.fits', download=True, dlfunc='kszx.desils_lrg.read_galaxies')
     
     print(f'Reading {filename}\n', end='')
     f = fitsio.read(filename)
@@ -270,12 +270,12 @@ def read_stardens_map(download=False):
     
     assert np.all(f['HPXPIXEL'] == np.arange(npix))
     return np.asarray(f['STARDENS'], dtype=np.float32)  # convert big-endian float32 -> native
-    
+
 
 ####################################################################################################
 
 
-def _catalog_filename(extended, suffix=None, download=False):
+def _catalog_filename(extended, suffix=None, download=False, dlfunc=None):
     """The 'extended' argument should be True or False.
     
     Catalogs are split across multiple FITS files, distinguished by 'suffix':
@@ -304,6 +304,10 @@ def _catalog_filename(extended, suffix=None, download=False):
 
         https://data.desi.lbl.gov/public/papers/c3/lrg_xcorr_2023/v1/catalogs/README.txt        
         https://www.legacysurvey.org/dr9/files/#sweep-catalogs-region-sweep
+    
+    Here and in other parts of kszx, the 'dlfunc' argument gives the name of a transitive caller that
+    expects the file to be present, and has a 'download=False' optional argument. This information is
+    only used when generating exception-text (to tell the user how to download the file).
     """
 
     lrg = 'extended_lrg' if extended else 'lrg'
@@ -314,12 +318,12 @@ def _catalog_filename(extended, suffix=None, download=False):
                            + f" Valid suffixes are: {slist}")
 
     if suffix is None:
-        return _desils_lrg_path(f'catalogs/dr9_{lrg}_pzbins.fits', download=download)
+        return _desils_lrg_path(f'catalogs/dr9_{lrg}_pzbins.fits', download=download, dlfunc=dlfunc)
     else:
-        return _desils_lrg_path(f'catalogs/more/dr9_{lrg}_{suffix}.fits', download=download)
+        return _desils_lrg_path(f'catalogs/more/dr9_{lrg}_{suffix}.fits', download=download, dlfunc=dlfunc)
 
 
-def _random_filename(ix, mflag, download=False):
+def _random_filename(ix, mflag, download=False, dlfunc=None):
     """The index 'ix' satisfies 0 <= ix < 200.
 
     The randoms are split across two FITS files, distinguished through the boolean 'mflag' arg:
@@ -331,20 +335,20 @@ def _random_filename(ix, mflag, download=False):
     s = f'{(ix//20)+1}-{(ix%20)}'   # E.g. (ix=31) -> '2-11'
 
     if mflag:
-        return _desils_lrg_path(f'catalogs/lrgmask_v1.1/randoms-{s}-lrgmask_v1.1.fits.gz', download=download)
+        return _desils_lrg_path(f'catalogs/lrgmask_v1.1/randoms-{s}-lrgmask_v1.1.fits.gz', download=download, dlfunc=dlfunc)
     else:
-        return _desils_ets_path(f'target/catalogs/dr9/0.49.0/randoms/resolve/randoms-{s}.fits', download=download)
+        return _desils_ets_path(f'target/catalogs/dr9/0.49.0/randoms/resolve/randoms-{s}.fits', download=download, dlfunc=dlfunc)
 
 
-def _linear_coeffs_filename(extended, ebv, download=False):
+def _linear_coeffs_filename(extended, ebv, download=False, dlfunc=None):
     """The 'extended' and 'ebv' arguments should be True or False."""
 
     prefix = 'extended' if extended else 'main'
     suffix = '' if ebv else '_no_ebv'
-    return _desils_lrg_path(f'catalogs/imaging_weights/{prefix}_lrg_linear_coeffs_pz{suffix}.yaml', download=download)
+    return _desils_lrg_path(f'catalogs/imaging_weights/{prefix}_lrg_linear_coeffs_pz{suffix}.yaml', download=download, dlfunc=dlfunc)
 
     
-def _desils_lrg_path(relpath, download=False):
+def _desils_lrg_path(relpath, download=False, dlfunc=None):
     """Example: _desils_lrs_path('catalogs/dr9_lrg_pzbins.fits').
         -> local filename /data/desils/lrg_xcorr_2023/v1/catalogs/dr9_lrg_pzbins.fits
         -> url https://data.desi.lbl.gov/public/papers/c3/lrg_xcorr_2023/v1/catalogs/dr9_lrg_pzbins.fits
@@ -355,14 +359,14 @@ def _desils_lrg_path(relpath, download=False):
     desils_base_dir = os.path.join(io_utils.get_data_dir(), 'desils')
     abspath = os.path.join(desils_base_dir, relpath)
 
-    if download and not os.path.exists(abspath):
+    if io_utils.do_download(abspath, download, dlfunc):
         url = f'https://data.desi.lbl.gov/public/papers/c3/{relpath}'
         io_utils.wget(abspath, url)   # calls assert os.path.exists(...) after downloading
     
     return abspath
 
 
-def _desils_ets_path(relpath, download=False):
+def _desils_ets_path(relpath, download=False, dlfunc=None):
     """Example: _desils_ets_path('target/catalogs/dr9/0.49.0/randoms/resolve/randoms-1-0.fits')
         -> local filename /data/desils/ets/target/catalogs/dr9/0.49.0/randoms/resolve/randoms-1-0.fits
         -> url https://data.desi.lbl.gov/public/ets/target/catalogs/dr9/0.49.0/randoms/resolve/randoms-1-0.fits
@@ -373,7 +377,7 @@ def _desils_ets_path(relpath, download=False):
     desils_base_dir = os.path.join(io_utils.get_data_dir(), 'desils')
     abspath = os.path.join(desils_base_dir, relpath)
 
-    if download and not os.path.exists(abspath):
+    if io_utils.do_download(abspath, download, dlfunc):
         url = f'https://data.desi.lbl.gov/public/{relpath}'
         io_utils.wget(abspath, url)   # calls assert os.path.exists(...) after downloading
     

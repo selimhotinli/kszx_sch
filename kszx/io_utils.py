@@ -1,11 +1,13 @@
 import os
 import h5py
 import gzip
+import uuid
 import shutil
 import fitsio
 import pickle   # FIXME cPickle?
 import tarfile
 import functools
+import subprocess
 import numpy as np
 
 # Avoid name collision with io_utils.wget() below.
@@ -100,6 +102,23 @@ def mkdir_containing(filename):
     os.makedirs(d, exist_ok=True)
     
 
+def do_download(abspath, download=False, dlfunc=None):
+    """This short helper function appears in many functions which decide whether to download a file.
+
+    Here and in other parts of kszx, the 'dlfunc' argument gives the name of a transitive caller that
+    expects the file to be present, and has a 'download=False' optional argument. This information is
+    only used when generating exception-text (to tell the user how to download the file).
+    """
+    
+    if os.path.exists(abspath):
+        return False
+    if download:
+        return True
+    if dlfunc is not None:
+        raise RuntimeError(f'File {abspath} not found. To auto-download, call {dlfunc}() with download=True.')
+    return False
+
+
 def wget(filename, url):
     if os.path.exists(filename):
         print(f'File {filename} already exists -- skipping download')
@@ -140,7 +159,48 @@ def unpack(srcfile, expected_dstfile=None):
 
     if (expected_dstfile is not None) and not os.path.exists(expected_dstfile):
         raise RuntimeError(f"kszx.io_utils.unpack(): after unpacking {srcfile=}, {expected_dstfile=} does not exist")
+
     
+def nersc_scp_download(remote_abspath, local_abspath):
+    """A temporary kludge, since ACT DR6 maps are currently on NERSC but not LAMBDA.
+
+    Documentation by example:
+
+      nersc_scp_download(
+        remote_abspath = '/global/cfs/cdirs/cmb/data/act_dr6/dr6.02/maps/published/act-planck_dr6.02_coadd_AA_daynight_f090_map_srcfree.fits',
+        local_abspath = '/home/kmsmith/kszx_data/act/dr6/maps/published/act-planck_dr6.02_coadd_AA_daynight_f090_map_srcfree.fits'
+      )
+    """
+    
+    if os.path.exists(local_abspath):
+        return
+
+    print(f"File {local_abspath} is not currently available on the web -- the only option is a NERSC scp download.")
+
+    mkdir_containing(local_abspath)
+    tmpfile = local_abspath +  f'.tmp{uuid.uuid4().hex[:8]}'
+    ssh_key = os.path.join(os.environ['HOME'], '.ssh', 'nersc')
+    ssh_args = ['scp', '-i', ssh_key, f'perlmutter.nersc.gov:{remote_abspath}', tmpfile ]
+    
+    if not os.path.exists(ssh_key):
+        raise RuntimeError('To download files from NERSC, you need to have a NERSC account, and run sshproxy.sh. '
+                           + 'See https://docs.nersc.gov/connect/mfa/#sshproxy')
+    
+    try:
+        print(f"Executing command: {' '.join(ssh_args)}")
+        subprocess.run(ssh_args, check=True)
+    
+    except subprocess.CalledProcessError as e:
+        print(f"Couldn't download from NERSC. One possible reason is that your ssh key is out of date, "
+              + f"and you need to rerun sshproxy.sh. (See https://docs.nersc.gov/connect/mfa/#sshproxy). "
+              + f"Error message was: {e}")
+
+    if not os.path.exists(tmpfile):
+        raise RuntimeError(f'scp command succeeded, but destination file {tmpfile} was not created?!')
+
+    print(f'Renaming {tmpfile} -> {local_abspath}')
+    os.rename(tmpfile, local_abspath)
+
 
 ####################################################################################################
 

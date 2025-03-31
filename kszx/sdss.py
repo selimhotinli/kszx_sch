@@ -45,7 +45,7 @@ def read_galaxies(survey, dr=12, download=False):
      gcat.apply_redshift_cut(0.43, 0.7)
     """
     
-    filename = _galaxy_filename(survey, dr, download)
+    filename = _galaxy_filename(survey, dr, download, dlfunc='kszx.sdss.read_galaxies')
     gcat = read_fits_catalog(filename, is_randcat=False)
     print("Reminder: you probably want to call cat.apply_redshift_cut(zmin,zmax)"
           + " on the Catalog returned by kszx.sdss.read_galaxies())")
@@ -79,7 +79,7 @@ def read_randoms(survey, dr=12, download=False):
      rcat.apply_redshift_cut(0.43, 0.7)
     """
     
-    filenames = _random_filenames(survey, dr, download)
+    filenames = _random_filenames(survey, dr, download, dlfunc='kszx.sdss.read_randoms')
     catalogs = [ read_fits_catalog(f, is_randcat=True) for f in filenames ]
     rcat = Catalog.concatenate(catalogs, name=f'{survey} randoms', destructive=True)
     print("Reminder: you probably want to call cat.apply_redshift_cut(zmin,zmax)"
@@ -97,7 +97,6 @@ def read_mask(survey, dr=12, download=False):
 
       - ``dr`` (integer): either 11 or 12.
 
-
       - ``download`` (boolean): if True, then all needed data files will be auto-downloaded.
 
     Returns a pymangle object that can be evaluated with mask.weight(ra_deg, dec_deg).
@@ -106,7 +105,7 @@ def read_mask(survey, dr=12, download=False):
     Note: requires pymangle! (Not a dependency by default.)    
     """
     import pymangle
-    filename = _mask_filename(survey, dr, download)
+    filename = _mask_filename(survey, dr, download, dlfunc='kszx.sdss.read_mask')
     print(f'Reading {filename}\n', end='')
     return pymangle.Mangle(filename)
 
@@ -147,7 +146,7 @@ def read_mock(survey, mock_type, ix, dr=12, download=False):
      # mcat.apply_redshift_cut(0.43, 0.7) not needed!
     """
 
-    filename = _mock_filename(survey, mock_type, ix, dr, download=download)
+    filename = _mock_filename(survey, mock_type, ix, dr, download=download, dlfunc='kszx.sdss.read_mock')
 
     if mock_type.lower() == 'qpm':
         # https://data.sdss.org/datamodel/files/BOSS_LSS_REDUX/dr11_qpm_mocks/mock_galaxy_DRX_SAMPLE_NS_QPM_IDNUMBER.html
@@ -190,7 +189,7 @@ def read_mock_randoms(survey, mock_type, dr=12, download=False):
      # mrcat.apply_redshift_cut(0.43, 0.7) not needed!
     """
 
-    filenames = _mock_random_filenames(survey, mock_type, dr, download=download)
+    filenames = _mock_random_filenames(survey, mock_type, dr, download=download, dlfunc='kszx.sdss.read_mock_randoms')
 
     if mock_type.lower() == 'qpm':
         # https://data.sdss.org/datamodel/files/BOSS_LSS_REDUX/dr11_qpm_mocks/mock_random_DRX_SAMPLE_NS_QPM_NxV.html
@@ -295,7 +294,7 @@ def _check_survey(survey, dr, abridged=False):
     dhash = { 11: 'DR11v1', 12: 'DR12v5' }
     
     if dr not in dhash:
-        raise RuntimeError("SDSS {dr=} not supported (currently support DR11, DR12)")
+        raise RuntimeError(f"SDSS {dr=} not supported (currently support DR11, DR12)")
         
     survey_list = [ 'CMASS_North', 'CMASS_South', 'LOWZ_North', 'LOWZ_South' ]
 
@@ -310,7 +309,7 @@ def _check_survey(survey, dr, abridged=False):
     raise RuntimeError(f"SDSS survey '{survey}' not recognized (must be one of: {survey_list})")
         
     
-def _sdss_path(relpath, dr, download, *, packed_relpath=None, gz=False):
+def _sdss_path(relpath, dr, download, *, packed_relpath=None, gz=False, dlfunc=None):
     """Intended to be called through wrapper such as _galaxy_filename(), _random_filenames(), etc.
 
     If 'packed_relpath' is specified, it should be a file ending in '.gz', '.tgz', or '.tar.gz'
@@ -319,6 +318,10 @@ def _sdss_path(relpath, dr, download, *, packed_relpath=None, gz=False):
     Setting gz=True is shorthand for packed_relpath = "{relpath}.gz".
 
     The 'dr' argument is only used if download=True, to construct the URL.
+    
+    Here and in other parts of kszx, the 'dlfunc' argument gives the name of a transitive caller that
+    expects the file to be present, and has a 'download=False' optional argument. This information is
+    only used when generating exception-text (to tell the user how to download the file).
 
     Example: 
 
@@ -343,8 +346,9 @@ def _sdss_path(relpath, dr, download, *, packed_relpath=None, gz=False):
     
     sdss_base_dir = os.path.join(io_utils.get_data_dir(), 'sdss')
     abspath = os.path.join(sdss_base_dir, 'DR12v5', relpath)
-        
-    if (not download) or os.path.exists(abspath):
+    assert dr==12   # oops, just noticed that previous line is only valid for DR12!
+
+    if not io_utils.do_download(abspath, download, dlfunc):
         return abspath
 
     if gz:
@@ -362,22 +366,22 @@ def _sdss_path(relpath, dr, download, *, packed_relpath=None, gz=False):
     return abspath
 
 
-def _galaxy_filename(survey, dr, download=False):
+def _galaxy_filename(survey, dr, download=False, dlfunc=None):
     s, d = _check_survey(survey, dr)
-    return _sdss_path(f'galaxy_{d}_{s}.fits', dr, download, gz=True)
+    return _sdss_path(f'galaxy_{d}_{s}.fits', dr, download, gz=True, dlfunc=dlfunc)
 
 
-def _random_filenames(survey, dr, download=False):
+def _random_filenames(survey, dr, download=False, dlfunc=None):
     s, d = _check_survey(survey, dr)
-    return [ _sdss_path(f'random{n}_{d}_{s}.fits', dr, download, gz=True) for n in [0,1] ]
+    return [ _sdss_path(f'random{n}_{d}_{s}.fits', dr, download, gz=True, dlfunc=dlfunc) for n in [0,1] ]
 
 
-def _mask_filename(survey, download=False):
+def _mask_filename(survey, download=False, dlfunc=None):
     s, d = _check_survey(survey, dr)
-    return _sdss_path(f'mask_{d}_{s}.ply', dr, download)
+    return _sdss_path(f'mask_{d}_{s}.ply', dr, download, dlfunc=dlfunc)
 
 
-def _mock_filename(survey, mock_type, ix, dr, download=False):
+def _mock_filename(survey, mock_type, ix, dr, download=False, dlfunc=None):
     _check_survey(survey, dr, abridged=True)
 
     if (dr == 12) and (mock_type.lower() == 'qpm'):
@@ -390,7 +394,8 @@ def _mock_filename(survey, mock_type, ix, dr, download=False):
             relpath = f'qpm_mocks/mock_galaxy_DR{dr}_{survey[:-4].upper()}_QPM_{(ix+1):04d}.rdzw',
             packed_relpath = f'qpm_mocks/mock_galaxy_DR{dr}_{survey[:-4].upper()}_QPM_allmocks.tar.gz',
             download = download,
-            dr = dr
+            dr = dr,
+            dlfunc = dlfunc
         )
 
     elif (dr == 11) and (mock_type.lower() == 'pthalos'):
@@ -403,19 +408,20 @@ def _mock_filename(survey, mock_type, ix, dr, download=False):
             relpath = f'dr{dr}_pthalos_mocks/mock_galaxy_DR{dr}_{survey[:-4].upper()}_PTHALOS_ir{(ix+4001)}.dat',
             packed_relpath = f'dr{dr}_pthalos_mocks/mock_galaxy_DR{dr}_{survey[:-4].upper()}_PTHALOS_allmocks.tar.gz',
             download = download,
-            dr = dr
+            dr = dr,
+            dlfunc = dlfunc
         )
     
     else:
         raise RuntimeError(f"kszx: SDSS {(mock_type,dr)=} was not recognized (currently support ('qpm',12) and ('pthalos',11))")
 
 
-def _mock_random_filenames(survey, mock_type, dr, download=False):
+def _mock_random_filenames(survey, mock_type, dr, download=False, dlfunc=None):
     _check_survey(survey, dr, abridged=True)
     
     if (dr == 12) and (mock_type.lower() == 'qpm'):
         for n in [1,2]:
-            yield _sdss_path(f'qpm_mocks/mock_random_DR{dr}_{survey[:-4].upper()}_50x{n}.rdzw', dr=dr, download=download, gz=True)
+            yield _sdss_path(f'qpm_mocks/mock_random_DR{dr}_{survey[:-4].upper()}_50x{n}.rdzw', dr=dr, download=download, gz=True, dlfunc=dlfunc)
 
     elif (dr == 11) and (mock_type.lower() == 'pthalos'):
         nfiles = 600 if survey.lower().startswith('cmass') else 1000
@@ -424,7 +430,8 @@ def _mock_random_filenames(survey, mock_type, dr, download=False):
                 relpath = f'dr{dr}_pthalos_mocks/mock_random_DR{dr}_{survey[:-4].upper()}_PTHALOS_ir{n}.dat',
                 packed_relpath = f'dr{dr}_pthalos_mocks/mock_random_DR{dr}_{survey[:-4].upper()}_PTHALOS_allmocks.tar.gz',
                 download = download,
-                dr = dr
+                dr = dr,
+                dlfunc = dlfunc
             )
     
     else:

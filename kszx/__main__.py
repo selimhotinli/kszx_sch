@@ -9,6 +9,9 @@ if __name__ == '__main__':
     p = subparsers.add_parser('download_act')
     p.add_argument('dr', type=int, help='Currently, only dr=5 is allowed')
 
+    p = subparsers.add_parser('download_desi')
+    p.add_argument('survey', help='Survey name such as LRG_NGC')
+
     p = subparsers.add_parser('download_planck')
 
     p = subparsers.add_parser('download_sdss')
@@ -27,6 +30,9 @@ if __name__ == '__main__':
     elif args.command == 'download_act':
         from . import act
         act.download(dr=args.dr)
+    elif args.command == 'download_desi':
+        from . import desi
+        desi.download(args.survey, dr=1)
     elif args.command == 'download_planck':
         from . import planck
         planck.download()

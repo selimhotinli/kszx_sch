@@ -33,6 +33,7 @@ from .CatalogGridder import CatalogGridder
 from .KszPSE import KszPSE
 
 from . import act
+from . import desi
 from . import desils_lrg
 from . import desils_main
 from . import ksz_desils

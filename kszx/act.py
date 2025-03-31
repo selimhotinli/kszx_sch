@@ -21,12 +21,12 @@ def read_cmb(freq, dr, *, night=False, download=False):
     Function args:
     
       - ``freq`` (integer): either 90, 150, or 220.
-      - ``dr`` (integer): currently, only ``dr=5`` is supported.
+      - ``dr`` (integer): currently, ``dr=5`` and ``dr=6`` are supported.
       - ``night`` (boolean): either True (for night) or False (for daynight).
       - ``download`` (boolean): if True, then all needed data files will be auto-downloaded.
     """
     
-    filename = _cmb_filename(freq, dr, night=night, download=download)
+    filename = _cmb_filename(freq, dr, night=night, download=download, dlfunc='kszx.act.read_cmb')
     return _read_map(filename)
 
 
@@ -36,12 +36,12 @@ def read_ivar(freq, dr, *, night=False, download=False):
     Function args:
     
       - ``freq`` (integer): either 90, 150, or 220.
-      - ``dr`` (integer): currently, only ``dr=5`` is supported.
+      - ``dr`` (integer): currently, only ``dr=5`` and ``dr=6`` are supported.
       - ``night`` (boolean): either True (for night) or False (for daynight).
       - ``download`` (boolean): if True, then all needed data files will be auto-downloaded.
     """
     
-    filename = _ivar_filename(freq, dr, night=night, download=download)
+    filename = _ivar_filename(freq, dr, night=night, download=download, dlfunc='kszx.act.read_ivar')
     return _read_map(filename)
 
 
@@ -57,8 +57,8 @@ def read_beam(freq, dr, lmax=None, *, night=False, download=False):
       - ``download`` (boolean): if True, then all needed data files will be auto-downloaded.
     """
 
-    filename = _beam_filename(freq, dr, night=night, download=download)
-        
+    filename = _beam_filename(freq, dr, night=night, download=download, dlfunc='kszx.act.read_beam')
+    
     print(f'Reading {filename}\n', end='')
     
     a = np.loadtxt(filename)
@@ -75,14 +75,14 @@ def read_beam(freq, dr, lmax=None, *, night=False, download=False):
 
 
 def read_cluster_mask(download=False):
-    r"""Returns the cluster mask from https://arxiv.org/abs/2307.01258 as a pixell map."""
-    filename = _cluster_mask_filename(download)
+    r"""Returns the cluster mask from https://arxiv.org/abs/2307.01258 as a pixell map."""    
+    filename = _cluster_mask_filename(download, dlfunc='kszx.act.read_cluster_mask')
     return pixell.enmap.read_map(filename)
 
 
 def read_nilc_wide_mask(download=False):
     r"""Returns the Galactic mask from https://arxiv.org/abs/2307.01258 as a pixell map."""
-    filename = _nilc_wide_mask_filename(download)
+    filename = _nilc_wide_mask_filename(download, dlfunc='kszx.act.read_nilc_wide_mask')
     return pixell.enmap.read_map(filename)
 
 
@@ -101,32 +101,55 @@ def download(dr, freq_list=None, night=False, cmb=True, ivar=True, beams=True):
 
 
 ####################################################################################################
-
-
-def _act_path(relpath, dr, download=False, is_aux=False):
+    
+                     
+def _act_path(relpath, dr, download=False, is_aux=False, dlfunc=None):
     """Intended to be called through wrapper such as _cmb_filename(), _ivar_filename(), etc.
 
-    For files which are downloaded here: https://lambda.gsfc.nasa.gov/data/suborbital/ACT
-    If is_aux=True, then the file is contained in 'act_dr5.01_auxilliary.zip' (only matters if download=True)
+    Examples (note that directory structure is a little different for DR5/DR6):
+
+      _act_path(relpath = 'act_planck_dr5.01_s08s18_AA_f090_daynight_ivar.fits', dr=5)
+      _act_path(relpath = 'maps/published/act-planck_dr6.02_coadd_AA_daynight_f090_map_srcfree.fits', dr=6)
+    
+    If is_aux=True, then the file is contained in 'act_dr5.01_auxilliary.zip' (only matters if download=True).
+    
+    Here and in other parts of kszx, the 'dlfunc' argument gives the name of a transitive caller that
+    expects the file to be present, and has a 'download=False' optional argument. This information is
+    only used when generating exception-text (to tell the user how to download the file).
     """
 
-    assert dr == 5    # currently, only support DR5
-    act_base_dir = os.path.join(io_utils.get_data_dir(), 'act', 'dr5.01')
+    if dr == 5:
+        dr_dir = 'dr5.01'
+    elif dr == 6:
+        dr_dir = 'dr6.02'
+    else:
+        raise RuntimeError(f'ACT {dr=} is not supported (currently support dr=5 and dr=6)')
+
+    assert (dr == 5) or (not is_aux)   # # 'is_aux' argument is only for DR5 (this may change in the future).
+    act_base_dir = os.path.join(io_utils.get_data_dir(), 'act', dr_dir)
     abspath = os.path.join(act_base_dir, relpath)
 
-    if (not download) or os.path.exists(abspath):
+    if not io_utils.do_download(abspath, download, dlfunc):
         return abspath
 
-    if not is_aux:
-        # Typical case: file is not part of act_dr5.01_auxilliary.zip.
+    # If we get here, then file will be downloaded.
+    # Note that DR6 data is currently only available on NERSC! When it's available on LAMBDA,
+    # I'll replace io_utils.nersc_scp_download() by io_utils.wget() below.
+
+    if dr==6:
+        remote_abspath = os.path.join('/global/cfs/cdirs/cmb/data/act_dr6/dr6.02', relpath)
+        io_utils.nersc_scp_download(remote_abspath, abspath)
+        return abspath
+    elif (dr == 5) and (not is_aux):        
+        # Typical case: is_aux=False (file is not part of act_dr5.01_auxilliary.zip).
         url = f'https://lambda.gsfc.nasa.gov/data/suborbital/ACT/ACT_dr5/maps/{relpath}'
         io_utils.wget(abspath, url)   # calls assert os.path.exists(...) after downloading
         return abspath
 
-    # Special case: file is part of act_dr5.01_auxilliary.zip.
+    # If we get here, then is_aux=True (file is part of act_dr5.01_auxilliary.zip).
     # Download the zipfile (by calling _act_path() recursively) and unpack.
 
-    zip_filename = _act_path('act_dr5.01_auxilliary.zip', dr=5, download=True, is_aux=False)
+    zip_filename = _act_path('act_dr5.01_auxilliary.zip', dr, download=download, is_aux=False, dlfunc=dlfunc)
     print(f'Unzipping {zip_filename}')
     
     with zipfile.ZipFile(zip_filename, 'r') as f:
@@ -138,7 +161,7 @@ def _act_path(relpath, dr, download=False, is_aux=False):
     return abspath
 
 
-def _act_nersc_path(relpath, download=False):
+def _act_nersc_portal_path(relpath, download=False, dlfunc=None):
     """Intended to be called through wrapper such as _cluster_mask_filename().
     For files which are downloaded here: https://portal.nersc.gov/project/act
     """
@@ -146,33 +169,51 @@ def _act_nersc_path(relpath, download=False):
     act_base_dir = os.path.join(io_utils.get_data_dir(), 'act')
     abspath = os.path.join(act_base_dir, relpath)
 
-    if download and not os.path.exists(abspath):
+    if io_utils.do_download(abspath, download, dlfunc):
         url = f'https://portal.nersc.gov/project/act/{relpath}'
         io_utils.wget(abspath, url)   # calls assert os.path.exists(...) after downloading
 
     return abspath
     
 
-def _cmb_filename(freq, dr, night=False, download=False):
+def _cmb_filename(freq, dr, night=False, download=False, dlfunc=None):
+    time = 'night' if night else 'daynight'
+    
+    if dr == 5:
+        relpath = f'act_planck_dr5.01_s08s18_AA_f{freq:03d}_{time}_map_srcfree.fits'
+    elif dr == 6:
+        relpath = f'maps/published/act-planck_dr6.02_coadd_AA_{time}_f{freq:03d}_map_srcfree.fits'
+    else:
+        raise RuntimeError(f'ACT {dr=} is not supported (currently we support dr=5 or dr=6)')
+
+    return _act_path(relpath, dr, download=download, dlfunc=dlfunc)
+
+
+def _ivar_filename(freq, dr, night=False, download=False, dlfunc=None):
+    time = 'night' if night else 'daynight'
+
+    if dr == 5:
+        relpath = f'act_planck_dr5.01_s08s18_AA_f{freq:03d}_{time}_ivar.fits'
+    elif dr == 6:
+        relpath = f'maps/published/act-planck_dr6.02_coadd_AA_{time}_f{freq:03d}_ivar.fits'
+    else:
+        raise RuntimeError(f'ACT {dr=} is not supported (currently we support dr=5 or dr=6)')
+    
+    return _act_path(relpath, dr, download=download, dlfunc=dlfunc)
+
+
+def _beam_filename(freq, dr, night=False, download=False, dlfunc=None):
     assert dr == 5   # currently, only support DR5
     daynight = 'night' if night else 'daynight'
-    return _act_path(f'act_planck_dr5.01_s08s18_AA_f{freq:03d}_{daynight}_map_srcfree.fits', dr, download)
+    return _act_path(f'beams/act_planck_dr5.01_s08s18_f{freq:03d}_{daynight}_beam.txt', dr, download, is_aux=True, dlfunc=dlfunc)
 
-def _ivar_filename(freq, dr, night=False, download=False):
-    assert dr == 5   # currently, only support DR5
-    daynight = 'night' if night else 'daynight'
-    return _act_path(f'act_planck_dr5.01_s08s18_AA_f{freq:03d}_{daynight}_ivar.fits', dr, download)
 
-def _beam_filename(freq, dr, night=False, download=False):
-    assert dr == 5   # currently, only support DR5
-    daynight = 'night' if night else 'daynight'
-    return _act_path(f'beams/act_planck_dr5.01_s08s18_f{freq:03d}_{daynight}_beam.txt', dr, download, is_aux=True)
+def _cluster_mask_filename(download=False, dlfunc=None):
+    return _act_nersc_portal_path('dr6_nilc/ymaps_20230220/masks/cluster_mask.fits', download=download, dlfunc=dlfunc)
 
-def _cluster_mask_filename(download=False):
-    return _act_nersc_path('dr6_nilc/ymaps_20230220/masks/cluster_mask.fits', download)
 
-def _nilc_wide_mask_filename(download=False):
-    return _act_nersc_path('dr6_nilc/ymaps_20230220/masks/wide_mask_GAL070_apod_1.50_deg_wExtended.fits', download)
+def _nilc_wide_mask_filename(download=False, dlfunc=None):
+    return _act_nersc_portal_path('dr6_nilc/ymaps_20230220/masks/wide_mask_GAL070_apod_1.50_deg_wExtended.fits', download, dlfunc=dlfunc)
 
 
 def _read_map(filename):
