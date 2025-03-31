@@ -403,13 +403,29 @@ class Catalog:
 
     def show(self):
         """Prints a summary of the Catalog to stdout, with one line per column showing min/mean/max."""
-        s1 = '' if (self.name is None) else f'name={self.name}, '
-        s2 = '' if (self.filename is None) else f', filename={self.filename}'
         
+        s1 = '' if (self.name is None) else f'name={self.name}, '
+        s2 = '' if (self.filename is None) else f', filename={self.filename}'        
         print(f'Catalog({s1}size={self.size}{s2})')
+
         for k in sorted(self.col_names):
             v = getattr(self, k)
-            print(f'    {k}: min={np.min(v)}, mean={np.mean(v)}, max={np.max(v)}')
+            s = [ ]
+
+            # Numpy operations min/mean/max fail for some dtypes (e.g. uint1).
+            try: s.append(f'min={np.min(v)}')
+            except: pass
+            
+            try: s.append(f'mean={np.mean(v)}')
+            except: pass
+            
+            try: s.append(f'max={np.max(v)}')
+            except: pass
+
+            # Should always succeed
+            s.append(f'dtype={v.dtype}')
+            
+            print(f"    {k}: {', '.join(s)}")
         
     
     def _announce_file_read(self):
