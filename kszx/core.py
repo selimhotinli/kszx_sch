@@ -285,7 +285,7 @@ def _check_weights(box, points, weights, prefix='', target_sum=None):
     if target_sum is not None:
         rweight_sum = np.sum(weights)
         assert rweight_sum > 0.0
-        weights *= (target_sum / rweight_sum)
+        weights = (target_sum / rweight_sum) * weights    # not *=, to avoid modifying weights in place
         
     return weights
 
