@@ -69,7 +69,7 @@ $$\delta(x) \equiv \left( \frac{W_{\rm tot}^{\rm rand}}{W_{\rm tot}^{\rm gal}} \
 
 where $W_{\rm tot}^{\rm gal} \equiv \sum_i W_i^{\rm gal}$, $W_{\rm tot}^{\rm rand} \equiv \sum_j W_j^{\rm rand}$, and $R(x)$ was defined above.
 
-This normalization of $f(x)$ is nonstandard, but if we apply $P_{ff'}^{\rm nrand}$, we end up with the correct
+This normalization of $\delta(x)$ is nonstandard, but if we apply $P_{\delta\delta}^{\rm nrand}$, we end up with the correct
 normalization for clustering power spectra for an overdensity field $\delta_g$.
 
 Sampled fields

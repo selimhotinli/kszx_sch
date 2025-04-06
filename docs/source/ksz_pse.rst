@@ -91,19 +91,18 @@ M_j &= \begin{cases}
 \end{align}$$
 These definitions are arranged so that $S_v(x)$ has the same power spectrum as $\hat v_r(x)$.
 
-In the code, the coefficients $(S_j^{\rm sig} + S_j^{\rm noise})$ are simulated when :meth:`~kszx.KszPSE.simulate_surrogate()`
-is called, and stored in ``self.Sv_coeffs``.
+When :meth:`~kszx.KszPSE.simulate_surrogate()` is called, the coefficients $S_j^{\rm sig}$ and $S_j^{\rm noise})$ are simulated 
+and stored in ``self.Sv_signal``, ``self.Sv_noise``.
 All data needed to simulate these coefficients is specified at construction:
   - The locations $x_j$ are taken from the ``rcat`` constructor arg.
   - The small-scale weights $W_j^S$ are taken from the ``ksz_rweights`` constructor arg. 
   - The number of galaxies $N_g$ is a Gaussian random variable, with mean/rms given by the ``surr_ngal_mean``, ``surr_ngal_rms`` constructor args.
-  - The reconstruction bias $b_g$ is given by the product of constructor args (``surr_bv * ksz_bv``).
+  - The per-object kSZ velocity reconstruction bias is given by the constructor arg ``ksz_bv``.
   - The CMB realization $\tilde T(\theta_j)$ used to "bootstrap" the reconstruction noise is given by the ``ksz_tcmb_realization`` constructor arg.
 
-The surrogate field $S_v(x)$ is computed from the coefficients $(S_j^{\rm sig} + S_j^{\rm noise})$ when
-:meth:`~kszx.KszPSE.eval_pk_surrogate()` is called.
+When :meth:`~kszx.KszPSE.eval_pk_surrogate()` is called, surrogate fields $S_v(x)$ are simualted.
 To compute $S_v(x)$, we call :meth:`kszx.CatalogGridder.grid_sampled_field()`, with:
-  - ``coeffs`` argument given by $(S_j^{\rm sig} + S_j^{\rm noise})$
+  - ``coeffs`` argument given by $S_j^{\rm sig}$ or $S_j^{\rm noise}$
   - ``wsum`` argument given by $(N_g/N_r) \sum_j W_j^S b_j^v$.
 To see this, we note that the previous chain of equations can be written:
 $$\hat S_v(x) = \sum_j c_j \delta^3(x-x_j) \hspace{1.5cm} c_j = (S_j^{\rm sig} + S_j^{\rm noise}) = \frac{N_g}{N_r} W_j^S b_j^v v_r(x_i) + (\mbox{noise})$$

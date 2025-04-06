@@ -10,7 +10,7 @@ from . import core
 
 
 class KszPSE:
-    def __init__(self, box, cosmo, randcat, kbin_edges, surr_ngal_mean, surr_ngal_rms, surr_bg, surr_bv=1.0, rweights=None, nksz=0, ksz_rweights=None, ksz_bv=None, ksz_tcmb_realization=None, ztrue_col='z', zobs_col='z', deltac=1.68, kernel='cubic', use_dc=False):
+    def __init__(self, box, cosmo, randcat, kbin_edges, surr_ngal_mean, surr_ngal_rms, surr_bg, rweights=None, nksz=0, ksz_rweights=None, ksz_bv=None, ksz_tcmb_realization=None, ztrue_col='z', zobs_col='z', deltac=1.68, kernel='cubic', use_dc=False):
         r"""KszPSE ("KSZ power spectrum estimator"): a high-level pipeline class for $P_{gg}$, $P_{gv}$, and $P_{vv}$.
 
         Features:
@@ -57,13 +57,13 @@ class KszPSE:
           - To evaluate power spectra on a **surrogate simulation**, call 
             :meth:`KszPSE.simulate_surrogate()` to make the simulation, then call
             :meth:`KszPSE.eval_pk_surrogate()` to estimate power spectra.
-
-            Note: Surrogates are factored into two functions (``simulate_surrogate()``
-            and ``eval_pk_surrogate()`` so that the caller can put filtering logic in
-            between, by operating directly on the ``self.Sg_coeffs`` and ``self.Sv_coeffs``
-            arrays (see :meth:`KszPSE.simulate_surrogate()` docstring). An example of 
-            filtering logic is subtracting the mean $\hat v_r$ in redshift bins, in 
-            order to mitigate foregrounds.
+        
+        Note: Surrogates are factored into two functions (``simulate_surrogate()``and
+        ``eval_pk_surrogate()`` so that the caller can put filtering logic in between, by
+        operating directly on the ``self.Sg_coeffs``, ``self.Sv_noise``, ``Sv_signal``,
+        and ``self.dSg_dfNL`` arrays (see :meth:`KszPSE.simulate_surrogate()` docstring).
+        An example of filtering logic is subtracting the mean $\hat v_r$ in redshift bins,
+        in order to mitigate foregrounds.
         
         An example notebook where KszPSE is used (but not until later in the notebook):
 
@@ -115,11 +115,6 @@ class KszPSE:
                2. a callable function $z \rightarrow f(z)$, if $b_g$ only depends on $z$.
                3. a scalar, if $b_g$ is the same for all galaxies.
 
-          - ``surr_bv`` (optional): KSZ velocity reconstruction bias in surrogate sims. This parameter
-            controls the actual level of velocity power in the surrogate sims, and is 1 by default.
-            For more discussion, see the similarly-named ``ksz_bv`` constructor arg below.
-            Can be either a scalar, or a 1-d numpy array of length ``self.nksz``.
-
           - ``rweights`` (optional): Galaxy weighting $W_i^L$ used for the large-scale galaxy field $\delta_g(x)$
             (see equations earlier in this docstring, or ":ref:`ksz_pse_details`" in the sphinx docs).
             Can be specified as either:
@@ -168,12 +163,6 @@ class KszPSE:
             b_j^v &\approx B_v(z_j) \, W_{\rm CMB}(\theta_j) \\
             B_v(\chi) &\equiv \frac{K(\chi)}{\chi^2} \int \frac{d^2L}{(2\pi)^2} \, b_L F_L \, P_{ge}^{\rm true}(k,\chi)_{k=L/\chi}
             \end{align}$$
-
-            Note the distinction between the ``surr_bv`` (see above) and ``ksz_bv`` constructor args. The ``ksz_bv`` 
-            arg is a per-object bias which relates $\tilde T(\theta_i)$ to the true velocity $v_r(x_i)$. This is used
-            to convert estimated power spectra to normalized estimates of $P_{gv}$ or $P_{vv}$, for all types of
-            catalogs (data/mocks/surrogates). The ``surr_bv`` arugment is only used when simulating surrogates,
-            is the same for all objects, and controls the actual level of velocity power in the surrogate fields.
 
           - ``ksz_tcmb_realization``: 2-d array of shape ``(nksz, randcat.size)``. This is the filtered CMB $\tilde T$, 
             evaluated at locations of the randoms. This is used when making surrogate sims, to generate bootstrap realizations
@@ -250,10 +239,6 @@ class KszPSE:
         self.ksz_rweights = self._parse_ksz_arg(ksz_rweights, fname, 'ksz_rweights', nrand, z=ztrue, allow_none=True)
         self.ksz_tcmb_realization = self._parse_tcmb_arg(ksz_tcmb_realization, fname, 'ksz_tcmb_realization', nrand)
         assert len(self.ksz_bv) ==  len(self.ksz_rweights) == len(self.ksz_tcmb_realization) == self.nksz
-
-        # 1-d array of length nksz.
-        self.surr_bv = self._parse_surr_bv(surr_bv)
-        assert self.surr_bv.shape == (self.nksz,)
         
         # 1-d arrays of length self.nrand
         self.D = cosmo.D(z=ztrue, z0norm=True)
@@ -387,7 +372,7 @@ class KszPSE:
         return pk
         
 
-    def simulate_surrogate(self, enable_fnl=False):
+    def simulate_surrogate(self):
         r"""Makes a random surrogate simulation, and stores the result in class members (return value is None).
         
         $$\begin{align}
@@ -404,16 +389,19 @@ class KszPSE:
 
           - ``self.Sg_coeffs`` (1-d array of length ``self.nrand``): Coefficients $S_g^j$ above.
 
-          - ``self.Sv_coeffs`` (shape-``(self.nksz, self.nrand)`` array): Coefficients $S_v^j$ above.
+          - ``self.Sv_noise`` (shape-``(self.nksz, self.nrand)`` array): Coefficients $S_v^j$ above,
+            contribution from reconstruction noise only.
+        
+          - ``self.Sv_signal`` (shape-``(self.nksz, self.nrand)`` array): Coefficients $S_v^j$ above,
+            contribution from velocity field only (i.e. no reconstruction noise).
 
-          - ``self.dSg_dfNL`` (1-d array of length ``self.nrand``): Derivative $dS_g^j/df_{NL}$,
-            only computed if ``enable_fnl=True``.
+          - ``self.dSg_dfNL`` (1-d array of length ``self.nrand``): Derivative $dS_g^j/df_{NL}$.
 
-        Note: Surrogates are factored into two functions (``simulate_surrogate()``
-        and ``eval_pk_surrogate()`` so that the caller can put filtering logic in
-        between, by operating directly on the ``self.Sg_coeffs`` and ``self.Sv_coeffs``
-        arrays. An example of filtering logic is subtracting the mean $\hat v_r$ in
-        redshift bins, in order to mitigate foregrounds.
+        Note: Surrogates are factored into two functions (``simulate_surrogate()``and
+        ``eval_pk_surrogate()`` so that the caller can put filtering logic in between, by
+        operating directly on the ``self.Sg_coeffs``, ``self.Sv_noise``, ``Sv_signal``,
+        and ``self.dSg_dfNL`` arrays. An example of filtering logic is subtracting the
+        mean $\hat v_r$ in redshift bins, in order to mitigate foregrounds.
         """
 
         ngal = self.surr_ngal_mean + (self.surr_ngal_rms * np.clip(np.random.normal(), -3.0, 3.0))
@@ -439,17 +427,16 @@ class KszPSE:
         eta_rms = np.sqrt((nrand/ngal) - (bD*bD) * self.sigma2)
         eta = np.random.normal(scale = eta_rms)
         self.Sg_coeffs += Sg_prefactor * eta
-        self.dSg_dfnl = None
 
-        if enable_fnl:
-            # Add term to deltag:
-            #     2 fNL deltac (bg-1) / alpha(k,z) * delta_m(k,z)
-            #   = 2 fNL deltac (bg-1) / alpha_z0(k) * delta0(k)    [ factor D(z) cancels ]
-            phi0 = core.multiply_kfunc(self.box, delta0, lambda k: 1.0/self.cosmo.alpha_z0(k=k), dc=0)
-            phi0 = core.interpolate_points(self.box, phi0, self.rcat_xyz_true, self.kernel, fft=True)
-            self.dSg_dfnl = Sg_prefactor * (2 * self.deltac) * (self.surr_bg-1) * phi0
+        # Add term to deltag:
+        #     2 fNL deltac (bg-1) / alpha(k,z) * delta_m(k,z)
+        #   = 2 fNL deltac (bg-1) / alpha_z0(k) * delta0(k)    [ factor D(z) cancels ]
+        phi0 = core.multiply_kfunc(self.box, delta0, lambda k: 1.0/self.cosmo.alpha_z0(k=k), dc=0)
+        phi0 = core.interpolate_points(self.box, phi0, self.rcat_xyz_true, self.kernel, fft=True)
+        self.dSg_dfnl = Sg_prefactor * (2 * self.deltac) * (self.surr_bg-1) * phi0
             
-        self.Sv_coeffs = np.zeros((self.nksz, self.nrand))
+        self.Sv_noise = np.zeros((self.nksz, self.nrand))
+        self.Sv_signal = np.zeros((self.nksz, self.nrand))
         
         if self.nksz == 0:
             return
@@ -468,81 +455,67 @@ class KszPSE:
         M = np.random.permutation(M)
 
         for i in range(self.nksz):
-            self.Sv_coeffs[i,:] = ((ngal/nrand) * self.surr_bv[i]) * self.ksz_bv[i] * vr
-            self.Sv_coeffs[i,:] += M * self.ksz_tcmb_realization[i]
+            self.Sv_noise[i,:] = M * self.ksz_tcmb_realization[i]
+            self.Sv_signal[i,:] = (ngal/nrand) * self.ksz_bv[i] * vr
 
             if self.ksz_rweights[i] is not None:
-                self.Sv_coeffs[i,:] *= self.ksz_rweights[i]
+                self.Sv_noise[i,:] *= self.ksz_rweights[i]
+                self.Sv_signal[i,:] *= self.ksz_rweights[i]
 
-    
-    def eval_pk_surrogate(self, fnl=0.0):
-        r"""Computes $P_{gg}$, $P_{gv}$, $P_{vv}$ from a surrogate sim (from the most recent call to :meth:`simulate_surrogate()`).
 
-        Note that :meth:`simulate_surrogate()` saves the surrogate sim by initializing class members
-        (``self.Sg_coeffs``, ``self.Sv_coeffs``, etc.). So it is not necessary to pass this data to
-        ``eval_pk_surrogates()`` as function arguments.
+    def eval_pk_surrogate(self):
+        r"""Returns an array of shape (2*nksz+2, 2*nksz+2, nkbins), obtained from the current surrogate sim.
 
-        If the ``fnl`` argument is a scalar, then the return value from ``eval_pk_surrogate()`` is an array ``pk`` with 
-        shape ``(nksz+1, nksz+1, nkbins)``. The first two indices are field indices, with ordering (galaxy field, vrec 
-        fields). Thus the ``pk`` array contains all auto and cross power spectra $P_{gg}$, $P_{gv_i}$, $P_{v_iv_j}$.
+        The first two indices of the array are "field indices" as follows:
+            0 = surrogate sim S_g, with fNL=0.
+            1 = surrogate dS_g/dfNL
+            (2*i+2) = surrogate sim S_v, reconstruction noise contribution only (where 0 <= i < nksz).
+            (2*i+3) = surrogate sim S_v, velocity signal contribution only (where 0 <= i < nksz).
 
-        If the ``fnl`` argument is a 1-d array of length ``nfnl``, then the return value from ``eval_pk_surrogate()`` 
-        is an array ``pk`` with shape ``(nfnl, nksz+1, nksz+1, nkbins)``, containing power spectra for each specified
-        value of $f_{NL}$. (A typical use case is ``fnl=[-100,0,100]``, to compute power spectra for a few $f_{NL}$
-        values, in order to explore $f_{NL}$ derivatives.)
+        Thus, the returned shape (2*nksz+2, 2*nksz+2, nkbins) array can be used to compute P_gg, P_gv, P_vv
+        for all combinations of CMB frequencies, and arbitrary (fNL, bv).
+
+        Reminder: logic for surrogate sims is split between :meth:`simulate_surrogate()` and this method.
+        When :meth:`simulate_surrogate()` is called, it initializes coefficient arrays (``self.Sg_coeffs`` etc.)
+        which are used here to simulate surrogate fields and estimate power spectra.
         """
 
         if not hasattr(self, 'Sg_coeffs'):
             raise RuntimeError("Before calling KszPSE.eval_pk_surrogate(), you must call KszPSE.simulate_surrogate()")
         
-        fnl = utils.asarray(fnl, 'KszPSE.eval_pk_surrogate()', 'fnl', dtype=float)
-        if (fnl.ndim > 1) or (fnl.size == 0):
-            raise RuntimeError(f"Expected 'fnl' to be 0-d or 1-d array, got shape {fnl.shape}")
-
-        fnl_is_nonzero = np.any(fnl != 0)
-        if fnl_is_nonzero and (self.dSg_dfnl is None):
-            raise RuntimeError("Before calling KszPSE.eval_pk_surrogate() with nonzero fnl,"
-                               + " you must call KszPSE.simulate_surrogate() with enable_fnl=True")
-        
         Nr = self.nrand
         Ng = self.surr_ngal
-        
         Sg_wsum = ((Ng/Nr) * np.sum(self.rweights)) if (self.rweights is not None) else Ng
-        fmaps = [ self.catalog_gridder.grid_sampled_field(self.randcat, self.Sg_coeffs, Sg_wsum, 0, zcol_name=self.zobs_col) ]
-            
+
+        # fmaps = list of Fourier-space maps
+        # fmaps[0] = surrogate sim S_g, with fNL=0.
+        # fmaps[1] = surrogate dS_g/dfNL
+        # fmaps[2*i+2] = surrogate sim S_v, reconstruction noise contribution only (where 0 <= i < nksz).
+        # fmaps[2*i+3] = surrogate sim S_v, velocity signal contribution only (where 0 <= i < nksz).
+        
+        fmaps = [ ]
+        fmaps += [ self.catalog_gridder.grid_sampled_field(self.randcat, self.Sg_coeffs, Sg_wsum, 0, zcol_name=self.zobs_col) ]
+        fmaps += [ self.catalog_gridder.grid_sampled_field(self.randcat, self.dSg_dfnl, Sg_wsum, 0, zcol_name=self.zobs_col) ]
+        
         for i in range(self.nksz):
             w, bv = self.ksz_rweights[i], self.ksz_bv[i]
             Sv_wsum = (Ng/Nr) * (np.dot(w,bv) if (w is not None) else np.sum(bv))
-            fmaps += [ self.catalog_gridder.grid_sampled_field(self.randcat, self.Sv_coeffs[i,:], Sv_wsum, i+1, spin=1, zcol_name=self.zobs_col) ]
-        
-        if fnl_is_nonzero:
-            fmaps += [ self.catalog_gridder.grid_sampled_field(self.randcat, self.dSg_dfnl, Sg_wsum, 0, zcol_name=self.zobs_col) ]
+            fmaps += [ self.catalog_gridder.grid_sampled_field(self.randcat, self.Sv_noise[i,:], Sv_wsum, i+1, spin=1, zcol_name=self.zobs_col) ]
+            fmaps += [ self.catalog_gridder.grid_sampled_field(self.randcat, self.Sv_signal[i,:], Sv_wsum, i+1, spin=1, zcol_name=self.zobs_col) ]
 
-        nfnl = fnl.size
-        fnl_1d = np.reshape(fnl, (nfnl,))
-        
-        # pk0.shape = (nksz+2, nksz+2, nkbins)    ordering (Sg,Sv,dSg_dfnl)
-        pk0 = np.zeros((self.nksz+2, self.nksz+2, self.nkbins))
-        pk0[:len(fmaps), :len(fmaps), :] = core.estimate_power_spectrum(self.box, fmaps, self.kbin_edges)
+        # Unnormalized power spectrum estimates (from CatalogGridder)
+        pk = core.estimate_power_spectrum(self.box, fmaps, self.kbin_edges)
+        assert pk.shape == (2*self.nksz+2, 2*self.nksz+2, nkbins)
 
-        pk_ret = np.zeros((nfnl, self.nksz+1, self.nksz+1, self.nkbins))
+        # Index mapping for power spectrum normalization.
+        imap = [ (i//2) for i in range(2*self.nksz+2) ]
 
-        for i,f in enumerate(fnl_1d):
-            # pk1.shape = (nksz+1, nksz+2, nkbins)
-            pk1 = pk0[:-1,:,:].copy()
-            pk1[0,:,:] += f * pk0[-1,:,:]
+        # Apply power spectrum normalization
+        for i in range(2*self.nksz+2):
+            for j in range(2*self.nksz+2):
+                pk[i,j,:] *= self.catalog_gridder.ps_normalization[imap[i],imap[j]]
 
-            # pk2.shape = (nksz+1, nksz+1, nkbins)
-            pk2 = pk1[:,:-1,:].copy()
-            pk2[:,0,:] += f * pk1[:,-1,:]
-            
-            pk_ret[i,:,:,:] = pk2
-            
-        # Apply normalization
-        pk_ret *= np.reshape(self.catalog_gridder.ps_normalization, (1, self.nksz+1, self.nksz+1, 1))
-
-        dst_shape = fnl.shape + (self.nksz+1, self.nksz+1, self.nkbins)
-        return np.reshape(pk_ret, dst_shape)
+        return pk
 
         
     ####################################################################################################
@@ -670,21 +643,6 @@ class KszPSE:
             return x
         
         raise RuntimeError(f"{funcname}: expected argument '{argname}' to have shape (nksz,ngal)={(self.nksz,ngal)}, got shape {x.shape}")
-
-        
-    def _parse_surr_bv(self, surr_bv):
-        if surr_bv is None:
-            surr_bv = 1.0
-
-        surr_bv = utils.asarray(surr_bv, 'KszPSE', 'surr_bv', dtype=float)
-
-        if surr_bv.shape == (self.nksz,):
-            return surr_bv
-        if surr_bv.ndim == 0:
-            return np.full(self.nksz, float(surr_bv))
-
-        raise RuntimeError("KszPSE: expected 'surr_bv' constructor arg to be either a scalar,"
-                           + f" or a 1-d array of length nksz={self.nksz}, got shape {surr_bv.shape}")
 
     
     @staticmethod
