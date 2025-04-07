@@ -505,7 +505,7 @@ class KszPSE:
 
         # Unnormalized power spectrum estimates (from CatalogGridder)
         pk = core.estimate_power_spectrum(self.box, fmaps, self.kbin_edges)
-        assert pk.shape == (2*self.nksz+2, 2*self.nksz+2, nkbins)
+        assert pk.shape == (2*self.nksz+2, 2*self.nksz+2, self.nkbins)
 
         # Index mapping for power spectrum normalization.
         imap = [ (i//2) for i in range(2*self.nksz+2) ]
@@ -517,6 +517,52 @@ class KszPSE:
 
         return pk
 
+
+    @classmethod
+    def reduce_pk(cls, pk, fnl, bv):
+        """Reduces the (2*nksz+2, 2*nksz+2, nkbins)  array returned by eval_pk_surrogate() by fixing fNL and bv.
+
+        The input array 'pk' can either be
+          - an array of shape (2*nksz+2, 2*nksz+2, nkbins) returned by eval_pk_surrogate(), representing one sim
+          - an array of shape (nsurr, 2*nksz+2, 2*nksz+2, nkbins) representing many sims
+
+        The output array has shape
+          - (nksz+1, nksz+1, nkbins) in the first case above
+          - (nsurr, nksz+1, nksz+1, nkbins) in the second case
+        """
+
+        pk = np.asarray(pk)
+        
+        if not cls._valid_shape_for_reduce_pk(pk):
+            raise RuntimeError(f"KszPSE.reduce_pk(): 'pk' argument has invalid shape {pk.shape}")
+
+        nksz = (pk.shape[1]//2) - 1
+        coeffs = np.array([fnl] + [bv]*nksz)
+
+        # Reduce axis 0
+        if pk.ndim == 3:
+            pk = pk[::2] + pk[1::2] * coeffs.reshape((nksz+1,) + (1,)*(pk.ndim-1))
+
+        # Reduce axis 1
+        pk = pk[:,::2] + pk[:,1::2] * coeffs.reshape((1,nksz+1) + (1,)*(pk.ndim-2))
+
+        # Reduce axis 2
+        if pk.ndim == 4:
+            pk = pk[:,:,::2] + pk[:,:,1::2] * coeffs.reshape((1,1,nksz+1) + (1,)*(pk.ndim-3))
+
+        return pk
+    
+        
+    @classmethod
+    def _valid_shape_for_reduce_pk(cls, pk):
+        if (pk.ndim < 3) or (pk.ndim > 4):
+            return False
+        if pk.shape[pk.ndim-3] != pk.shape[pk.ndim-2]:
+            return False
+        if (pk.shape[1] % 2) or (pk.shape[1] < 4):
+            return False
+        return True
+        
         
     ####################################################################################################
 
