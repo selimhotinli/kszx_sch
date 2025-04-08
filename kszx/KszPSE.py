@@ -10,7 +10,7 @@ from . import core
 
 
 class KszPSE:
-    def __init__(self, box, cosmo, randcat, kbin_edges, surr_ngal_mean, surr_ngal_rms, surr_bg, rweights=None, nksz=0, ksz_rweights=None, ksz_bv=None, ksz_tcmb_realization=None, ztrue_col='z', zobs_col='z', deltac=1.68, kernel='cubic', use_dc=False):
+    def __init__(self, box, cosmo, randcat, kbin_edges, surr_ngal_mean, surr_ngal_rms, surr_bg, rweights=None, nksz=0, ksz_rweights=None, ksz_bv=None, ksz_tcmb_realization=None, ztrue_col='z', zobs_col='z', deltac=1.68, kernel='cubic', surr_ic=True, use_dc=False):
         r"""KszPSE ("KSZ power spectrum estimator"): a high-level pipeline class for $P_{gg}$, $P_{gv}$, and $P_{vv}$.
 
         Features:
@@ -187,6 +187,9 @@ class KszPSE:
             when simulating the surrogate field. Currently ``cic`` and ``cubic`` are implemented
             (will define more options later).
 
+          - ``surr_ic`` (boolean): If True (the default), then the surrogates will satisfy a global
+            "integral constraint" (gal-rand) = 0.
+
           - ``use_dc`` (boolean): if False (the default), then the k=0 mode will not be used,
             even if the lowest bin includes k=0.
         """
@@ -218,6 +221,7 @@ class KszPSE:
         self.zobs_col = zobs_col
         self.deltac = deltac
         self.kernel = kernel
+        self.surr_ic = surr_ic
         self.use_dc = use_dc
 
         ztrue = self._get_zcol(randcat, 'ztrue_col', ztrue_col)
@@ -434,7 +438,11 @@ class KszPSE:
         phi0 = core.multiply_kfunc(self.box, delta0, lambda k: 1.0/self.cosmo.alpha_z0(k=k), dc=0)
         phi0 = core.interpolate_points(self.box, phi0, self.rcat_xyz_true, self.kernel, fft=True)
         self.dSg_dfnl = Sg_prefactor * (2 * self.deltac) * (self.surr_bg-1) * phi0
-            
+
+        if self.surr_ic:
+            self.Sg_coeffs -= np.mean(self.Sg_coeffs)
+            self.dSg_dfnl -= np.mean(self.dSg_dfnl)
+        
         self.Sv_noise = np.zeros((self.nksz, self.nrand))
         self.Sv_signal = np.zeros((self.nksz, self.nrand))
         

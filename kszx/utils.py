@@ -71,11 +71,18 @@ def Pool(processes=None, reseed_numpy_rng=True):
 
     Usage is the same as ``multiprocessing.Pool()``::
 
-      def func(i):
+      def square(i):
           return i*i
 
+      # NOTE: I recommend calling apply_async() in a loop, not calling map_async()!
+      # This is because map_async() "swallows" exceptions until the very end, whereas
+      # apply_async() aborts computation as soon as an exception is encountered.
+      
       with kszx.utils.Pool() as pool:
-          squares = pool.map(func, range(100))   # returns [0,1,4,9,...,9801]
+          f = [ pool.apply_async(square, (i,)) for i in range(100) ]
+          f = [ x.get() for x in f ]
+    
+      print('Here is a list of the first 100 squares:', f)
 
     Function arguments:
 
