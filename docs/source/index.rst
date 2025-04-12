@@ -46,6 +46,7 @@ kszx documentation
    :caption: Datasets:
 
    act
+   desi
    desils_lrg
    planck
    sdss

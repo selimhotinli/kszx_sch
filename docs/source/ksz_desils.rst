@@ -7,3 +7,9 @@
 
 .. autoclass:: kszx.ksz_desils.PhotozDistribution
     :members:
+
+.. autoclass:: kszx.ksz_desils.RegulatedDeconvolver
+    :members:
+
+.. autoclass:: kszx.ksz_desils.Kpipe
+    :members:

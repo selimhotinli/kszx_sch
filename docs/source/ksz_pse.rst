@@ -20,6 +20,7 @@ W_L(x) &= \mbox{Large-scale galaxy weight function (e.g. FKP)}  \\
 \rho_g(x) &= \bigg( \sum_{i\in \rm gal} W_i^L \, \delta^3(x-x_i) \bigg) - \frac{N_g}{N_r} \bigg( \sum_{j\in \rm rand} W_j^L \, \delta^3(x-x_j) \bigg)
 \end{align}$$
 In the code, a galaxy field $\rho_g(x)$ is created when  :meth:`~kszx.KszPSE.eval_pk()` is called.
+
  - The galaxy locations $x_i$ are taken from the ``gcat`` argument.
  - The large-scale weights $W_i^L$ are taken from the ``gweights`` argument.
  - The corresponding quantities $(x_j, W_j^L)$ for the randoms were specified at construction (``rcat`` and ``rweights`` constructor args).
@@ -34,14 +35,17 @@ W_S(x) &= \mbox{Small-scale galaxy weight function (e.g. FKP)}  \\
 \hat v_r(x) &= \sum_{i\in \rm gal} W_i^S \, \tilde T(\theta_i) \, \delta^3(x-x_i)
 \end{align}$$
 In the code, a velocity reconstruction field $\hat v_r(x)$ is created when  :meth:`~kszx.KszPSE.eval_pk()` is called.
+
  - The galaxy locations $x_i$ are taken from the ``gcat`` argument.
  - The small-scale weights $W_i^S$ are taken from the ``ksz_gweights`` argument.
  - The filtered CMB temperature $\tilde T(\theta_i)$ is taken from the ``ksz_tcmb`` argument.
  - The ``ksz_bv`` argument gives the biasing relation $\tilde T(\theta_i) = b_v^i v_r(x_i) + (\mbox{noise})$.
    
 To compute $\hat v_r(x)$, we call :meth:`kszx.CatalogGridder.grid_sampled_field()`, with:
+
  - ``coeffs`` argument given by $c_i = W_i^S \tilde T(\theta_i)$
  - ``wsum`` argument given by $\sum W_i^S b_i^v$.
+
 To see this, we note that the previous chain of equations can be written:
 $$\hat v_r(x) = \sum_i c_i \delta^3(x-x_i) \hspace{1.5cm} c_i = W_i^S \tilde T(\theta_i) = W_i^S b_i^v v_r(x_i) + (\mbox{noise})$$
 and compare with the :meth:`kszx.CatalogGridder.grid_sampled_field()` docstring.
@@ -62,6 +66,7 @@ These definitions are arranged so that $S_g(x)$ has the same power spectrum as $
 In the code, the coefficients $(S_j^{\rm sig} + S_j^{\rm noise})$ are simulated when :meth:`~kszx.KszPSE.simulate_surrogate()`
 is called, and stored in ``self.Sg_coeffs`` and ``self.dSg_dfNL``.
 All data needed to simulate these coefficients is specified at construction:
+
   - The locations $x_j$ are taken from the ``rcat`` constructor arg.
   - The large-scale weights $W_j^L$ are taken from the ``rweights`` constructor arg. 
   - The number of galaxies $N_g$ is a Gaussian random variable, with mean/rms given by the ``surr_ngal_mean``, ``surr_ngal_rms`` constructor args.
@@ -70,8 +75,10 @@ All data needed to simulate these coefficients is specified at construction:
 The surrogate field $S_g(x)$ is computed from the coefficients $(S_j^{\rm sig} + S_j^{\rm noise})$ when
 :meth:`~kszx.KszPSE.eval_pk_surrogate()` is called.
 To compute $S_g(x)$, we call :meth:`kszx.CatalogGridder.grid_sampled_field()`, with:
+
   - ``coeffs`` argument given by $(S_j^{\rm sig} + S_j^{\rm noise})$
   - ``wsum`` argument given by $(N_g/N_r)  \sum_j W_j^L$.
+
 To see this, we note that the previous chain of equations can be written:
 $$\hat S_g(x) = \sum_j c_j \delta^3(x-x_j) \hspace{1.5cm} c_j = (S_j^{\rm sig} + S_j^{\rm noise}) = \frac{N_g}{N_r} W_j^L \delta_G(x_j) + (\mbox{noise})$$
 and compare with the :meth:`kszx.CatalogGridder.grid_sampled_field()` docstring.
@@ -94,6 +101,7 @@ These definitions are arranged so that $S_v(x)$ has the same power spectrum as $
 When :meth:`~kszx.KszPSE.simulate_surrogate()` is called, the coefficients $S_j^{\rm sig}$ and $S_j^{\rm noise})$ are simulated 
 and stored in ``self.Sv_signal``, ``self.Sv_noise``.
 All data needed to simulate these coefficients is specified at construction:
+
   - The locations $x_j$ are taken from the ``rcat`` constructor arg.
   - The small-scale weights $W_j^S$ are taken from the ``ksz_rweights`` constructor arg. 
   - The number of galaxies $N_g$ is a Gaussian random variable, with mean/rms given by the ``surr_ngal_mean``, ``surr_ngal_rms`` constructor args.
@@ -102,8 +110,10 @@ All data needed to simulate these coefficients is specified at construction:
 
 When :meth:`~kszx.KszPSE.eval_pk_surrogate()` is called, surrogate fields $S_v(x)$ are simualted.
 To compute $S_v(x)$, we call :meth:`kszx.CatalogGridder.grid_sampled_field()`, with:
+
   - ``coeffs`` argument given by $S_j^{\rm sig}$ or $S_j^{\rm noise}$
   - ``wsum`` argument given by $(N_g/N_r) \sum_j W_j^S b_j^v$.
+
 To see this, we note that the previous chain of equations can be written:
 $$\hat S_v(x) = \sum_j c_j \delta^3(x-x_j) \hspace{1.5cm} c_j = (S_j^{\rm sig} + S_j^{\rm noise}) = \frac{N_g}{N_r} W_j^S b_j^v v_r(x_i) + (\mbox{noise})$$
 and compare with the :meth:`kszx.CatalogGridder.grid_sampled_field()` docstring.

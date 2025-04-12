@@ -57,7 +57,7 @@ exclude_patterns = []
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#options-for-html-output
 
 html_theme = 'alabaster'
-html_static_path = ['_static']
+# html_static_path = ['_static']
 
 # https://stackoverflow.com/questions/77100412
 html_theme_options = {
