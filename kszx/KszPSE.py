@@ -250,15 +250,15 @@ class KszPSE:
         self.sigma2 = self._integrate_kgrid(self.box, cosmo.Plin_z0(self.box.get_k()))
 
         # Check that we have enough randoms to make surrogate fields.
-        bD_max = np.max(self.surr_bg * self.D)
-        ngal_max = surr_ngal_mean + 3*surr_ngal_rms
-        self.nrand_min = int(ngal_max * bD_max + 10)
+        self.bD_max = np.max(self.surr_bg * self.D)
+        self.ngal_min = surr_ngal_mean - 3*surr_ngal_rms  # clamped to 3 sigma
+        self.ngal_max = surr_ngal_mean + 3*surr_ngal_rms  # clamped to 3 sigma
+        self.nrand_min = int(self.bD_max**2 * self.sigma2 * (self.ngal_max + 10))
+        assert self.ngal_min >= 10
         
         if self.nrand < self.nrand_min:
             raise RuntimeError(f'KszPSE: not enough randoms to make surrogate fields! This can be fixed by using'
-                               + f' a larger random catalog (nrand={self.nrand}, nrand_min={self.nrand_min}),'
-                               + f' decreasing {surr_ngal_mean=}, decreasing {surr_ngal_rms=}, or decreasing'
-                               + f' galaxy bias (current max bD = {bD_max})')
+                               + f' a larger random catalog (nrand={self.nrand}, nrand_min={self.nrand_min}).')
 
         # pse_rweights = Length (nksz+1) list of (1-d array or None)
         pse_rweights = [ self.rweights ]   # can be None
@@ -408,7 +408,8 @@ class KszPSE:
         mean $\hat v_r$ in redshift bins, in order to mitigate foregrounds.
         """
 
-        ngal = self.surr_ngal_mean + (self.surr_ngal_rms * np.clip(np.random.normal(), -3.0, 3.0))
+        ngal = self.surr_ngal_mean + (self.surr_ngal_rms * np.random.normal())
+        ngal = np.clip(ngal, self.ngal_min, self.ngal_max)
         ngal = int(ngal+0.5)  # round
         self.surr_ngal = ngal
         
