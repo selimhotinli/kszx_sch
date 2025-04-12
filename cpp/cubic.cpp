@@ -125,9 +125,9 @@ inline void cubic_grid_3d(cubic_axis &ax0, cubic_axis &ax1, cubic_axis &ax2, dou
 }
 
 
-void cubic_grid_3d(py::array_t<double> &grid, py::array_t<const double> &points, py::array_t<const double> &weights, double lpos0, double lpos1, double lpos2, double pixsize, bool periodic)
+void cubic_grid_3d(py::array_t<double> &grid, py::array_t<const double> &points, py::array_t<const double> &weights, double wscal, double lpos0, double lpos1, double lpos2, double pixsize, bool periodic)
 {
-    interpolation_args<double> args(grid, points, weights, lpos0, lpos1, lpos2, pixsize);
+    interpolation_args<double> args(grid, points, weights, wscal, lpos0, lpos1, lpos2, pixsize);
     
     if ((args.gn0 < 4) || (args.gn1 < 4) || (args.gn2 < 4))
 	throw runtime_error("kszx.grid_points('cubic'): all grid dimensions must be >= 4");

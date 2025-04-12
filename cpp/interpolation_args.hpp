@@ -25,11 +25,12 @@ struct interpolation_args
     long ps0, ps1;        // strides in 2-d points array
 
     // Used to translate 'points' to grid_coords in get_xyz().
-    double lpos0, lpos1, lpos2, rec_ps, rec_pvol;
+    double lpos0, lpos1, lpos2, rec_ps;
 
-    // Optional: weights array
+    // Optional: weights array (only for gridding, not interpolation)
     const double *wdata = nullptr;
-    long ws = 0;   // stride in 1-d weights array
+    long ws = 0;      // stride in 1-d weights array
+    double w0 = 0.0;  // overall constant (= wscal / pixel_volume)
     
 
     // This constructor does not have a 'weights' array, and is used in interpolation kernels.
@@ -72,20 +73,24 @@ struct interpolation_args
 	lpos1 = lpos1_;
 	lpos2 = lpos2_;
 	rec_ps = 1.0 / pixsize;
-	rec_pvol = rec_ps * rec_ps * rec_ps;
     }
 
     // This constructor does have a 'weights' array, and is used in gridding kernels.
-    interpolation_args(py::array_t<T> &grid, py::array_t<const double> &points, py::array_t<const double> &weights, double lpos0_, double lpos1_, double lpos2_, double pixsize)
+    interpolation_args(py::array_t<T> &grid, py::array_t<const double> &points, py::array_t<const double> &weights, double wscal, double lpos0_, double lpos1_, double lpos2_, double pixsize)
 	: interpolation_args(grid, points, lpos0_, lpos1_, lpos2_, pixsize)
     {
-	if (weights.ndim() != 1)
-	    throw std::runtime_error("expected 'weights' to be a 1-d array");
-	if (weights.shape(0) != npoints)
-	    throw std::runtime_error("expected 'weights' to be a length-N array, where N=points.shape[0]");
-
-	wdata = weights.data();
-	ws = get_stride(weights, 0);
+	if (weights.ndim() == 0) {
+	    wdata = weights.data();
+	    ws = 0;
+	}
+	else if ((weights.ndim() == 1) && (weights.shape(0) == npoints)) {
+	    wdata = weights.data();
+	    ws = get_stride(weights, 0);
+	}
+	else
+	    throw std::runtime_error("expected 'weights' array to be to be either 0-d, or shape (npoints,)");
+	
+	w0 = wscal * rec_ps * rec_ps * rec_ps;	
     }
 
     
@@ -101,7 +106,7 @@ struct interpolation_args
     inline void get_xyzw(long i, double &x, double &y, double &z, double &w)
     {
 	get_xyz(i, x, y, z);
-	w = wdata[i*ws] * rec_pvol;  // note factor rec_pvol = 1 / (pixel volume)
+	w = w0 * wdata[i*ws];  // note factor w0 = wscal / (pixel volume)
     }
 };
 

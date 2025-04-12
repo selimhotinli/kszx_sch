@@ -17,13 +17,13 @@ PYBIND11_MODULE(cpp_kernels, m)
 
     m.def("cic_grid_3d", cic_grid_3d,
 	  py::arg("grid"), py::arg("points"), py::arg("weights"),
-	  py::arg("lpos0"), py::arg("lpos1"), py::arg("lpos2"),
-	  py::arg("pixsize"), py::arg("periodic"));
+	  py::arg("wscal"), py::arg("lpos0"), py::arg("lpos1"),
+	  py::arg("lpos2"), py::arg("pixsize"), py::arg("periodic"));
 
     m.def("cubic_grid_3d", cubic_grid_3d,
 	  py::arg("grid"), py::arg("points"), py::arg("weights"),
-	  py::arg("lpos0"), py::arg("lpos1"), py::arg("lpos2"),
-	  py::arg("pixsize"), py::arg("periodic"));
+	  py::arg("wscal"), py::arg("lpos0"), py::arg("lpos1"),
+	  py::arg("lpos2"), py::arg("pixsize"), py::arg("periodic"));
 
     m.def("estimate_power_spectrum", estimate_power_spectrum,
 	  py::arg("map_list"), py::arg("k_delim"),

@@ -27,10 +27,10 @@ extern py::array_t<double> cubic_interpolate_3d(py::array_t<const double> &grid,
 
 
 extern void cic_grid_3d(py::array_t<double> &grid, py::array_t<const double> &points, py::array_t<const double> &weights,
-			double lpos0, double lpos1, double lpos2, double pixsize, bool periodic);
+			double wscal, double lpos0, double lpos1, double lpos2, double pixsize, bool periodic);
 
 extern void cubic_grid_3d(py::array_t<double> &grid, py::array_t<const double> &points, py::array_t<const double> &weights,
-			  double lpos0, double lpos1, double lpos2, double pixsize, bool periodic);
+			  double wscal, double lpos0, double lpos1, double lpos2, double pixsize, bool periodic);
 
 
 extern py::tuple estimate_power_spectrum(py::list map_list, py::array_t<const double> &k_delim,

@@ -267,7 +267,7 @@ def interpolate_points(box, arr, points, kernel, fft=False, spin=0, periodic=Fal
         raise RuntimeError(f'kszx.interpolate_points(): {kernel=} is not supported')
 
 
-def _check_weights(box, points, weights, prefix='', target_sum=None):
+def _check_weights(box, points, weights, prefix=''):
     """Helper for grid_points(), used to parse (points,weights) and (rpoints,rweights) args."""
 
     if (points.ndim != 2) or (points.shape[1] != box.ndim):
@@ -276,21 +276,14 @@ def _check_weights(box, points, weights, prefix='', target_sum=None):
     npoints = points.shape[0]
     
     if weights is None:
-        weights = np.ones(npoints)
-    elif weights.ndim == 0:
-        weights = np.full(npoints, fill_value=float(weights))
-    elif weights.shape != (npoints,):
-        raise RuntimeError(f"kszx.grid_points(): {prefix}points and {prefix}weights arrays don't have consistent shapes")
-
-    if target_sum is not None:
-        rweight_sum = np.sum(weights)
-        assert rweight_sum > 0.0
-        weights = (target_sum / rweight_sum) * weights    # not *=, to avoid modifying weights in place
+        weights = np.array(1.0)
+    elif (weights.ndim != 0) and (weights.shape != (npoints,)):
+        raise RuntimeError(f"kszx.grid_points(): {prefix}weights array has shape {weights.shape}; expected either 0-d or shape ({npoints},)")
         
     return weights
 
 
-def grid_points(box, points, weights=None, rpoints=None, rweights=None, kernel=None, fft=False, spin=0, periodic=False):
+def grid_points(box, points, weights=None, rpoints=None, rweights=None, kernel=None, fft=False, spin=0, periodic=False, wscal=1.0):
     r"""Returns a map representing a sum of delta functions (or a "galaxies - randoms" difference map).
 
     Function args:
@@ -329,6 +322,8 @@ def grid_points(box, points, weights=None, rpoints=None, rweights=None, kernel=N
 
         - ``periodic`` (boolean): if True, then the box has periodic boundary conditions.
 
+        - ``wscal`` (float, default 1.0): overall scaling applied to weights.
+    
     Return value: 
 
       - A numpy array representing a real-space (``fft=False``) or Fourier-space (``fft=True``) map.
@@ -373,6 +368,7 @@ def grid_points(box, points, weights=None, rpoints=None, rweights=None, kernel=N
     if box.ndim != 3:
         raise RuntimeError('kszx.grid_points(): currently only ndim==3 is supported')
 
+    wscal = float(wscal)
     points = utils.asarray(points, 'kszx.grid_points()', 'points', dtype=float)
     weights = utils.asarray(weights, 'kszx.grid_points()', 'weights', dtype=float, allow_none=True)
     rpoints = utils.asarray(rpoints, 'kszx.grid_points()', 'rpoints', dtype=float, allow_none=True)
@@ -388,12 +384,16 @@ def grid_points(box, points, weights=None, rpoints=None, rweights=None, kernel=N
         
     grid = np.zeros(box.real_space_shape, dtype=float)
     weights = _check_weights(box, points, weights)  # also checks 'points' arg
-    cpp_kernel(grid, points, weights, box.lpos[0], box.lpos[1], box.lpos[2], box.pixsize, periodic)
+    cpp_kernel(grid, points, weights, wscal, box.lpos[0], box.lpos[1], box.lpos[2], box.pixsize, periodic)
 
     if rpoints is not None:
-        wsum = np.sum(weights)
-        rweights = _check_weights(box, rpoints, rweights, prefix='r', target_sum = -wsum)
-        cpp_kernel(grid, rpoints, rweights, box.lpos[0], box.lpos[1], box.lpos[2], box.pixsize, periodic)
+        rweights = _check_weights(box, rpoints, rweights, prefix='r')  # also checks 'rpoints' arg
+        weight_sum = len(points) * np.mean(weights) * wscal            # works if 'weights' is 0-d or 1-d
+        rweight_sum = len(rpoints) * np.mean(rweights)                 # works if 'rweights' is 0-d or 1-d
+        
+        assert rweight_sum > 0
+        rwscal = -weight_sum / rweight_sum
+        cpp_kernel(grid, rpoints, rweights, rwscal, box.lpos[0], box.lpos[1], box.lpos[2], box.pixsize, periodic)
 
     return fft_r2c(box,grid,spin=spin) if fft else grid
 

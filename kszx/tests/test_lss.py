@@ -164,15 +164,23 @@ def test_interpolation_gridding_consistency():
         points = np.random.uniform(box.lpos+pad, box.rpos-pad, size=(npoints,ndim))
 
         g = np.random.normal(size=box.npix)  # random grid
-        w = np.random.normal(size=npoints)   # random weights
-        
-        Ag = core.interpolate_points(box, g, points, kernel=kernel, periodic=periodic)
-        Aw = core.grid_points(box, points, weights=w, kernel=kernel, periodic=periodic)
+        wscal = np.random.uniform(1.0, 2.0)  # random wscal
 
-        dot1 = np.dot(w,Ag)
+        # w = random weights, either 0-d or 1-d (passed to core.grid_points() below)
+        # w1 = 1-d representation of 'w' (passed to np.dot() below)
+        if np.random.uniform() < 0.5:
+            w = w1 = np.random.normal(size=npoints)
+        else:
+            w = np.random.uniform(1.0, 2.0)
+            w1 = np.full(npoints, w)
+        
+        Ag = wscal * core.interpolate_points(box, g, points, kernel=kernel, periodic=periodic)
+        Aw = core.grid_points(box, points, weights=w, kernel=kernel, periodic=periodic, wscal=wscal)
+
+        dot1 = np.dot(w1,Ag)
         dot2 = helpers.map_dot_product(box,Aw,g)
         
-        den = np.dot(w,w) * np.dot(Ag,Ag)
+        den = np.dot(w1,w1) * np.dot(Ag,Ag)
         den += helpers.map_dot_product(box,g,g) * helpers.map_dot_product(box,Aw,Aw)
 
         epsilon = np.abs(dot1-dot2) / den**(0.5)

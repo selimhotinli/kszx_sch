@@ -111,9 +111,9 @@ inline void cic_grid_3d(cic_axis &ax0, cic_axis &ax1, cic_axis &ax2, double *arr
 }
 
 
-void cic_grid_3d(py::array_t<double> &grid, py::array_t<const double> &points, py::array_t<const double> &weights, double lpos0, double lpos1, double lpos2, double pixsize, bool periodic)
+void cic_grid_3d(py::array_t<double> &grid, py::array_t<const double> &points, py::array_t<const double> &weights, double wscal, double lpos0, double lpos1, double lpos2, double pixsize, bool periodic)
 {
-    interpolation_args<double> args(grid, points, weights, lpos0, lpos1, lpos2, pixsize);
+    interpolation_args<double> args(grid, points, weights, wscal, lpos0, lpos1, lpos2, pixsize);
 
     if ((args.gn0 < 2) || (args.gn1 < 2) || (args.gn2 < 2))
 	throw runtime_error("kszx.grid_points('cic'): all grid dimensions must be >= 2");
