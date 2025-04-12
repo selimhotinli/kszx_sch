@@ -7,10 +7,11 @@ if __name__ == '__main__':
     subparsers = parser.add_subparsers(dest='command')
 
     p = subparsers.add_parser('download_act')
-    p.add_argument('dr', type=int, help='Currently, only dr=5 is allowed')
+    p.add_argument('dr', type=int, help='Either 5 or 6 (for DR5 or DR6)')
 
     p = subparsers.add_parser('download_desi')
     p.add_argument('survey', help='Survey name such as LRG_NGC')
+    p.add_argument('-n', help='number of random files to download (default is to download all 18)')
 
     p = subparsers.add_parser('download_planck')
 
@@ -38,7 +39,8 @@ if __name__ == '__main__':
         act.download(dr=args.dr)
     elif args.command == 'download_desi':
         from . import desi
-        desi.download(args.survey, dr=1)
+        nrfiles = int(args.n) if (args.n is not None) else None
+        desi.download(args.survey, dr=1, nrfiles=nrfiles)
     elif args.command == 'download_planck':
         from . import planck
         planck.download()

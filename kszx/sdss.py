@@ -204,7 +204,7 @@ def read_mock_randoms(survey, mock_type, dr=12, download=False):
     
 
 def download(survey, dr=12, mask=False, qpm=False, pthalos=False):
-    r"""Downloads SDSS data products (galaxies, randoms, and optionally mangle mask) for a given survey.
+    r"""Downloads SDSS data products (galaxies, randoms, and optionally mocks + mangle mask) for a given survey.
 
     Can be called from command line: ``python -m kszx download_sdss``.
 
@@ -288,14 +288,21 @@ def read_fits_catalog(filename, is_randcat, name=None, extra_columns=[]):
 ####################################################################################################
 
 
-def _check_survey(survey, dr, abridged=False):
-    """Check that 'survey' is valid, and return its standard capitalization."""
-
+def _dr_str(dr):
     dhash = { 11: 'DR11v1', 12: 'DR12v5' }
     
     if dr not in dhash:
         raise RuntimeError(f"SDSS {dr=} not supported (currently support DR11, DR12)")
-        
+
+    return dhash[dr]
+
+
+def _check_survey(survey, dr, abridged=False):
+    """Checks 'survey' for validity, and returns its standard capitalization."""
+
+    if dr not in [11,12]:
+        raise RuntimeError(f"SDSS {dr=} not supported (currently support DR11, DR12)")
+    
     survey_list = [ 'CMASS_North', 'CMASS_South', 'LOWZ_North', 'LOWZ_South' ]
 
     if (dr==12) and (not abridged):
@@ -304,7 +311,7 @@ def _check_survey(survey, dr, abridged=False):
                     
     for s in survey_list:
         if survey.upper() == s.upper():
-            return s, dhash[dr]
+            return s
 
     raise RuntimeError(f"SDSS survey '{survey}' not recognized (must be one of: {survey_list})")
         
@@ -345,8 +352,7 @@ def _sdss_path(relpath, dr, download, *, packed_relpath=None, gz=False, dlfunc=N
         raise RuntimeError("kszx.sdss internal error: can't specify both 'packed_relpath' and 'gz'")
     
     sdss_base_dir = os.path.join(io_utils.get_data_dir(), 'sdss')
-    abspath = os.path.join(sdss_base_dir, 'DR12v5', relpath)
-    assert dr==12   # oops, just noticed that previous line is only valid for DR12!
+    abspath = os.path.join(sdss_base_dir, _dr_str(dr), relpath)
 
     if not io_utils.do_download(abspath, download, dlfunc):
         return abspath
@@ -367,17 +373,20 @@ def _sdss_path(relpath, dr, download, *, packed_relpath=None, gz=False, dlfunc=N
 
 
 def _galaxy_filename(survey, dr, download=False, dlfunc=None):
-    s, d = _check_survey(survey, dr)
+    d = _dr_str(dr)
+    s = _check_survey(survey, dr)
     return _sdss_path(f'galaxy_{d}_{s}.fits', dr, download, gz=True, dlfunc=dlfunc)
 
 
 def _random_filenames(survey, dr, download=False, dlfunc=None):
-    s, d = _check_survey(survey, dr)
+    d = _dr_str(dr)
+    s = _check_survey(survey, dr)
     return [ _sdss_path(f'random{n}_{d}_{s}.fits', dr, download, gz=True, dlfunc=dlfunc) for n in [0,1] ]
 
 
 def _mask_filename(survey, download=False, dlfunc=None):
-    s, d = _check_survey(survey, dr)
+    d = _dr_str(dr)
+    s = _check_survey(survey, dr)
     return _sdss_path(f'mask_{d}_{s}.ply', dr, download, dlfunc=dlfunc)
 
 

@@ -33,7 +33,18 @@ def read_galaxies(survey, dr, download=False):
 
       - ``dr`` (int): currently only dr=1 is supported
 
-    FIXME: finish docstring (use sdss.read_galaxies docstring as a model)
+    Returns a :class:`kszx.Catalog` object, with the following columns::
+     
+      ra_deg, dec_deg, z,    # sky location, redshift
+      weight
+      wfkp                   # FKP weight
+      wcp, wzf, wsys,        # systematic weights
+
+    Example usage::
+
+     # kszx.desi.read_galaxies() returns a kszx.Catalog.
+     # No need for a redshif cut (e.g. LRGs are preselected to 0.4 < z < 1.1).
+     gcat = kszx.desi.read_galaxies('LRG_NGC', 1)
     """
 
     filename = _galaxy_filename(survey, dr, download, dlfunc='kszx.desi.read_galaxies')
@@ -41,7 +52,7 @@ def read_galaxies(survey, dr, download=False):
     return gcat
 
 
-def read_randoms(survey, dr=12, download=False, nfiles=None):
+def read_randoms(survey, dr, download=False, nfiles=None):
     r"""Reads DESI random catalog, and returns a Catalog object.
     
     Function arguments:
@@ -55,9 +66,25 @@ def read_randoms(survey, dr=12, download=False, nfiles=None):
            'BGS_BRIGHT-21.5_NGC', 'BGS_BRIGHT-21.5_SGC',
            'LRG+ELG_LOPnotqso_NGC', 'LRG+ELG_LOPnotqso_SGC'
 
-      - ``dr`` (int): currently only dr=1 is supported
+      - ``dr`` (int): currently only dr=1 is supported.
 
-    FIXME: finish docstring (use sdss.read_randoms docstring as a model)
+      - ``nfiles`` (int or None): number of random catalog files
+        to read. By default, all 18 files are read, which gives
+        a random catalog which is ~100 times larger than the galaxy
+        catalog.
+
+    Returns a :class:`kszx.Catalog` object, with the following columns::
+     
+      ra_deg, dec_deg, z,    # sky location, redshift
+      weight
+      wfkp                   # FKP weight
+      wcp, wzf, wsys,        # systematic weights
+
+    Example usage::
+
+     # kszx.desi.read_randoms() returns a kszx.Catalog.
+     # No need for a redshif cut (e.g. LRGs are preselected to 0.4 < z < 1.1).
+     rcat = kszx.desi.read_randoms('LRG_NGC', 1)
     """
     
     filenames = _random_filenames(survey, dr, download, nfiles, dlfunc='kszx.desi.read_randoms')
@@ -66,19 +93,49 @@ def read_randoms(survey, dr=12, download=False, nfiles=None):
     return rcat
 
 
-def download(survey, dr):
-    """FIXME: write docstring."""
+def download(survey, dr, nrfiles):
+    r"""Downloads DESI data products (galaxies, randoms) for a given survey.
+
+    Can be called from command line: ``python -m kszx download_desi``.
+
+    Function arguments:
+
+      - ``survey`` (str): one of the following:
+    
+           'LRG_NGC', 'LRG_SGC',
+           'QSO_NGC', 'QSO_SGC'
+           'BGS_ANY_NGC', 'BGS_ANY_SGC',
+           'BGS_BRIGHT_NGC', 'BGS_BRIGHT_SGC',
+           'BGS_BRIGHT-21.5_NGC', 'BGS_BRIGHT-21.5_SGC',
+           'LRG+ELG_LOPnotqso_NGC', 'LRG+ELG_LOPnotqso_SGC'
+
+      - ``dr`` (int): currently only dr=1 is supported.
+
+      - ``nrfiles`` (int or None): number of random catalog files
+        to read. By default, all 18 files are read, which gives
+        a random catalog which is ~100 times larger than the galaxy
+        catalog.
+    """
     
     _galaxy_filename(survey, dr, download=True)
-    _random_filenames(survey, dr, download=True)
-
+    _random_filenames(survey, dr, download=True, nfiles=nrfiles)
 
 
 ####################################################################################################
 
 
 def read_fits_catalog(filename, name=None):
-    """FIXME write docstring."""
+    r"""Reads FITS file in SDSS catalog format. 
+
+    Intended as a helper for read_galaxies() or read_randoms(), but may be useful elsewhere.
+    
+    Function arguments:
+
+      - ``filename`` (string): should end in ``.fits``.
+      - ``name`` (str, optional): name of Catalog, passed to :class:`kszx.Catalog` constructor.
+
+    Returns a :class:`kszx.Catalog` object.
+    """
 
     print(f'Reading {filename}\n', end='')
     catalog = Catalog(name=name, filename=filename)
@@ -107,7 +164,7 @@ def read_fits_catalog(filename, name=None):
         catalog.add_column('weight', f[1].read('WEIGHT'))
         catalog.add_column('wfkp', f[1].read('WEIGHT_FKP'))
         catalog.add_column('wcp', f[1].read('WEIGHT_COMP'))   # FIXME is this the same as SDSS WEIGHT_CP?
-        catalog.add_column('wzf', f[1].read('WEIGHT_ZFAIL'))  # FIXME is this the same as SDSS WEIGHT_CP?
+        catalog.add_column('wzf', f[1].read('WEIGHT_ZFAIL'))  # FIXME is this the same as SDSS WEIGHT_NOZ?
         catalog.add_column('wsys', f[1].read('WEIGHT_SYS'))
 
     catalog._announce_file_read()

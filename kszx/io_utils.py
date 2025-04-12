@@ -7,6 +7,7 @@ import shutil
 import fitsio
 import pickle   # FIXME cPickle?
 import tarfile
+import zipfile
 import functools
 import subprocess
 import numpy as np
@@ -144,19 +145,27 @@ def unpack(srcfile, expected_dstfile=None):
         tar = tarfile.open(srcfile, 'r:')
         tar.extractall(path = os.path.dirname(srcfile))
         tar.close()
+    
     elif srcfile.endswith('.tar.gz') or srcfile.endswith('.tgz'):
         print(f'Un-tarring and gunzipping {srcfile}')
         tar = tarfile.open(srcfile, 'r:gz')
         tar.extractall(path = os.path.dirname(srcfile))
         tar.close()
+    
     elif srcfile.endswith('.gz'):
         dstfile = srcfile[:-3]
         print(f'Gunzipping {srcfile} -> {dstfile}')
         with gzip.open(srcfile, 'rb') as f_in:
             with open(dstfile, 'wb') as f_out:
                 shutil.copyfileobj(f_in, f_out)
+
+    elif srcfile.endswith('.zip'):
+        print(f'Unzipping {srcfile}')
+        with zipfile.ZipFile(srcfile, 'r') as f:
+            f.extractall(os.path.dirname(srcfile))
+
     else:
-        raise RuntimeError(f"kszx.io_utils.unpack(): source file '{srcfile}' must end in .gz, .tgz, or .tar.gz")
+        raise RuntimeError(f"kszx.io_utils.unpack(): source file '{srcfile}' must end in .zip, .gz, .tgz, or .tar.gz")
 
     if (expected_dstfile is not None) and not os.path.exists(expected_dstfile):
         raise RuntimeError(f"kszx.io_utils.unpack(): after unpacking {srcfile=}, {expected_dstfile=} does not exist")

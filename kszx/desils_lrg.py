@@ -191,7 +191,7 @@ def compute_imaging_weights(gcat, extended, ebv=True, download=False):
     gcat.add_column('weight', weight)
 
 
-def apply_quality_cuts(catalog, min_nobs=2, max_ebv=0.15, max_stardens=2500, lrg_mask=True, maskbits=True, island_mask=True, download=True):
+def apply_quality_cuts(catalog, min_nobs=2, max_ebv=0.15, max_stardens=2500, lrg_mask=True, maskbits=True, island_mask=True, mask_negative_zerr=True, download=True):
     r"""Applies LRG quality cuts in-place to a catalog (usually called just after read_galaxies() or read_randoms()).
 
     Function arguments:
@@ -217,6 +217,11 @@ def apply_quality_cuts(catalog, min_nobs=2, max_ebv=0.15, max_stardens=2500, lrg
         below.)
     
       - ``island_mask`` (boolean): If True, then some islands in the NGC will be masked.
+
+      - ``mask_negative_zerr`` (boolean): If True, galaxies with photo-z error < 0
+        will be masked. (This flag was added by Kendrick, and is not in Rongpu's original
+        script. Note that there are ~3000 such galaxies in the extended catalog, and only
+        2 of them pass the other qualtiy cuts.)
 
       - ``download`` (boolean): if True, then all needed data files will be auto-downloaded.
 
@@ -252,6 +257,10 @@ def apply_quality_cuts(catalog, min_nobs=2, max_ebv=0.15, max_stardens=2500, lrg
         stardens = m[ix]
         mask = (stardens < max_stardens)
         catalog.apply_boolean_mask(mask, name = f'DESILS-LRG quality cut: stardens < {max_stardens}')
+
+    if mask_negative_zerr:
+        mask = (catalog.zerr >= 0)
+        catalog.apply_boolean_mask(mask, name = f'DESILS-LRG quality cut: zerr >= 0')
     
 
 @functools.cache
