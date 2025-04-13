@@ -198,6 +198,18 @@ class Kpipe:
         bounding_box.pkl }. The pipeline will populate the output directory with files
         { params.yml, pk_data.npy, pk_surrogates.npy }. (For details of these file formats,
         see one of the README files that Kendrick or Selim have lying around.)
+
+        Note that 'class Kpipe', 'class KszPSE', and 'class CatalogGridder' are related
+        as follows:
+
+          - Kpipe: high-level pipeline, knows about file inputs/outputs, defers
+              heavy lifting to 'class KszPSE'.
+
+          - KszPSE: KSZ power spectrum estimation and surrogate generation logic
+              is here.
+
+          - CatalogGridder: a lower-level class which supplies normalizations (both
+              field-level and power spectrum level).
         """
         
         self.input_dir = input_dir
@@ -278,7 +290,7 @@ class Kpipe:
         If run=False, then this function expects the P(k) file to be on disk from a previous pipeline run.
         If run=True, then the P(k) file will be computed if it is not on disk.
         """
-        
+
         if os.path.exists(self.pk_data_filename):
             return io_utils.read_npy(self.pk_data_filename)
         

@@ -26,7 +26,8 @@ def read_galaxies(extended, download=False):
     r"""Reads LRGs with no imaging weights or quality cuts, and returns a Catalog object.
 
     After calling this function, you'll probably want to call :func:`~kszx.desils_lrg.compute_imaging_weights`
-    and/or :func:`~kszx.desils_lrg.apply_quality_cuts`.
+    and/or :func:`~kszx.desils_lrg.apply_quality_cuts`. You'll also want to call :func:`Catalog.apply_redshift_cut()`
+    to retrict to an appropriate redshift range.
     
     Function arguments:
 
@@ -71,6 +72,7 @@ def read_randoms(ix_list, download=False):
     r"""Reads LRG random catalog with no quality cuts, and returns a Catalog object.
 
     After calling this function, you'll probably want to call :func:`~kszx.desils_lrg.apply_quality_cuts`.
+    Note that DESILS-LRG randoms do not have redshifts!
     
     Function arguments:
 
@@ -225,7 +227,7 @@ def apply_quality_cuts(catalog, min_nobs=2, max_ebv=0.15, max_stardens=2500, lrg
 
       - ``download`` (boolean): if True, then all needed data files will be auto-downloaded.
 
-    References:
+    Reference:
     
        - https://data.desi.lbl.gov/public/papers/c3/lrg_xcorr_2023/v1/catalogs/quality_cuts.py
        - https://data.desi.lbl.gov/public/papers/c3/lrg_xcorr_2023/v1/catalogs/randoms_quality_cuts.py

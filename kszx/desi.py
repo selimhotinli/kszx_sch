@@ -19,17 +19,20 @@ from . import io_utils
 
 def read_galaxies(survey, dr, download=False):
     r"""Reads DESI galaxy catalog, and returns a Catalog object.
+    
+    DESI catalogs are restricted to an appropriate redshift range, i.e. there is no need
+    to apply your own redshift cut after calling this function (unlike SDSS or DESILS-LRG).
 
     Function arguments:
 
       - ``survey`` (str): one of the following:
     
-           'LRG_NGC', 'LRG_SGC',
-           'QSO_NGC', 'QSO_SGC'
-           'BGS_ANY_NGC', 'BGS_ANY_SGC',
-           'BGS_BRIGHT_NGC', 'BGS_BRIGHT_SGC',
-           'BGS_BRIGHT-21.5_NGC', 'BGS_BRIGHT-21.5_SGC',
-           'LRG+ELG_LOPnotqso_NGC', 'LRG+ELG_LOPnotqso_SGC'
+           - 'LRG_NGC', 'LRG_SGC'
+           - 'QSO_NGC', 'QSO_SGC'
+           - 'BGS_ANY_NGC', 'BGS_ANY_SGC',
+           - 'BGS_BRIGHT_NGC', 'BGS_BRIGHT_SGC',
+           - 'BGS_BRIGHT-21.5_NGC', 'BGS_BRIGHT-21.5_SGC',
+           - 'LRG+ELG_LOPnotqso_NGC', 'LRG+ELG_LOPnotqso_SGC'
 
       - ``dr`` (int): currently only dr=1 is supported
 
@@ -43,7 +46,6 @@ def read_galaxies(survey, dr, download=False):
     Example usage::
 
      # kszx.desi.read_galaxies() returns a kszx.Catalog.
-     # No need for a redshif cut (e.g. LRGs are preselected to 0.4 < z < 1.1).
      gcat = kszx.desi.read_galaxies('LRG_NGC', 1)
     """
 
@@ -54,17 +56,20 @@ def read_galaxies(survey, dr, download=False):
 
 def read_randoms(survey, dr, download=False, nfiles=None):
     r"""Reads DESI random catalog, and returns a Catalog object.
-    
+
+    DESI catalogs are restricted to an appropriate redshift range, i.e. there is no need
+    to apply your own redshift cut after calling this function (unlike SDSS or DESILS-LRG).
+
     Function arguments:
 
       - ``survey`` (str): one of the following:
     
-           'LRG_NGC', 'LRG_SGC',
-           'QSO_NGC', 'QSO_SGC'
-           'BGS_ANY_NGC', 'BGS_ANY_SGC',
-           'BGS_BRIGHT_NGC', 'BGS_BRIGHT_SGC',
-           'BGS_BRIGHT-21.5_NGC', 'BGS_BRIGHT-21.5_SGC',
-           'LRG+ELG_LOPnotqso_NGC', 'LRG+ELG_LOPnotqso_SGC'
+           - 'LRG_NGC', 'LRG_SGC'
+           - 'QSO_NGC', 'QSO_SGC'
+           - 'BGS_ANY_NGC', 'BGS_ANY_SGC',
+           - 'BGS_BRIGHT_NGC', 'BGS_BRIGHT_SGC',
+           - 'BGS_BRIGHT-21.5_NGC', 'BGS_BRIGHT-21.5_SGC',
+           - 'LRG+ELG_LOPnotqso_NGC', 'LRG+ELG_LOPnotqso_SGC'
 
       - ``dr`` (int): currently only dr=1 is supported.
 
@@ -83,7 +88,6 @@ def read_randoms(survey, dr, download=False, nfiles=None):
     Example usage::
 
      # kszx.desi.read_randoms() returns a kszx.Catalog.
-     # No need for a redshif cut (e.g. LRGs are preselected to 0.4 < z < 1.1).
      rcat = kszx.desi.read_randoms('LRG_NGC', 1)
     """
     
@@ -102,12 +106,12 @@ def download(survey, dr, nrfiles):
 
       - ``survey`` (str): one of the following:
     
-           'LRG_NGC', 'LRG_SGC',
-           'QSO_NGC', 'QSO_SGC'
-           'BGS_ANY_NGC', 'BGS_ANY_SGC',
-           'BGS_BRIGHT_NGC', 'BGS_BRIGHT_SGC',
-           'BGS_BRIGHT-21.5_NGC', 'BGS_BRIGHT-21.5_SGC',
-           'LRG+ELG_LOPnotqso_NGC', 'LRG+ELG_LOPnotqso_SGC'
+           - 'LRG_NGC', 'LRG_SGC'
+           - 'QSO_NGC', 'QSO_SGC'
+           - 'BGS_ANY_NGC', 'BGS_ANY_SGC',
+           - 'BGS_BRIGHT_NGC', 'BGS_BRIGHT_SGC',
+           - 'BGS_BRIGHT-21.5_NGC', 'BGS_BRIGHT-21.5_SGC',
+           - 'LRG+ELG_LOPnotqso_NGC', 'LRG+ELG_LOPnotqso_SGC'
 
       - ``dr`` (int): currently only dr=1 is supported.
 

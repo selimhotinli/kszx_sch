@@ -384,7 +384,7 @@ def _random_filenames(survey, dr, download=False, dlfunc=None):
     return [ _sdss_path(f'random{n}_{d}_{s}.fits', dr, download, gz=True, dlfunc=dlfunc) for n in [0,1] ]
 
 
-def _mask_filename(survey, download=False, dlfunc=None):
+def _mask_filename(survey, dr, download=False, dlfunc=None):
     d = _dr_str(dr)
     s = _check_survey(survey, dr)
     return _sdss_path(f'mask_{d}_{s}.ply', dr, download, dlfunc=dlfunc)
