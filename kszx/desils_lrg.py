@@ -260,7 +260,7 @@ def apply_quality_cuts(catalog, min_nobs=2, max_ebv=0.15, max_stardens=2500, lrg
         mask = (stardens < max_stardens)
         catalog.apply_boolean_mask(mask, name = f'DESILS-LRG quality cut: stardens < {max_stardens}')
 
-    if mask_negative_zerr:
+    if mask_negative_zerr and ('zerr' in catalog.col_names):
         mask = (catalog.zerr >= 0)
         catalog.apply_boolean_mask(mask, name = f'DESILS-LRG quality cut: zerr >= 0')
     
