@@ -80,14 +80,18 @@ def read_beam(freq, dr, lmax=None, *, night=False, download=False):
 
 
 def read_cluster_mask(download=False):
-    r"""Returns the cluster mask from https://arxiv.org/abs/2307.01258 as a pixell map."""    
+    r"""Returns the cluster mask from https://arxiv.org/abs/2307.01258 as a pixell map."""
+    
     filename = _cluster_mask_filename(download, dlfunc='kszx.act.read_cluster_mask')
+    print(f'Reading {filename}\n', end='')
     return pixell.enmap.read_map(filename)
 
 
 def read_nilc_wide_mask(download=False):
     r"""Returns the Galactic mask from https://arxiv.org/abs/2307.01258 as a pixell map."""
+    
     filename = _nilc_wide_mask_filename(download, dlfunc='kszx.act.read_nilc_wide_mask')
+    print(f'Reading {filename}\n', end='')
     return pixell.enmap.read_map(filename)
 
 

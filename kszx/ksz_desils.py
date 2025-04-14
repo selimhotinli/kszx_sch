@@ -6,6 +6,11 @@ import yaml
 import shutil
 import functools
 import numpy as np
+import scipy.special
+
+from scipy.signal import savgol_filter
+from scipy.ndimage import gaussian_filter1d
+from scipy.interpolate import interp1d
 
 from . import io_utils
 from . import utils
@@ -13,10 +18,6 @@ from . import utils
 from .Catalog import Catalog
 from .Cosmology import Cosmology
 from .KszPSE import KszPSE
-
-from scipy.signal import savgol_filter
-from scipy.ndimage import gaussian_filter1d
-from scipy.interpolate import interp1d
 
 
 def subtract_zbin_means(w, z, nz=15):
@@ -297,6 +298,8 @@ class Kpipe:
         if not run:
             raise RuntimeError(f'Kpipe.get_pk_data(): run=False was specified, and file {self.pk_data_filename} not found')
 
+        print('get_pk_data(): running\n', end='')
+        
         t90 = subtract_zbin_means(self.gcat.tcmb_90, self.gcat.z, nz=25)
         t150 = subtract_zbin_means(self.gcat.tcmb_150, self.gcat.z, nz=25)
 
@@ -328,6 +331,8 @@ class Kpipe:
         if not run:
             raise RuntimeError(f'Kpipe.get_pk_surrogate(): run=False was specified, and file {fname} not found')
 
+        print(f'get_pk_surrogate({isurr}): running\n', end='')
+        
         self.pse.simulate_surrogate()
         
         for sv in [ self.pse.Sv_noise, self.pse.Sv_signal ]:
