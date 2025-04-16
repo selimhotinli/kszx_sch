@@ -65,13 +65,15 @@ def read_beam(freq, dr, lmax=None, *, night=False, download=False):
     filename = _beam_filename(freq, dr, night=night, download=download, dlfunc='kszx.act.read_beam')
     
     print(f'Reading {filename}\n', end='')
-    
     a = np.loadtxt(filename)
-    assert (a.ndim==2) and (a.shape[1]==2)
-    assert np.all(a[:,0] == np.arange(len(a)))
 
-    a = a[:,1]
-        
+    if dr == 5:
+        assert (a.ndim == 2) and (a.shape[1] == 2)
+        assert np.all(a[:, 0] == np.arange(len(a)))
+        a = a[:, 1]
+    elif dr == 6:
+        a = a[:, 1] / a[0, 1]
+
     if lmax is not None:
         assert lmax < len(a)
         a = a[:(lmax+1)]
@@ -200,20 +202,18 @@ def _ivar_filename(freq, dr, night=False, download=False, dlfunc=None):
 
 
 def _beam_filename(freq, dr, night=False, download=False, dlfunc=None):
+    time = 'night' if night else 'daynight'
     if dr == 5:
-        daynight = 'night' if night else 'daynight'
-        relpath = f'beams/act_planck_dr5.01_s08s18_f{freq:03d}_{daynight}_beam.txt'
+        relpath = f'beams/act_planck_dr5.01_s08s18_f{freq:03d}_{time}_beam.txt'
         aux_relpath = 'act_dr5.01_auxilliary.zip'
-
     elif dr == 6:
         # According to https://lambda.gsfc.nasa.gov/product/act/act_dr6.02/act_dr6.02_maps_info.html:
         #   Coadd maps are convolved with the coadd_{array}_{freq}_night_beam_tform_jitter_cmb.txt beams,
         #   where "array" is "pa5" for the f090 and f150 coadds and "pa4" for the f220 coadd.
-        
-        adict = { 90:'pa5', 150:'pa5', 220:'pa4' }
+        if not night: print('Note: daynight beam is not available for ACT DR6, using night beam instead.')
+        adict = {90: 'pa5', 150: 'pa5', 220: 'pa4'}
         relpath = f'beams/main_beams/nominal/coadd_{adict[freq]}_f{freq:03d}_night_beam_tform_jitter_cmb.txt'
         aux_relpath = 'beams/act_dr6.02_main_beams.tar.gz'
-
     else:
         raise RuntimeError(f'ACT {dr=} is not supported (currently we support dr=5 or dr=6)')
 
