@@ -6,7 +6,9 @@ import yaml
 import shutil
 import functools
 import numpy as np
+import scipy.linalg
 import scipy.special
+import matplotlib.pyplot as plt
 
 from scipy.signal import savgol_filter
 from scipy.ndimage import gaussian_filter1d
@@ -20,44 +22,15 @@ from .Cosmology import Cosmology
 from .KszPSE import KszPSE
 
 
-def subtract_zbin_means(w, z, nz=15):
-    r"""Given per-galaxy weights 'w', and galaxy redshifts 'z', compute and subtract the mean weight in redshift bins.
-    
-    Function arguments:
-      - ``w`` (array): per-galaxy weights
-      - ``z`` (array): galaxy redshifts
-
-    Return value:
-      - A copy of ``w``, after subtracting the mean weight in redshift bins.
-
-    (Source: Selim's ``pipeline_getsurrogates_selim.ipynb``, Nov 2024.)
-    """
-
-    w = np.asarray(w)
-    z = np.asarray(z)
-    assert w.shape == z.shape
-    
-    zmin = np.min(z) - 1.0e-10
-    zmax = np.max(z) + 1.0e-10
-    zbins = np.linspace(zmin, zmax, nz)
-    
-    locatez = np.digitize(z, zbins)
-    zbin_means = np.zeros(nz)
-    
-    for iz in range(nz):
-        wbin = w[locatez==iz]
-        if len(wbin) > 0:
-            zbin_means[iz] = np.mean(wbin)
-    
-    return w - zbin_means[locatez]
+####################################################################################################
 
 
 class PhotozDistribution:
     def __init__(self, zobs_arr, zerr_arr, zmin=0.0, zmax=1.5, zerr_min=0.02, zerr_max=0.5, nzbins=100, nzerrbins=49, niter=100, sigma=2):
-        r"""Selim's model for the joint (ztrue, zobs, zerr) distribution in DESILS-LRG.
+        r"""Photo-z model obtained by Richardson-Lucy deconvolution.
 
-        Obtained by Richardson-Lucy deconvolution on the observed (zobs, zerr) distribution.
-        (Source: Selim's ``pipeline_getsurrogates_selim.ipynb``, Nov 2024.)
+        Now superseded(?) by RegulatedDeconvolver, see below.
+        Source: Selim's ``pipeline_getsurrogates_selim.ipynb``, Nov 2024.
 
         Constructor args:
 
@@ -224,8 +197,12 @@ class Kpipe:
             params = yaml.safe_load(f)
 
             self.surr_bg = params['surr_bg']
-            self.nkbins = params['nkbins']
+            self.surr_ic_nbins = params['surr_ic_nbins']
+            self.spin0_hack = params['spin0_hack']
+            assert self.spin0_hack in [ True, False ]
+
             self.kmax = params['kmax']
+            self.nkbins = params['nkbins']
             self.kbin_edges = np.linspace(0, self.kmax, self.nkbins+1)
             self.kbin_centers = (self.kbin_edges[1:] + self.kbin_edges[:-1]) / 2.
 
@@ -263,7 +240,10 @@ class Kpipe:
         # FIXME needs comment
         surr_ngal_mean = self.gcat.size
         surr_ngal_rms = 4 * np.sqrt(self.gcat.size)  # 4x Poisson
-
+        
+        rweights = getattr(self.rcat, 'weight_zerr', None)
+        vweights = getattr(self.rcat, 'vweight_zerr', None)
+        
         pse = KszPSE(
             box = self.box, 
             cosmo = self.cosmo, 
@@ -272,13 +252,15 @@ class Kpipe:
             surr_ngal_mean = surr_ngal_mean,
             surr_ngal_rms = surr_ngal_rms,
             surr_bg = self.surr_bg,
-            rweights = self.rcat.weight_zerr,
+            rweights = rweights,
             nksz = 2,
-            # ksz_rweights = None,
+            ksz_rweights = vweights,
             ksz_bv = [ self.rcat.bv_90, self.rcat.bv_150 ],
             ksz_tcmb_realization = [ self.rcat.tcmb_90, self.rcat.tcmb_150 ],
             ztrue_col = 'ztrue',
-            zobs_col = 'zobs'
+            zobs_col = 'zobs',
+            surr_ic_nbins = self.surr_ic_nbins,
+            spin0_hack = self.spin0_hack
         )
         
         print('KszPSE initialization done')
@@ -300,13 +282,16 @@ class Kpipe:
 
         print('get_pk_data(): running\n', end='')
         
-        t90 = subtract_zbin_means(self.gcat.tcmb_90, self.gcat.z, nz=25)
-        t150 = subtract_zbin_means(self.gcat.tcmb_150, self.gcat.z, nz=25)
+        t90 = utils.subtract_binned_means(self.gcat.tcmb_90, self.gcat.z, nbins=25)
+        t150 = utils.subtract_binned_means(self.gcat.tcmb_150, self.gcat.z, nbins=25)
+
+        gweights = getattr(self.gcat, 'weight_zerr', None)
+        vweights = getattr(self.gcat, 'vweight_zerr', None)
 
         pk_data = self.pse.eval_pk(
             gcat = self.gcat,
-            gweights = self.gcat.weight_zerr,
-            # ksz_gweights = None, 
+            gweights = gweights,
+            ksz_gweights = vweights,
             ksz_bv = [ self.gcat.bv_90, self.gcat.bv_150 ], 
             ksz_tcmb = [ t90, t150 ],
             zobs_col = 'z'
@@ -338,7 +323,7 @@ class Kpipe:
         for sv in [ self.pse.Sv_noise, self.pse.Sv_signal ]:
             assert sv.shape ==  (2, self.rcat.size)
             for j in range(2):
-                sv[j,:] = subtract_zbin_means(sv[j,:], self.rcat.zobs, nz=25)
+                sv[j,:] = utils.subtract_binned_means(sv[j,:], self.rcat.zobs, nbins=25)
     
         pk = self.pse.eval_pk_surrogate()
 
@@ -555,3 +540,771 @@ class RegulatedDeconvolver:
     @classmethod
     def Cinv(cls, y):
         return scipy.special.erfinv(2*y) * np.sqrt(2.)
+
+
+####################################################################################################
+
+
+class PipelineOutdir:
+    def __init__(self, dirname, nsurr=None):
+        """
+        PipelineOutdir: a helper class for postprocessing/plotting pipeline outputs.        
+        (Note: there is a separate class 'PgvLikelihood' for MCMCs and parameter fits, see below)
+
+        The constructor reads the following files::
+        
+          {dirname}/params.yml         # for nkbins, kmax
+          {dirname}/pk_data.npy        # shape (3, 3, nkbins)
+          {dirname}/pk_surrogates.npy  # shape (nsurr, 6, 6, nkbins)
+          
+        Constructor arguments:
+
+          - dirname (string): name of pipeline output directory.
+         
+          - nsurr (integer or None): this is a hack for running on an incomplete
+            pipeline. If specified, then {dirname}/pk_surr.npy is not read.
+            Instead we read files of the form {dirname}/tmp/pk_surr_{i}.npy.
+        """
+
+        filename = f'{dirname}/params.yml'
+        print(f'Reading {filename}')
+        
+        with open(filename, 'r') as f:
+            params = yaml.safe_load(f)
+
+        kmax = params['kmax']
+        nkbins = params['nkbins']
+        surr_bg = params['surr_bg']
+        kbin_edges = np.linspace(0, kmax, nkbins+1)
+        kbin_centers = (kbin_edges[1:] + kbin_edges[:-1]) / 2.
+
+        pk_data = io_utils.read_npy(f'{dirname}/pk_data.npy')
+        if pk_data.shape != (3,3,nkbins):
+            raise RuntimeError(f'Got {pk_data.shape=}, expected (3,3,nkbins) where {nkbins=}')
+
+        if nsurr is None:
+            pk_surr = io_utils.read_npy(f'{dirname}/pk_surrogates.npy')
+            if (pk_surr.ndim != 4) or (pk_surr.shape[1:] != (6,6,nkbins)):
+                raise RuntimeError(f'Got {pk_surr.shape=}, expected (nsurr,6,6,nkbins) where {nkbins=}')
+
+        else:
+            assert nsurr >= 1
+            pk_surr = [ ]
+            
+            for i in range(nsurr):
+                pk_surrogate = io_utils.read_npy(f'{dirname}/tmp/pk_surr_{i}.npy')
+                if pk_surrogate.shape != (6,6,nkbins):
+                    raise RuntimeError(f'Got {pk_surrogate.shape=}, expected (6,6,nkbins) where {nkbins=}')
+                pk_surr.append(pk_surrogate)
+                
+            pk_surr = np.array(pk_surr)
+
+        self.k = kbin_centers
+        self.nkbins = nkbins
+        self.kmax = kmax
+        self.dk = kmax / nkbins
+        
+        self.pk_data = pk_data
+        self.pk_surr = np.array(pk_surr)
+        self.nsurr = self.pk_surr.shape[0]
+        self.surr_bg = surr_bg
+
+
+    def pgg_data(self):
+        """Returns shape (nkbins,) array containing P_{gg}^{data}."""
+        return self.pk_data[0,0,:]
+        
+    def pgg_mean(self, fnl=0):
+        """Returns shape (nkbins,) array, containing <P_{gg}^{surr}>."""
+        return np.mean(self._pgg_surr(fnl), axis=0)
+
+    def pgg_rms(self, fnl=0):
+        """Returns shape (nkbins,) array, containing sqrt(Var(P_{gg}^{surr}))."""
+        return np.sqrt(np.var(self._pgg_surr(fnl), axis=0))
+
+    
+    def pgv_data(self, field):
+        """Returns shape (nkbins,) array containing P_{gv}^{data}.
+
+        The 'field' argument is a length-2 vector, selecting a linear combination
+        of the 90+150 GHz velocity reconstructions. For example:
+        
+           - field=[1,0] for 90 GHz
+           - field=[0,1] for 150 GHz
+           - field=[1,-1] for null (90-150) GHz.
+        """
+        field = self._check_field(field)
+        return field[0]*self.pk_data[0,1] + field[1]*self.pk_data[0,2]
+        
+    def pgv_mean(self, field, fnl, bv):
+        """Returns shape (nkbins,) array containing <P_{gv}^{surr}>.
+
+        The 'field' argument is a length-2 vector, selecting a linear combination
+        of the 90+150 GHz velocity reconstructions. For example:
+        
+           - field=[1,0] for 90 GHz
+           - field=[0,1] for 150 GHz
+           - field=[1,-1] for null (90-150) GHz.
+        """
+        return np.mean(self._pgv_surr(field,fnl,bv), axis=0)
+
+    def pgv_rms(self, field, fnl, bv):
+        """Returns shape (nkbins,) array containing sqrt(Var(P_{gv}^{surr})).
+
+        The 'field' argument is a length-2 vector, selecting a linear combination
+        of the 90+150 GHz velocity reconstructions. For example:
+        
+           - field=[1,0] for 90 GHz
+           - field=[0,1] for 150 GHz
+           - field=[1,-1] for null (90-150) GHz.
+        """
+        return np.sqrt(np.var(self._pgv_surr(field,fnl,bv), axis=0))
+
+
+    def pvv_data(self, field):
+        """Returns shape (nkbins,) array containing P_{vv}^{data}.
+
+        The 'field' argument is a length-2 vector, selecting a linear combination
+        of the 90+150 GHz velocity reconstructions. For example:
+        
+           - field=[1,0] for 90 GHz
+           - field=[0,1] for 150 GHz
+           - field=[1,-1] for null (90-150) GHz.
+        """
+        field = self._check_field(field)
+        t = field[0]*self.pk_data[1,:] + field[1]*self.pk_data[2,:]  # shape (3,)
+        return field[0]*t[1] + field[1]*t[2]
+        
+    def pvv_mean(self, field, bv):
+        """Returns shape (nkbins,) array containing < P_{vv}^{data} >.
+
+        The 'field' argument is a length-2 vector, selecting a linear combination
+        of the 90+150 GHz velocity reconstructions. For example:
+        
+           - field=[1,0] for 90 GHz
+           - field=[0,1] for 150 GHz
+           - field=[1,-1] for null (90-150) GHz.
+        """
+        return np.mean(self._pvv_surr(field,bv), axis=0)
+        
+    def pvv_rms(self, field, bv):
+        """Returns shape (nkbins,) array containing sqrt(var(P_{vv}^{data})).
+
+        The 'field' argument is a length-2 vector, selecting a linear combination
+        of the 90+150 GHz velocity reconstructions. For example:
+        
+           - field=[1,0] for 90 GHz
+           - field=[0,1] for 150 GHz
+           - field=[1,-1] for null (90-150) GHz.
+        """        
+        return np.sqrt(np.var(self._pvv_surr(field,bv), axis=0))
+
+
+    def _check_field(self, field):
+        """Checks that 'field' is a 1-d array of length 2."""
+        field = np.array(field, dtype=float)
+        if field.shape != (2,):
+            raise RuntimeError(f"Expected 'field' argument to be a 1-d array of length 2, got {field.shape=}")
+        return field
+    
+    def _pgg_surr(self, fnl=0):
+        """Returns shape (nsurr, nkbins) array, containing P_{gg} for each surrogate"""
+        pgg = self.pk_surr[:,:2,:2,:]             # shape (nsurr, 2, 2, nkbins)
+        pgg = pgg[:,0,:,:] + fnl * pgg[:,1,:,:]   # shape (nsurr, 2, nkbins)
+        return pgg[:,0,:] + fnl * pgg[:,1,:]      # shape (nsurr, nkbins)
+    
+    def _pgv_surr(self, field, fnl, bv):
+        """Returns shape (nsurr, nkbins) array, containing P_{gv} for each surrogate"""
+        field = self._check_field(field)
+        pgv = self.pk_surr[:,:2,2:,:]                                # shape (nsurr, 2, 4, nkbins)
+        pgv = pgv[:,0,:,:] + fnl * pgv[:,1,:,:]                      # shape (nsurr, 4, nkbins)
+        pgv = field[0] * pgv[:,0:2,:] + field[1] * pgv[:,2:4,:]      # shape (nsurr, 2, nkbins)
+        return pgv[:,0,:] + bv * pgv[:,1,:]                          # shape (nsurr, nkbins)
+
+    def _pvv_surr(self, field, bv):
+        """Returns shape (nsurr, nkbins) array, containing P_{vv} for each surrogate"""
+        field = self._check_field(field)
+        pvv = self.pk_surr[:,2:,2:,:]                                  # shape (nsurr, 4, 4, nkbins)
+        pvv = field[0] * pvv[:,0:2,:,:] + field[1] * pvv[:,2:4,:,:]    # shape (nsurr, 2, 4, nkbins)
+        pvv = field[0] * pvv[:,:,0:2,:] + field[1] * pvv[:,:,2:4,:]    # shape (nsurr, 2, 2, nkbins)
+        pvv = pvv[:,0,:,:] + bv * pvv[:,1,:,:]                         # shape (nsurr, 2, nkbins)
+        return pvv[:,0,:] + bv * pvv[:,1,:]                            # shape (nsurr, nkbins)
+
+
+####################################################################################################
+
+
+class PgvLikelihood:
+    def __init__(self, data, surrs, bias_matrix, jeffreys_prior=False):
+        """Likelihood function for one or more power spectra of the form P_{gv}(k).
+
+        The PgvLikelihood constructor has an abstract syntax, which may not be the
+        most convenient. Instead of calling the constructor directly, you may want
+        to call the from_pipeline_outdir() static method as follows::
+
+           dirname = ...   # directory name containing pipeline outputs
+           pout = PipelineOutputs(dirname)
+
+           # The 'fields=[[1,0]]' argument selects 90 GHz.
+           # See the from_pipeline_outdir() docstring for more examples.
+           lik = PgvLikelihood.from_pipeline_outdir(pipeline_outputs, fields=[[1,0]], nkbins=10)
+
+        The rest of this docstring describes the PgvLikelihood constructor syntax
+        (even though, as explained above, you probably don't want to call the constructor
+        directly!) First we define::
+
+          B = number of bias parameters in the MCMC (usually 1)
+          V = number of velocity reconstructions (usually 1)
+          K = number of k-bins
+          S = number of surrogate sims
+          D = V*K = number of components in "data vector".
+
+        Note the distinction between a 90+150 GHz "sum" fit (V=1), and a 90+150 GHz
+        "joint" fit (V=2). In the first case, we add the 90+150 bandpowers and construct
+        a likelihood based on their sum, and in the second case we do a joint fit to
+        both sets of bandpowers (i.e. doubling the size of the data vector and
+        covariance matrices).
+        
+        Then the constructor arguments are as follows:
+
+          - data: P_{gv} "data" bandpowers, as array of shape (V,K).
+        
+          - surrs: P_{gv} surrogate bandpowers, as array of shape (S,2,2,V,K).
+              where the first length-2 index is fnl exponent {0,1}
+              and the second length-2 index is bias exponent {0,1}
+
+          - bias_matrix: array of shape (B,V), where B <= V. This gives the
+            correspondence between bias parameters and velocity reconstruction.
+            There are basically 3 cases of interest here:
+
+              - single field (V=1):
+                  bias_matrix=[[1]]
+        
+              - joint analysis (V=2), bias assumed to be the same for both freqs:
+                  bias_matrix = [[1,1]]
+
+              - joint analysis (V=2) with two independent bias parameters:
+                  bias_matrix = [[1,0],[0,1]]
+        """
+
+        data = np.asarray(data, dtype=float)
+        surrs = np.asarray(surrs, dtype=float)
+        bias_matrix = np.asarray(bias_matrix, dtype=float)
+        
+        if data.ndim != 2:
+            raise RuntimeError(f'got {data.shape=}, expected (V,K)')
+        if (surrs.ndim != 5) or (surrs.shape[1:3] != (2,2)):
+            raise RuntimeError(f'got {surrs.shape=}, expected (S,2,2,V,K)')
+        if bias_matrix.ndim != 2:
+            raise RuntimeError(f'got {bias_matrix.shape=}, expected (B,V)')
+
+        if data.shape != surrs.shape[3:]:
+            raise RuntimeError(f'data/surrs have inconsistent shapes (expected (V,K) and (S,2,2,V,K), got {data.shape} and {surr.shape})')
+        if data.shape[0] != bias_matrix.shape[1]:
+            raise RuntimeError(f'data/bias_matrix have inconsistent shapes (expected (V,K) and (B,V), got {data.shape} and {bias_matrix.shape})')
+        if bias_matrix.shape[0] > bias_matrix.shape[1]:
+            raise RuntimeError(f'expected B <= V, got (B,V)={bias_matrix.shape}')
+
+        self.B = bias_matrix.shape[0]
+        self.V = bias_matrix.shape[1]
+        self.K = data.shape[1]
+        self.S = surrs.shape[0]
+        self.D = self.V * self.K
+        
+        self.data = data                                 # shape (V,K)
+        self.data_vector = np.reshape(data, (self.D,))   # shape (D,)
+        self.surrs = surrs
+        self.bias_matrix = bias_matrix
+        self.jeffreys_prior = jeffreys_prior
+
+        self._init_fast_likelihood()
+
+
+    @staticmethod
+    def from_pipeline_outdir(pout, fields, nkbins, multi_bias=None, jeffreys_prior=None):
+        """
+        Constructs a PgvLikelhood from a PipelineOutput object. Usually more convenient
+        than calling the PgvLikeihood constructor directly.
+
+        The 'pout' argument is a PipelineOutdir object.
+        
+        The 'fields' argument is a V-by-2 matrix. Each row of the matrix selects a linear
+        combination of the 90+150 GHz velocity reconstructions. For example:
+        
+           - fields = [[1,0]] for 90 GHz analysis
+           - fields = [[0,1]] for 150 GHz analysis
+           - fields = [[1,1]] for (90+150) "sum map" analysis
+           - fields = [[1,-1]] for null (90-150) "null map" analysis
+           - fields = [[1,0],[0,1]] for joint analysis with both (90+150 GHz) sets of bandpowers
+
+        The 'multi_bias' argument only needed for a joint analysis (i.e. V > 1) and determines
+        whether each freq channel has an independent bias parameter (multi_bias=True), or whether
+        all frequency channels have the same bias.
+        """
+        
+        assert isinstance(pout, PipelineOutdir)
+        assert 4 <= nkbins <= pout.nkbins
+        
+        fields = np.array(fields)
+        if (fields.ndim != 2) or (fields.shape[0] < 1) or (fields.shape[1] != 2):
+            raise RuntimeError(f"PgvLikelihood: expected 'fields' arg to have shape (V,2), got shape {fields.shape}")
+
+        K = nkbins
+        S = pout.nsurr
+        V = fields.shape[0]
+
+        if (V > 1) and (multi_bias is None):
+            raise RuntimeError(f"The 'multi_bias' argument is required if nfields > 1.")
+
+        # PgvLikelihood constructor expects data array of shape (V,K)
+        pgv_data = pout.pk_data[0,1:3,:K]      # shape (2,K)
+        pgv_data = [ (f[0]*pgv_data[0,:] +f[1]*pgv_data[1,:]) for f in fields ]  # shape (V,K)
+
+        # PgvLikelihood constructor expects surrogate array of shape (S,2,2,V,K).
+        pgv_surr = pout.pk_surr[:,0:2,2:6,:K]           # shape (S,2,4,K)
+        pgv_surr = np.reshape(pgv_surr, (S,2,2,2,K))    # shape (S,2,2,2,K), length-2 indices are (fnl_exponent, freq, bv_exponent)
+        pgv_surr = [ (f[0]*pgv_surr[:,:,0,:,:] + f[1]*pgv_surr[:,:,1,:,:]) for f in fields ]  # shape (V,S,2,2,K)
+        pgv_surr = np.transpose(pgv_surr, (1,2,3,0,4))  # shape (S,2,2,V,K)
+
+        bias_matrix = np.identity(V) if multi_bias else np.ones((1,V))
+        return PgvLikelihood(pgv_data, pgv_surr, bias_matrix, jeffreys_prior)
+
+    
+    def specialize_surrogates(self, fnl, bv, flatten):
+        """
+        Returns a shape (S,V,K) array, by "specializing" surrogates to (fnl, bv).
+        Convenient but slow! Used in many places, but not fast_likelihood().
+        """
+
+        S, K, V, D = self.S, self.K, self.V, self.D
+        
+        fnl = float(fnl)        
+        b = self._validate_bv(bv)        # shape (B,)
+        b = np.dot(b, self.bias_matrix)  # shape (V,)
+        b = np.reshape(b, (1,V,1))       # shape (1,V,1)
+
+        # Apply fnl, obtaining shape (S,2,V,K)
+        s = self.surrs[:,0,:,:,:] + fnl * self.surrs[:,1,:,:,:]
+
+        # Apply bv, obtaining shape (S,V,K)
+        s = s[:,0,:,:] + b * s[:,1,:,:]
+
+        # Return either shape (S,V,K) or shape (S,D), depending on whether flatten=True.
+        return np.reshape(s,(S,D)) if flatten else s
+                
+        
+    def slow_mean_and_cov(self, fnl, bv):
+        """Returns (mean, cov) where mean.shape=(D,) and cov.shape=(D,D)."""
+        
+        s = self.specialize_surrogates(fnl, bv, flatten=True)  # shape (S,D)
+        mean = np.mean(s, axis=0)       # shape (D,)
+        cov = np.cov(s, rowvar=False)   # shape (D, D)
+        return mean, cov
+
+    
+    def slow_mean_and_cov_gradients(self, fnl, bv):
+        """Returns grad(mu), grad(cov). Used to compute Jeffreys prior.
+
+        Both gradients are with respect to (fnl,bv) and are represented as arrays 
+        with an extra length-(B+1) axis, i.e.
+
+          mu.shape = (D,)    =>  grad_mu.shape = (B+1,D)
+          cov.shape = (D,D)  =>  grad_cov.shape = (B+1,D,D)
+          
+        Uses boneheaded algorithm: since mu, C are at most quadratic in fNL (and bv),
+        naive finite difference is exact (and independent of step sizes).
+        """
+
+        B, D = self.B, self.D
+
+        fnl = float(fnl)        
+        bv = self._validate_bv(bv)   # shape (B,)
+
+        # Parameter vectors of shape (B+1,)
+        x0 = np.concatenate(((fnl,), bv))
+        dx = np.concatenate(((50,), np.full(B,0.1)))
+        
+        mu_p = np.zeros((B+1, D))
+        mu_n = np.zeros((B+1, D))
+        cov_p = np.zeros((B+1, D, D))
+        cov_n = np.zeros((B+1, D, D))
+
+        for i in range(B+1):
+            xp = np.copy(x0)
+            xn = np.copy(x0)
+            xp[i] += dx[i]
+            xn[i] -= dx[i]
+
+            mu_p[i,:], cov_p[i,:,:] = self.slow_mean_and_cov(xp[0], xp[1:])
+            mu_n[i,:], cov_n[i,:,:] = self.slow_mean_and_cov(xn[0], xn[1:])
+   
+        grad_mu = (mu_p - mu_n) / (2 * dx.reshape((B+1,1)))
+        grad_cov = (cov_p - cov_n) / (2 * dx.reshape((B+1,1,1)))
+ 
+        return grad_mu, grad_cov
+        
+        
+    def slow_log_likelihood(self, fnl, bv):
+        """Returns the scalar quantity log(L)."""
+        
+        mean, cov = self.slow_mean_and_cov(fnl, bv)
+
+        x = self.data_vector - mean
+        cinv = np.linalg.inv(cov)
+        sign, logabsdet = np.linalg.slogdet(cov)
+        assert sign == 1
+
+        # log L = -(1/2) log(det C) - (1/2) x^T C^{-1} x
+        logL = -0.5 * np.dot(x, np.dot(cinv,x))
+        logL -= 0.5 * logabsdet
+
+        if self.jeffreys_prior:
+            grad_mu, grad_cov = self.slow_mean_and_cov_gradients(fnl, bv)
+            cinv_dmu = [ np.dot(cinv,dmu) for dmu in grad_mu ]
+            cinv_dc = [ np.dot(cinv,dc) for dc in grad_cov ]
+
+            # (B+1)-by-(B+1) Fisher matrix            
+            B = self.B
+            f = np.zeros((B+1,B+1))
+            for i in range(B+1):
+                for j in range(B+1):
+                    f[i,j] += np.dot(grad_mu[i], cinv_dmu[j])  # no factor (1/2)
+                    f[i,j] += 0.5 * np.trace(np.dot(cinv_dc[i], cinv_dc[j]))
+
+            # Jeffreys prior is equivalent to including sqrt(det(F)) in the likelihood.
+            sign, logabsdet_F = np.linalg.slogdet(f)
+            logL += 0.5 * logabsdet_F
+            assert sign == 1
+            
+        return logL
+
+    
+    def run_mcmc(self, nwalkers=8, nsamples=10000, discard=1000, thin=5):
+        """
+        Initializes self.samples to an array of shape (N,2) where N is large,
+        and the length-2 axis represents {fnl,bv}.
+        """
+
+        import emcee
+        print(f'MCMC start: {nwalkers=}, {nsamples=}, {discard=}, {thin=}')
+
+        x0 = np.zeros((nwalkers, self.B+1))
+        x0[:,0] = np.random.uniform(-50, 50, size=nwalkers)  # fnl
+        x0[:,1:] = np.random.uniform(0.5, 1.0, size=(nwalkers,self.B))  # bv
+
+        logL = lambda x: self.fast_log_likelihood(x[0], x[1:])
+        sampler = emcee.EnsembleSampler(nwalkers, self.B+1, logL)
+        sampler.run_mcmc(x0, nsamples)
+        self.samples = sampler.get_chain(discard=discard, thin=thin, flat=True)
+        
+        print('MCMC done. To see the results, call the show_mcmc() method.')
+
+
+    def show_mcmc(self, title=None):
+        """Makes a corner plot from MCMC results."""
+
+        if not hasattr(self, 'samples'):
+            raise RuntimeError('Must call ')
+        
+        import corner
+        
+        fig = corner.corner(self.samples, bins=100, range=(0.99,0.99), labels=[r'$f_{NL}$',r'$b_v$'])
+        if title is not None:
+            fig.suptitle(title)
+        
+        plt.show()
+
+        fnl_samples = self.samples[:,0]  # shape (nsamp,)
+        bv_samples = self.samples[:,1:]  # shape (nsamp,B)
+        qlevels = [ 0.025, 0.16, 0.5, 0.84, 0.975 ]
+        
+        fnl_quantiles = np.quantile(fnl_samples, qlevels)
+        for q,fnl in zip(qlevels, fnl_quantiles):
+            s = f'  ({(fnl-fnl_quantiles[2]):+.03f})' if (q != 0.5) else ''
+            print(f'{(100*q):.03f}% quantile: {fnl=:.03f}{s}')
+
+        for b in range(self.B):
+            bv_quantiles = np.quantile(bv_samples[:,b], qlevels)
+            print(f'\nBias parameter {b}')
+            for q,bv in zip(qlevels, bv_quantiles):
+                s = f'  ({(bv-bv_quantiles[2]):+.03f})' if (q != 0.5) else ''
+                print(f'{(100*q):.03f}% quantile: {bv=:.03f}{s}')
+
+        print(f'\nSNR: {self.compute_snr():.03f}')
+
+
+    def analyze_chi2(self, fnl, bv, ddof=None):
+        """Do model parameters (fnl,bv) fit the data? Returns (chi2, ndof, p-value).
+
+        The 'ddof' argument is used to compute the number of degrees of freedom:
+            ndof = nkbins - ddof
+
+        If ddof=None, then it will be equal to the number of nonzero (fnl, bias) params.
+        """
+        
+        fnl = float(fnl)        
+        bv = self._validate_bv(bv)   # shape (B,)
+        mean, cov = self.slow_mean_and_cov(fnl, bv)
+
+        if ddof is None:
+            ddof = 1 if (fnl != 0) else 0
+            ddof += np.count_nonzero(bv)
+        
+        x = self.data_vector - mean
+        chi2 = np.dot(x, np.linalg.solve(cov,x))
+        ndof = self.K - ddof
+        pte = scipy.stats.chi2.sf(chi2, ndof)
+        
+        return chi2, ndof, pte
+        
+    
+    def fit_fnl_and_bv(self, fnl0=0, bv0=0.3):
+        """Returns (fnl, bv) obtained by maximizing joint likelihood."""
+
+        x0 = np.zeros(self.B+1)
+        x0[0] = fnl0
+        x0[1:] = bv0
+
+        f = lambda x: -self.fast_log_likelihood(x[0], x[1:])  # note minus sign
+        result = scipy.optimize.minimize(f, x0, method='Nelder-Mead')
+        
+        fnl = result.x[0]
+        bv = result.x[1:]
+        return fnl, bv        
+
+        
+    def fit_bv(self, fnl=0, bv0=0.3):
+        """Returns bv obtained by maximizing conditional likelihood at the given fNL."""
+
+        x0 = np.full(self.B, bv0)
+        f = lambda x: -self.fast_log_likelihood(fnl, x)  # note minus sign
+        result = scipy.optimize.minimize(f, x0, method='Nelder-Mead')
+        
+        bv = result.x
+        return bv
+
+
+    def compute_snr(self):
+        # This implementation works even if there are multiple bias params (B > 1).
+        B, D = self.B, self.D
+        
+        _, cov = self.slow_mean_and_cov(0, np.zeros(self.B))                # discard mean
+        grad_mu, _ = self.slow_mean_and_cov_gradients(0, np.zeros(self.B))  # discard grad_cov
+        m = grad_mu[1:,:]           # shape (B,D)       
+        d = self.data_vector        # shape (D,)
+
+        cinv_m = np.linalg.solve(cov, m.T)  # shape (D,B)
+        h = np.dot(m, cinv_m)               # shape (B,B)
+        g = np.dot(d, cinv_m)
+
+        dchisq = np.dot(g, np.linalg.solve(h, g))
+        return np.sqrt(dchisq)
+        
+
+    def _validate_bv(self, bv):
+        """Helper method: converts 'bv' argument to a 1-d array of length B, and returns it."""
+
+        bv = np.asarray(bv, dtype=float)       
+        
+        if (bv.ndim == 0) and (self.B == 1):
+            return np.reshape(bv, (1,))
+            
+        if bv.shape != (self.B,):
+            raise RuntimeError(f'Got {bv.shape=}, expected 1-d array of length {B=}')
+
+        return bv
+
+    
+    ####################################################################################################
+    #
+    # "Fast" likelihood starts here.
+    #
+    # This code is completely unreadable, but there are unit tests which verify that the fast_*
+    # functions are equivalent o their slow_* equivalents.
+
+
+    def _init_fast_likelihood(self):
+        S, V, K, D = self.S, self.V, self.K, self.D
+        
+        # xmu = shape (2,2,V,K), reshaped to (2,2*D).
+        # Length-2 axes are fnl exponent and bv exponent.
+        
+        t = np.mean(self.surrs, axis=0)      # shape (2,2,D)
+        self.xmu = np.reshape(t, (2,2*D))
+        
+        # xcov = shape (3,2,V,K,2,V,K), reshaped to (3,4*D*D)
+        # Length-3 axis is fnl exponent {0,1,2}, and length-2 axes are bv exponents {0,1}.
+
+        t = np.reshape(self.surrs, (S,4*D))      # shape (S, 4D)
+        t = np.cov(t, rowvar=False)              # shape (4D,4D)
+        t = np.reshape(t, (2,2*D,2,2*D))         # shape (2,2D,2,2D) where length-2 axes are fnl exponents
+        t = np.array([ t[0,:,0,:], t[0,:,1,:]+t[1,:,0,:], t[1,:,1,:] ])   # shape (3,2D,2D)
+        t = np.reshape(t, (3,4*D*D))         # shape (3,4D^2)
+        self.xcov = np.copy(t)               # make contiguous
+
+
+    def fast_mean_and_cov(self, fnl, bv, grad=False):
+        """bv must be a 1-d array of length B, i.e. scalar is not allowed."""
+        
+        B, D, V, K = self.B, self.D, self.V, self.K
+        f3 = np.array((1.0, fnl, fnl**2))
+
+        bv = np.dot(bv, self.bias_matrix)  # shape (V,)
+        bv20 = np.reshape(bv, (V,1))
+        bv42 = np.reshape(bv, (1,1,V,1))
+        bv50 = np.reshape(bv, (V,1,1,1,1))
+
+        # Reminder: xmu = shape (2,2,V,K), reshaped to (2,2*D).
+        mu0 = np.dot(f3[:2], self.xmu)       # shape (2*D)
+        mu0 = np.reshape(mu0, (2,V,K))       # shape (2,V,K)
+        mu = mu0[0,:,:] + bv20 * mu0[1,:,:]  # shape (V,K)
+        mu = np.reshape(mu, (D,))
+
+        # Reminder: xcov = shape (3,2,V,K,2,V,K), reshaped to (3,4*D*D)
+        cov0 = np.dot(f3, self.xcov)                         # shape (4*D*D)
+        cov0 = np.reshape(cov0, (2,V,K,2,V,K))               # shape (2,V,K,2,V,K)
+        cov1 = cov0[0,:,:,:,:,:] + bv50 * cov0[1,:,:,:,:,:]  # shape (V,K,2,V,K)
+        cov = cov1[:,:,0,:,:] + bv42 * cov1[:,:,1,:,:]       # shape (V,K,V,K)
+        cov = np.reshape(cov, (D,D))
+
+        if not grad:
+            return mu, cov
+
+        dmu_dfnl = np.reshape(self.xmu[1,:], (2,V,K))        # shape (2,V,K)
+        dmu_dfnl = dmu_dfnl[0,:,:] + bv20 * dmu_dfnl[1,:,:]  # shape (V,K)
+        dmu_dbv = mu0[1,:,:]                                 # shape (V,K)
+
+        f2 = np.array((1.0, 2*fnl))
+        dcov_dfnl = np.dot(f2, self.xcov[1:])                               # shape (4*D*D)
+        dcov_dfnl = np.reshape(dcov_dfnl, (2,V,K,2,V,K))                    # shape (2,V,K,2,V,K)
+        dcov_dfnl = dcov_dfnl[0,:,:,:,:,:] + bv50 * dcov_dfnl[1,:,:,:,:,:]  # shape (V,K,2,V,K)
+        dcov_dfnl = dcov_dfnl[:,:,0,:,:] + bv42 * dcov_dfnl[:,:,1,:,:]      # shape (V,K,V,K)
+        dcov_dbv0 = cov0[1,:,:,:,:,:]                                       # shape (V,K,2,V,K)
+        dcov_dbv0 = dcov_dbv0[:,:,0,:,:] + bv42 * dcov_dbv0[:,:,1,:,:]      # shape (V,K,V,K)
+        dcov_dbv1 = cov1[:,:,1,:,:]                                         # shape (V,K,V,K)
+        
+        mu_grad = np.zeros((B+1,V,K))     
+        mu_grad[0,:,:] = dmu_dfnl
+        mu_grad[1:,:,:] = self.bias_matrix.reshape((B,V,1)) * dmu_dbv.reshape((1,V,K))
+        mu_grad = np.reshape(mu_grad, (B+1,D))
+        
+        cov_grad = np.zeros((B+1,V,K,V,K))
+        cov_grad[0,:,:,:,:] = dcov_dfnl
+        cov_grad[1:,:,:,:,:] = self.bias_matrix.reshape((B,V,1,1,1)) * dcov_dbv0.reshape((1,V,K,V,K))
+        cov_grad[1:,:,:,:,:] += self.bias_matrix.reshape((B,1,1,V,1)) * dcov_dbv1.reshape((1,V,K,V,K))
+        cov_grad = np.reshape(cov_grad, (B+1,D,D))
+        
+        return mu, cov, mu_grad, cov_grad
+
+
+    def fast_log_likelihood(self, fnl, bv):
+        if self.jeffreys_prior:
+            # Need gradients
+            mean, cov, grad_mean, grad_cov = self.fast_mean_and_cov(fnl, bv, grad=True)
+        else:
+            # No gradients needed
+            mean, cov = self.fast_mean_and_cov(fnl, bv, grad=False)
+        
+        x = self.data_vector - mean
+        l = np.linalg.cholesky(cov)
+        linv_x = scipy.linalg.solve_triangular(l, x, lower=True)
+
+        # log L = -(1/2) log(det C) - (1/2) x^T C^{-1} x
+        logL = -0.5 * np.dot(linv_x, linv_x)
+        logL -= np.sum(np.log(l.diagonal()))
+
+        if self.jeffreys_prior:
+            B, D = (self.B, self.D)
+            linv_dmu = scipy.linalg.solve_triangular(l, grad_mean.T, lower=True)  # shape (D,2)
+            f = np.dot(linv_dmu.T, linv_dmu)   # first term in 2-by-2 Fisher matrix
+
+            # Second term in 2-by-2 Fisher matrix
+            # F_{ij} = (1/2) Tr(C^{-1} dC_i C^{-1} dC_j)
+            #        = (1/2) Tr(S_i S_j)  where S_i = L^{-1} dC_i L^{-T}
+            
+            t = grad_cov.reshape(((B+1)*D, D))
+            u = scipy.linalg.solve_triangular(l, t.T, lower=True)  # shape (D, (B+1)*D)
+            u = u.reshape((D*(B+1), D))
+            v = scipy.linalg.solve_triangular(l, u.T, lower=True)  # shape (D,D*(B+1))
+            v = v.reshape((D*D, B+1))
+            f += 0.5 * np.dot(v.T, v)
+
+            # Jeffreys prior is equivalent to including sqrt(det(F)) in the likelihood.
+            sign, logabsdet_F = np.linalg.slogdet(f)
+            logL += 0.5 * logabsdet_F
+            assert sign == 1
+
+        return logL
+
+    
+    ############################################  Testing  #############################################
+    
+
+    def test_fast_mean_and_cov(self):
+        """Test fast_mean_and_cov(), by checking that it agrees with slow_mean_and_cov() at 10 random points."""
+
+        for _ in range(10):
+            fnl = np.random.uniform(-50, 50)
+            bv = np.random.uniform(0, 1, size=(self.B,))
+            
+            slow_mean, slow_cov = self.slow_mean_and_cov(fnl, bv)
+            slow_mean_grad, slow_cov_grad = self.slow_mean_and_cov_gradients(fnl, bv)
+            fast_mean, fast_cov, fast_mean_grad, fast_cov_grad = self.fast_mean_and_cov(fnl, bv, grad=True)
+
+            assert np.all(np.abs(slow_mean - fast_mean) < 1.0e-10)
+            assert np.all(np.abs(slow_cov - fast_cov) < 1.0e-10)
+            assert np.all(np.abs(slow_mean_grad - fast_mean_grad) < 1.0e-10)
+            assert np.all(np.abs(slow_cov_grad - fast_cov_grad) < 1.0e-10)
+    
+    
+    def test_fast_likelihood(self):
+        """Test fast_log_likelihood(), by checking that it agrees with slow_log_likelihood() at 10 random points."""
+        
+        for _ in range(10):
+            fnl = np.random.uniform(-50, 50)
+            bv = np.random.uniform(0, 1, size=(self.B,))
+            logL_slow = self.slow_log_likelihood(fnl, bv)
+            logL_fast = self.fast_log_likelihood(fnl, bv)
+            assert np.abs(logL_slow - logL_fast) < 1.0e-10
+        
+    
+    @staticmethod
+    def make_random():
+        """Construct and return a PgvLikelihood with random (data, surrs, bias_matrix).
+        
+        Useful for standalone testing of 'class PgvLikelihood', in order to construct
+        an "interesting" PgvLikelihood, in a situation where KSZ pipeline outputs are
+        not available."""
+
+        B = np.random.randint(1, 4)       # number of bias parameters in the MCMC
+        V = np.random.randint(B, B+3)     # number of velocity reconstructions
+        K = np.random.randint(5, 15)      # number of k-bins
+        S = np.random.randint(100, 200)   # number of surrogate sims
+        jeffreys_prior = (np.random.uniform() < 0.5)   # boolean
+
+        data = np.random.normal(size=(V,K))
+        surrs = np.random.normal(size=(S,2,2,V,K))
+
+        # Randomly generate the bias_matrix (shape (B,V), where B <= V)
+        # This is not so straightforward, since we want to avoid small SVD eigenvalues
+        # for numerical stability.
+
+        rot1 = utils.random_rotation_matrix(B)
+        rot2 = utils.random_rotation_matrix(V)
+        svds = np.random.uniform(1.0, 2.0, size=B)
+        bias_matrix = np.dot(rot1, svds.reshape((B,1)) * rot2[:B,:])
+
+        return PgvLikelihood(data, surrs, bias_matrix, jeffreys_prior)
+
+        
+    @staticmethod
+    def run_tests():
+        """Runs standalone tests of 'class PgvLikelihood'.
+        (Where "standalone" means that no KSZ pipeline outputs are needed.)"""
+        
+        for _ in range(20):
+            lik = PgvLikelihood.make_random()
+            lik.test_fast_mean_and_cov()
+            lik.test_fast_likelihood()
+
+        print('PgvLikelihod.run_tests(): pass')

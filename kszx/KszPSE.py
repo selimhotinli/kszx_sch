@@ -10,7 +10,7 @@ from . import core
 
 
 class KszPSE:
-    def __init__(self, box, cosmo, randcat, kbin_edges, surr_ngal_mean, surr_ngal_rms, surr_bg, rweights=None, nksz=0, ksz_rweights=None, ksz_bv=None, ksz_tcmb_realization=None, ztrue_col='z', zobs_col='z', deltac=1.68, kernel='cubic', surr_ic=True, use_dc=False):
+    def __init__(self, box, cosmo, randcat, kbin_edges, surr_ngal_mean, surr_ngal_rms, surr_bg, rweights=None, nksz=0, ksz_rweights=None, ksz_bv=None, ksz_tcmb_realization=None, ztrue_col='z', zobs_col='z', deltac=1.68, kernel='cubic', surr_ic_nbins=1, use_dc=False, spin0_hack=False):
         r"""KszPSE ("KSZ power spectrum estimator"): a high-level pipeline class for $P_{gg}$, $P_{gv}$, and $P_{vv}$.
 
         Features:
@@ -187,8 +187,11 @@ class KszPSE:
             when simulating the surrogate field. Currently ``cic`` and ``cubic`` are implemented
             (will define more options later).
 
-          - ``surr_ic`` (boolean): If True (the default), then the surrogates will satisfy a global
-            "integral constraint" (gal-rand) = 0.
+          - ``surr_ic_nbins`` (boolean): If surr_ic_nbins > 0, then the surrogates will satisfy a global
+            "integral constraint" (gal-rand) = 0 in bins.
+
+          - ``spin0_hack`` (booean): Uses a spin-0 estimator for velocity reconstruction (instead of spin-1).
+            I'll replace this later by something better!
 
           - ``use_dc`` (boolean): if False (the default), then the k=0 mode will not be used,
             even if the lowest bin includes k=0.
@@ -221,7 +224,8 @@ class KszPSE:
         self.zobs_col = zobs_col
         self.deltac = deltac
         self.kernel = kernel
-        self.surr_ic = surr_ic
+        self.surr_ic_nbins = surr_ic_nbins
+        self.spin0_hack = spin0_hack
         self.use_dc = use_dc
 
         ztrue = self._get_zcol(randcat, 'ztrue_col', ztrue_col)
@@ -234,7 +238,7 @@ class KszPSE:
         fname = 'KszPSE.__init__()'
         nrand = self.nrand
 
-        # 1-d arrays of length self.nrand (self.rweights can be None)
+        # 1-d arrays of length self.nrand
         self.surr_bg = self._parse_gal_arg(surr_bg, fname, 'surr_bg', nrand, z=ztrue, non_negative=True, allow_none=False)
         self.rweights = self._parse_gal_arg(rweights, fname, 'rweights', nrand, z=zobs, non_negative=True, allow_none=True)
 
@@ -248,6 +252,7 @@ class KszPSE:
         self.D = cosmo.D(z=ztrue, z0norm=True)
         self.faH = cosmo.frsd(z=ztrue) * cosmo.H(z=ztrue) / (1+ztrue)
         self.sigma2 = self._integrate_kgrid(self.box, cosmo.Plin_z0(self.box.get_k()))
+        self.zobs = zobs   # needed for surr_ic_nbins
 
         # Check that we have enough randoms to make surrogate fields.
         self.bD_max = np.max(self.surr_bg * self.D)
@@ -260,8 +265,8 @@ class KszPSE:
             raise RuntimeError(f'KszPSE: not enough randoms to make surrogate fields! This can be fixed by using'
                                + f' a larger random catalog (nrand={self.nrand}, nrand_min={self.nrand_min}).')
 
-        # pse_rweights = Length (nksz+1) list of (1-d array or None)
-        pse_rweights = [ self.rweights ]   # can be None
+        # pse_rweights = Length (nksz+1) list of 1-d arrays.
+        pse_rweights = [ self.rweights ]
 
         for (w,bv) in zip(self.ksz_rweights, self.ksz_bv):
             pse_rweights += [ (w*bv) if (w is not None) else bv ]
@@ -368,7 +373,8 @@ class KszPSE:
             w, bv, t = ksz_gweights[i], ksz_bv[i], ksz_tcmb[i]
             coeffs = (w*t) if (w is not None) else t
             wsum = np.dot(w,bv) if (w is not None) else np.sum(bv)
-            fmaps += [ self.catalog_gridder.grid_sampled_field(gcat, coeffs, wsum, i+1, spin=1, zcol_name=zobs_col) ]
+            spin = 0 if self.spin0_hack else 1
+            fmaps += [ self.catalog_gridder.grid_sampled_field(gcat, coeffs, wsum, i+1, spin=spin, zcol_name=zobs_col) ]
 
         # FIXME need some sort of CatalogPSE helper function here.
         pk = core.estimate_power_spectrum(self.box, fmaps, self.kbin_edges)
@@ -440,9 +446,9 @@ class KszPSE:
         phi0 = core.interpolate_points(self.box, phi0, self.rcat_xyz_true, self.kernel, fft=True)
         self.dSg_dfnl = Sg_prefactor * (2 * self.deltac) * (self.surr_bg-1) * phi0
 
-        if self.surr_ic:
-            self.Sg_coeffs -= np.mean(self.Sg_coeffs)
-            self.dSg_dfnl -= np.mean(self.dSg_dfnl)
+        if self.surr_ic_nbins > 0:
+            self.Sg_coeffs[:] = utils.subtract_binned_means(self.Sg_coeffs, self.zobs, self.surr_ic_nbins)
+            self.dSg_dfnl[:] = utils.subtract_binned_means(self.dSg_dfnl, self.zobs, self.surr_ic_nbins)
         
         self.Sv_noise = np.zeros((self.nksz, self.nrand))
         self.Sv_signal = np.zeros((self.nksz, self.nrand))
@@ -509,8 +515,9 @@ class KszPSE:
         for i in range(self.nksz):
             w, bv = self.ksz_rweights[i], self.ksz_bv[i]
             Sv_wsum = (Ng/Nr) * (np.dot(w,bv) if (w is not None) else np.sum(bv))
-            fmaps += [ self.catalog_gridder.grid_sampled_field(self.randcat, self.Sv_noise[i,:], Sv_wsum, i+1, spin=1, zcol_name=self.zobs_col) ]
-            fmaps += [ self.catalog_gridder.grid_sampled_field(self.randcat, self.Sv_signal[i,:], Sv_wsum, i+1, spin=1, zcol_name=self.zobs_col) ]
+            spin = 0 if self.spin0_hack else 1
+            fmaps += [ self.catalog_gridder.grid_sampled_field(self.randcat, self.Sv_noise[i,:], Sv_wsum, i+1, spin=spin, zcol_name=self.zobs_col) ]
+            fmaps += [ self.catalog_gridder.grid_sampled_field(self.randcat, self.Sv_signal[i,:], Sv_wsum, i+1, spin=spin, zcol_name=self.zobs_col) ]
 
         # Unnormalized power spectrum estimates (from CatalogGridder)
         pk = core.estimate_power_spectrum(self.box, fmaps, self.kbin_edges)
@@ -601,17 +608,17 @@ class KszPSE:
            1. a callable function z -> f(z)
            2. an array of length ngal
            3. a scalar
-           4. None
+           4. None (equivalent to 1.0)
 
         If 'z' is None, then a function (option #1 above) is not allowed.
         If 'allow_none' is False, then None (option #4 above) is not allowed.
 
-        Returns an array of length ngal (or None, if allow_none=True).
+        Returns an array of length ngal.
         """
 
         if f is None:
             if allow_none:
-                return None
+                return np.full(ngal, 1.0)
             raise RuntimeError(f"{funcname}: '{argname}' argument must be specified")
         
         if callable(f):
@@ -649,7 +656,7 @@ class KszPSE:
            1. a callable function z -> f(z)
            2. an array of length ngal
            3. a scalar
-           4. None
+           4. None (equivalent to 1.0)
            5. a length-nksz list (or iterable) of any of 1-4.
 
         If 'z' is None, then a function (option #1 above) is not allowed.
