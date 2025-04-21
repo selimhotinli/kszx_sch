@@ -966,7 +966,9 @@ class PgvLikelihood:
                     f[i,j] += 0.5 * np.trace(np.dot(cinv_dc[i], cinv_dc[j]))
 
             # Jeffreys prior is equivalent to including sqrt(det(F)) in the likelihood.
-            logL += 0.5 * np.log(np.linalg.det(f))
+            sign, logabsdet_F = np.linalg.slogdet(f)
+            logL += 0.5 * logabsdet_F
+            assert sign == 1
             
         return logL
 
@@ -1085,13 +1087,11 @@ class PgvLikelihood:
         m = grad_mu[1:,:]           # shape (B,D)       
         d = self.data_vector        # shape (D,)
 
-        cinv = np.linalg.inv(cov)
-        cinv_m = np.dot(cinv, m.T)  # shape (D,B)
-        h = np.dot(m, cinv_m)       # shape (B,B)
+        cinv_m = np.linalg.solve(cov, m.T)  # shape (D,B)
+        h = np.dot(m, cinv_m)               # shape (B,B)
         g = np.dot(d, cinv_m)
 
-        hinv = np.linalg.inv(h)
-        dchisq = np.dot(g, np.dot(hinv, g))
+        dchisq = np.dot(g, np.linalg.solve(h, g))
         return np.sqrt(dchisq)
         
 
@@ -1224,7 +1224,9 @@ class PgvLikelihood:
             f += 0.5 * np.dot(v.T, v)
 
             # Jeffreys prior is equivalent to including sqrt(det(F)) in the likelihood.
-            logL += 0.5 * np.log(np.linalg.det(f))
+            sign, logabsdet_F = np.linalg.slogdet(f)
+            logL += 0.5 * logabsdet_F
+            assert sign == 1
 
         return logL
 
