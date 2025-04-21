@@ -466,8 +466,9 @@ def boxcar_sum(a, m, normalize=False):
     
     If 'normalize' is True, then "boxcar means" are computed instead of "boxcar sums".
     """
-    
-    a = np.asarray(a)
+
+    # conversion to float helps with float32 dynamic-range issues
+    a = np.asarray(a, dtype=float)
     assert a.ndim == 1
     assert m >= 0
 
@@ -494,3 +495,30 @@ def boxcar_sum(a, m, normalize=False):
         ret = ret / den
 
     return ret
+
+
+def subtract_binned_means(data, x, nbins):
+    """Averages a 1-d 'data' array in x-bins, and returns a copy of 'data' with binned means subtracted."""
+
+    assert nbins >= 1
+    assert data.shape == x.shape
+
+    # Compute bin edges
+    bins = np.linspace(np.min(x), np.max(x), nbins + 1)
+    
+    # Digitize x values into bins
+    bin_indices = np.digitize(x, bins) - 1  # subtract 1 to make bin_indices 0-based
+
+    # Clip bin indices to ensure they're within range
+    bin_indices = np.clip(bin_indices, 0, nbins - 1)
+
+    # Compute sum and count per bin
+    sum_per_bin = np.bincount(bin_indices, weights=data, minlength=nbins)
+    count_per_bin = np.bincount(bin_indices, minlength=nbins)
+    
+    # Avoid division by zero
+    count_per_bin = np.maximum(count_per_bin, 1)
+    mean_per_bin = sum_per_bin / count_per_bin
+
+    # Subtract binned means
+    return data - mean_per_bin[bin_indices]
