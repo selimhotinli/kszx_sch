@@ -3,8 +3,6 @@
 
 .. automodule:: kszx.ksz_desils
 
-.. autofunction:: kszx.ksz_desils.subtract_zbin_means
-
 .. autoclass:: kszx.ksz_desils.PhotozDistribution
     :members:
 
@@ -12,4 +10,10 @@
     :members:
 
 .. autoclass:: kszx.ksz_desils.Kpipe
+    :members:
+
+.. autoclass:: kszx.ksz_desils.PipelineOutdir
+    :members:
+
+.. autoclass:: kszx.ksz_desils.PgvLikelihood
     :members:

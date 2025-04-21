@@ -551,19 +551,19 @@ class PipelineOutdir:
         PipelineOutdir: a helper class for postprocessing/plotting pipeline outputs.        
         (Note: there is a separate class 'PgvLikelihood' for MCMCs and parameter fits, see below)
 
-        The constructor reads the following files:
+        The constructor reads the following files::
         
           {dirname}/params.yml         # for nkbins, kmax
           {dirname}/pk_data.npy        # shape (3, 3, nkbins)
           {dirname}/pk_surrogates.npy  # shape (nsurr, 6, 6, nkbins)
           
-        Arguments:
+        Constructor arguments:
 
-         - dirname (string): name of pipeline output directory.
+          - dirname (string): name of pipeline output directory.
          
-         - nsurr (integer or None): this is a hack for running on an incomplete
-           pipeline. If specified, then {dirname}/pk_surr.npy is not read.
-           Instead we read files of the form {dirname}/tmp/pk_surr_{i}.npy.
+          - nsurr (integer or None): this is a hack for running on an incomplete
+            pipeline. If specified, then {dirname}/pk_surr.npy is not read.
+            Instead we read files of the form {dirname}/tmp/pk_surr_{i}.npy.
         """
 
         filename = f'{dirname}/params.yml'
@@ -628,6 +628,7 @@ class PipelineOutdir:
 
         The 'field' argument is a length-2 vector, selecting a linear combination
         of the 90+150 GHz velocity reconstructions. For example:
+        
            - field=[1,0] for 90 GHz
            - field=[0,1] for 150 GHz
            - field=[1,-1] for null (90-150) GHz.
@@ -640,6 +641,7 @@ class PipelineOutdir:
 
         The 'field' argument is a length-2 vector, selecting a linear combination
         of the 90+150 GHz velocity reconstructions. For example:
+        
            - field=[1,0] for 90 GHz
            - field=[0,1] for 150 GHz
            - field=[1,-1] for null (90-150) GHz.
@@ -651,6 +653,7 @@ class PipelineOutdir:
 
         The 'field' argument is a length-2 vector, selecting a linear combination
         of the 90+150 GHz velocity reconstructions. For example:
+        
            - field=[1,0] for 90 GHz
            - field=[0,1] for 150 GHz
            - field=[1,-1] for null (90-150) GHz.
@@ -663,6 +666,7 @@ class PipelineOutdir:
 
         The 'field' argument is a length-2 vector, selecting a linear combination
         of the 90+150 GHz velocity reconstructions. For example:
+        
            - field=[1,0] for 90 GHz
            - field=[0,1] for 150 GHz
            - field=[1,-1] for null (90-150) GHz.
@@ -676,6 +680,7 @@ class PipelineOutdir:
 
         The 'field' argument is a length-2 vector, selecting a linear combination
         of the 90+150 GHz velocity reconstructions. For example:
+        
            - field=[1,0] for 90 GHz
            - field=[0,1] for 150 GHz
            - field=[1,-1] for null (90-150) GHz.
@@ -687,10 +692,11 @@ class PipelineOutdir:
 
         The 'field' argument is a length-2 vector, selecting a linear combination
         of the 90+150 GHz velocity reconstructions. For example:
+        
            - field=[1,0] for 90 GHz
            - field=[0,1] for 150 GHz
            - field=[1,-1] for null (90-150) GHz.
-        """
+        """        
         return np.sqrt(np.var(self._pvv_surr(field,bv), axis=0))
 
 
@@ -850,15 +856,15 @@ class PgvLikelihood:
         if (V > 1) and (multi_bias is None):
             raise RuntimeError(f"The 'multi_bias' argument is required if nfields > 1.")
 
+        # PgvLikelihood constructor expects data array of shape (V,K)
         pgv_data = pout.pk_data[0,1:3,:K]      # shape (2,K)
         pgv_data = [ (f[0]*pgv_data[0,:] +f[1]*pgv_data[1,:]) for f in fields ]  # shape (V,K)
 
         # PgvLikelihood constructor expects surrogate array of shape (S,2,2,V,K).
         pgv_surr = pout.pk_surr[:,0:2,2:6,:K]           # shape (S,2,4,K)
-        pgv_surr = np.reshape(pgv_surr, (S,2,2,2,K))    # shape (S,2,2,2,K)        
+        pgv_surr = np.reshape(pgv_surr, (S,2,2,2,K))    # shape (S,2,2,2,K), length-2 indices are (fnl_exponent, freq, bv_exponent)
         pgv_surr = [ (f[0]*pgv_surr[:,:,0,:,:] + f[1]*pgv_surr[:,:,1,:,:]) for f in fields ]  # shape (V,S,2,2,K)
         pgv_surr = np.transpose(pgv_surr, (1,2,3,0,4))  # shape (S,2,2,V,K)
-        assert pgv_surr.shape == (S,2,2,V,K)
 
         bias_matrix = np.identity(V) if multi_bias else np.ones((1,V))
         return PgvLikelihood(pgv_data, pgv_surr, bias_matrix, jeffreys_prior)
