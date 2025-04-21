@@ -522,3 +522,20 @@ def subtract_binned_means(data, x, nbins):
 
     # Subtract binned means
     return data - mean_per_bin[bin_indices]
+
+
+def random_rotation_matrix(N):
+    """Returns a random N-by-N rotation matrix."""
+
+    # Precise meaning of "random": drawn from Haar measure on O(N).
+    # Algorithm: apply Gram-Schmidt process to a Gaussian random matrix.
+
+    ret = np.random.normal(size=(N,N))
+    
+    for i in range(N):
+        for j in range(i):
+            c = np.dot(ret[i,:], ret[j,:])
+            ret[i,:] -= c * ret[j,:]
+        ret[i,:] /= np.sqrt(np.dot(ret[i,:],ret[i,:]))
+
+    return ret
