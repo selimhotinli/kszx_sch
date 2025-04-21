@@ -1113,8 +1113,8 @@ class PgvLikelihood:
     #
     # "Fast" likelihood starts here.
     #
-    # This code is completely unreadable, but there is a unit test (test_fast_likelihood()) which
-    # verifies that slow_likelihood() and fast_likelihood() are equivalent.
+    # This code is completely unreadable, but there are unit tests which verify that the fast_*
+    # functions are equivalent o their slow_* equivalents.
 
 
     def _init_fast_likelihood(self):
@@ -1178,22 +1178,16 @@ class PgvLikelihood:
         dcov_dbv1 = cov1[:,:,1,:,:]                                         # shape (V,K,V,K)
         
         mu_grad = np.zeros((B+1,V,K))     
-        cov_grad = np.zeros((B+1,V,K,V,K))
-        
         mu_grad[0,:,:] = dmu_dfnl
-        cov_grad[0,:,:,:] = dcov_dfnl
-        
-        if B == 1:
-            mu_grad[1,:,:] = dmu_dbv
-            cov_grad[1,:,:] = dcov_dbv0 + dcov_dbv1
-        else:
-            for v in range(V):
-                mu_grad[v+1,v,:] = dmu_dbv[v,:]
-                cov_grad[v+1,v,:,:,:] = dcov_dbv0[v,:,:,:]
-                cov_grad[v+1,:,:,v,:] += dcov_dbv1[:,:,v,:]
-
+        mu_grad[1:,:,:] = self.bias_matrix.reshape((B,V,1)) * dmu_dbv.reshape((1,V,K))
         mu_grad = np.reshape(mu_grad, (B+1,D))
+        
+        cov_grad = np.zeros((B+1,V,K,V,K))
+        cov_grad[0,:,:,:,:] = dcov_dfnl
+        cov_grad[1:,:,:,:,:] = self.bias_matrix.reshape((B,V,1,1,1)) * dcov_dbv0.reshape((1,V,K,V,K))
+        cov_grad[1:,:,:,:,:] += self.bias_matrix.reshape((B,1,1,V,1)) * dcov_dbv1.reshape((1,V,K,V,K))
         cov_grad = np.reshape(cov_grad, (B+1,D,D))
+        
         return mu, cov, mu_grad, cov_grad
 
 
@@ -1234,9 +1228,29 @@ class PgvLikelihood:
 
         return logL
 
+    
+    ############################################  Testing  #############################################
+    
+
+    def test_fast_mean_and_cov(self):
+        """Test fast_mean_and_cov(), by checking that it agrees with slow_mean_and_cov() at 10 random points."""
+
+        for _ in range(10):
+            fnl = np.random.uniform(-50, 50)
+            bv = np.random.uniform(0, 1, size=(self.B,))
             
+            slow_mean, slow_cov = self.slow_mean_and_cov(fnl, bv)
+            slow_mean_grad, slow_cov_grad = self.slow_mean_and_cov_gradients(fnl, bv)
+            fast_mean, fast_cov, fast_mean_grad, fast_cov_grad = self.fast_mean_and_cov(fnl, bv, grad=True)
+
+            assert np.all(np.abs(slow_mean - fast_mean) < 1.0e-10)
+            assert np.all(np.abs(slow_cov - fast_cov) < 1.0e-10)
+            assert np.all(np.abs(slow_mean_grad - fast_mean_grad) < 1.0e-10)
+            assert np.all(np.abs(slow_cov_grad - fast_cov_grad) < 1.0e-10)
+    
+    
     def test_fast_likelihood(self):
-        """Test the fast likelihood, by checking that it agrees with the slow likelihood."""
+        """Test fast_log_likelihood(), by checking that it agrees with slow_log_likelihood() at 10 random points."""
         
         for _ in range(10):
             fnl = np.random.uniform(-50, 50)
@@ -1245,4 +1259,44 @@ class PgvLikelihood:
             logL_fast = self.fast_log_likelihood(fnl, bv)
             assert np.abs(logL_slow - logL_fast) < 1.0e-10
         
-        print(f'test_fast_likelihood: pass')
+    
+    @staticmethod
+    def make_random():
+        """Construct and return a PgvLikelihood with random (data, surrs, bias_matrix).
+        
+        Useful for standalone testing of 'class PgvLikelihood', in order to construct
+        an "interesting" PgvLikelihood, in a situation where KSZ pipeline outputs are
+        not available."""
+
+        B = np.random.randint(1, 4)       # number of bias parameters in the MCMC
+        V = np.random.randint(B, B+3)     # number of velocity reconstructions
+        K = np.random.randint(5, 15)      # number of k-bins
+        S = np.random.randint(100, 200)   # number of surrogate sims
+        jeffreys_prior = (np.random.uniform() < 0.5)   # boolean
+
+        data = np.random.normal(size=(V,K))
+        surrs = np.random.normal(size=(S,2,2,V,K))
+
+        # Randomly generate the bias_matrix (shape (B,V), where B <= V)
+        # This is not so straightforward, since we want to avoid small SVD eigenvalues
+        # for numerical stability.
+
+        rot1 = utils.random_rotation_matrix(B)
+        rot2 = utils.random_rotation_matrix(V)
+        svds = np.random.uniform(1.0, 2.0, size=B)
+        bias_matrix = np.dot(rot1, svds.reshape((B,1)) * rot2[:B,:])
+
+        return PgvLikelihood(data, surrs, bias_matrix, jeffreys_prior)
+
+        
+    @staticmethod
+    def run_tests():
+        """Runs standalone tests of 'class PgvLikelihood'.
+        (Where "standalone" means that no KSZ pipeline outputs are needed.)"""
+        
+        for _ in range(20):
+            lik = PgvLikelihood.make_random()
+            lik.test_fast_mean_and_cov()
+            lik.test_fast_likelihood()
+
+        print('PgvLikelihod.run_tests(): pass')
