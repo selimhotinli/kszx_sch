@@ -539,3 +539,37 @@ def random_rotation_matrix(N):
         ret[i,:] /= np.sqrt(np.dot(ret[i,:],ret[i,:]))
 
     return ret
+
+
+def contract_axis(arr, weights, axis):
+    """'Contract a D-dimensional array with a 1-d weights array, returning a (D-1) dimensional array.
+
+    Function arguments:
+
+      - ``arr``: D-dimensional array of shape ``(n[0], n[1], ..., n[D-1])``.
+
+      - ``weights`` 1-d array of length ``n[axis]``.
+
+      - ``axis``: integer 0 <= axis < D.
+
+    Returns a (D-1) dimensional array of shape ``(n[0], ..., n[axis-1], n[axis+1], ..., n[D-1])``,
+    defined by "contracting" the weights array along the specified axis of 'arr'.
+    """
+    
+    arr = np.asarray(arr)
+    weights = np.asarray(weights)
+    
+    assert 0 <= axis < arr.ndim
+    assert weights.shape == (arr.shape[axis],)
+
+    # Transpose 'arr' so that 'axis' is last.
+    perm = np.zeros(arr.ndim, dtype=int)
+    perm[:axis] = np.arange(axis)
+    perm[axis:-1] = np.arange(axis+1, arr.ndim)
+    perm[-1] = axis
+    arr = np.transpose(arr, perm)
+
+    # Now we can just call np.dot().
+    return np.dot(arr, weights)
+
+
