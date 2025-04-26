@@ -22,6 +22,7 @@ from . import utils
 from . import io_utils
 from . import healpix_utils
 from . import pixell_utils
+from . import wfunc_utils
 
 from .Box import Box
 from .BoundingBox import BoundingBox
@@ -41,3 +42,4 @@ from . import planck
 from . import plot
 from . import sdss
 from . import tests
+
