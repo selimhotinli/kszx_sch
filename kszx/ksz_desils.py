@@ -281,9 +281,10 @@ class Kpipe:
             raise RuntimeError(f'Kpipe.get_pk_data(): run=False was specified, and file {self.pk_data_filename} not found')
 
         print('get_pk_data(): running\n', end='')
-        
-        t90 = utils.subtract_binned_means(self.gcat.tcmb_90, self.gcat.z, nbins=25)
-        t150 = utils.subtract_binned_means(self.gcat.tcmb_150, self.gcat.z, nbins=25)
+
+        # FIXME mean subtraction moved into KszPSE -- need to make this less confusing
+        # t90 = utils.subtract_binned_means(self.gcat.tcmb_90, self.gcat.z, nbins=25)
+        # t150 = utils.subtract_binned_means(self.gcat.tcmb_150, self.gcat.z, nbins=25)
 
         gweights = getattr(self.gcat, 'weight_zerr', None)
         vweights = getattr(self.gcat, 'vweight_zerr', None)
@@ -293,7 +294,7 @@ class Kpipe:
             gweights = gweights,
             ksz_gweights = vweights,
             ksz_bv = [ self.gcat.bv_90, self.gcat.bv_150 ], 
-            ksz_tcmb = [ t90, t150 ],
+            ksz_tcmb = [ self.gcat.tcmb_90, self.gcat.tcmb_150 ],
             zobs_col = 'z'
         )
 

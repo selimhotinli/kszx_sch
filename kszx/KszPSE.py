@@ -372,6 +372,8 @@ class KszPSE:
         for i in range(self.nksz):
             w, bv, t = ksz_gweights[i], ksz_bv[i], ksz_tcmb[i]
             coeffs = (w*t) if (w is not None) else t
+            # FIXME mean subtraction now happens here (previously in Kpipe) -- need to make this less confusing
+            coeffs = utils.subtract_binned_means(coeffs, z, nbins=25)
             wsum = np.dot(w,bv) if (w is not None) else np.sum(bv)
             spin = 0 if self.spin0_hack else 1
             fmaps += [ self.catalog_gridder.grid_sampled_field(gcat, coeffs, wsum, i+1, spin=spin, zcol_name=zobs_col) ]
