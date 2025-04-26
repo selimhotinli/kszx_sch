@@ -135,7 +135,7 @@ class KszPSE2:
               4. None (equivalent to ``gweights=1.0``).
 
             The ``gweights`` passed to ``eval_pk()`` should reflect as closely as possible the ``rweights``
-            passed to the :class:`~kszx.KszPSE2` constructor. For example, if randoms are FKP-weighted, then
+            passed to the :class:`~kszx.KszPSE` constructor. For example, if randoms are FKP-weighted, then
             galaxies should also be FKP-weighted. (Warning: even a small mismatch between the weighting of
             galaxies/randoms can produce a large contribution to $P_{gg}$!)
 
@@ -150,10 +150,10 @@ class KszPSE2:
                  velocity reconstructions being processed.
 
             The ``ksz_gweights`` passed to ``eval_pk()`` should reflect as closely as possible the 
-            ``ksz_rweights`` passed to the :class:`~kszx.KszPSE2` constructor.
+            ``ksz_rweights`` passed to the :class:`~kszx.KszPSE` constructor.
     
           - ``ksz_bv``: Per-object KSZ velocity bias $b_v^i$. For more discsusion, and some key equations
-            showing how to approximate $b_v$, see the ``ksz_bv`` argument in the :class:`~kszx.KszPSE2`
+            showing how to approximate $b_v$, see the ``ksz_bv`` argument in the :class:`~kszx.KszPSE`
             constructor docstring. Can be specified as either:
 
               1. an array of length ``gcat.size``, to represent an arbitrary per-object $b_v$.
@@ -163,14 +163,14 @@ class KszPSE2:
                  velocity reconstructions bing processed. (This will usually be the case.)
 
             The ``ksz_bv`` argument passed to ``eval_pk()`` should reflect as closely as possible the 
-            ``ksz_bv`` argument passed to the :class:`~kszx.KszPSE2` constructor. (Same filtering, etc.)
+            ``ksz_bv`` argument passed to the :class:`~kszx.KszPSE` constructor. (Same filtering, etc.)
 
           - ``ksz_tcmb``: 2-d array of shape ``(nksz, gcat.size)``.
             Note that each velocity reconstruction can use a different CMB filter. This is why $\tilde T$ is a 2-d
             array, indexed by ``0 <= i < nksz``, in addition to an index ``0 <= j < gcat.size``.
 
             The ``ksz_tcmb`` argument passed to ``eval_pk()`` should reflect as closely as possible the 
-            ``ksz_tcmb_realization`` argument passed to the :class:`~kszx.KszPSE2` constructor. (Same filtering, etc.)
+            ``ksz_tcmb_realization`` argument passed to the :class:`~kszx.KszPSE` constructor. (Same filtering, etc.)
         
           - ``zobs_col`` (string): name of column containing observed redshifts in ``gcat``.
             By default, we use the value ``zcol_obs`` that was specified when the constructor was called.
@@ -193,7 +193,7 @@ class KszPSE2:
         # Parse the 'gweights', 'ksz_gweights', 'ksz_bv', and 'ksz_tcmb' args.
         # (Same parsing logic as 'rweights', 'ksz_rweights', 'ksz_bv', and 'ksz_tcmb_realization' in __init__().)
 
-        fname = 'KszPSE2.eval_pk()'
+        fname = 'KszPSE.eval_pk()'
         gweights = self._parse_gal_arg(gweights, fname, 'gweights', gcat.size, z, non_negative=True, allow_none=True)
         ksz_bv = self._parse_ksz_arg(ksz_bv, fname, 'ksz_bv', gcat.size, z, allow_none=False)
         ksz_gweights = self._parse_ksz_arg(ksz_gweights, fname, 'ksz_gweights', gcat.size, z, allow_none=True)
@@ -203,33 +203,23 @@ class KszPSE2:
         # Initialize fmaps.
 
         gweights = gweights if (gweights is not None) else 1.0
-        fmaps_old = [ self.catalog_gridder.grid_density_field(gcat, gweights, 0, zcol_name=zobs_col) ]
-        rcat_xyz = self.randcat.get_xyz(self.cosmo, zcol_name=self.zobs_col)  # not ztrue_col
-        fmaps_new = [ core.grid_points(self.box, gcat_xyz, gweights, rcat_xyz, self.rweights, kernel=self.kernel, fft=True, compensate=True) ]
-        weights_new = [ np.sum(gweights) ]  # reminder: footprints are normalized to sum(weights)=1
+        fmaps = [ self.catalog_gridder.grid_density_field(gcat, gweights, 0, zcol_name=zobs_col) ]
 
         for i in range(self.nksz):
             w, bv, t = ksz_gweights[i], ksz_bv[i], ksz_tcmb[i]
             coeffs = (w*t) if (w is not None) else t
-            # FIXME mean subtraction now happens here (previously in KszPipe) -- need to make this less confusing
+            # FIXME mean subtraction now happens here (previously in Kpipe) -- need to make this less confusing
             coeffs = utils.subtract_binned_means(coeffs, z, nbins=25)
             wsum = np.dot(w,bv) if (w is not None) else np.sum(bv)
             spin = 0 if self.spin0_hack else 1
-            fmaps_old += [ self.catalog_gridder.grid_sampled_field(gcat, coeffs, wsum, i+1, spin=spin, zcol_name=zobs_col) ]
-            fmaps_new += [ core.grid_points(self.box, gcat_xyz, coeffs, kernel=self.kernel, fft=True, spin=spin, compensate=True) ]
-            weights_new += [ np.sum(w) if (w is not None) else gcat.size ]
-        
-        pk_old = core.estimate_power_spectrum(self.box, fmaps_old, self.kbin_edges)
-        pk_old *= np.reshape(self.catalog_gridder.ps_normalization, (self.nksz+1, self.nksz+1, 1))
-        
-        wf = wfunc_utils.scale_wapprox(self.window_function, weights_new)
-        pk_new = core.estimate_power_spectrum(self.box, fmaps_new, self.kbin_edges)
-        pk_new /= wf[:,:,None]
+            fmaps += [ self.catalog_gridder.grid_sampled_field(gcat, coeffs, wsum, i+1, spin=spin, zcol_name=zobs_col) ]
 
-        print(f'XXX {np.max(np.abs(pk_old - pk_new)) = }')
-        return pk_old
+        # FIXME need some sort of CatalogPSE helper function here.
+        pk = core.estimate_power_spectrum(self.box, fmaps, self.kbin_edges)
+        pk *= np.reshape(self.catalog_gridder.ps_normalization, (self.nksz+1, self.nksz+1, 1))
+        return pk
         
-
+    
     def simulate_surrogate(self):
         r"""Makes a random surrogate simulation, and stores the result in class members (return value is None).
         
@@ -660,6 +650,7 @@ class KszPipe:
             self.kbin_centers = (self.kbin_edges[1:] + self.kbin_edges[:-1]) / 2.
 
         self.box = io_utils.read_pickle(f'{input_dir}/bounding_box.pkl')
+        self.kernel = 'cubic'
 
         # This code moved into cached properties (see below), in order to reduce startup time.
         # self.cosmo = Cosmology('planck18+bao')
@@ -754,6 +745,32 @@ class KszPipe:
         io_utils.write_npy(self.pk_data_filename, pk_data)
         return pk_data
 
+    
+    def get_pk_data2(self, run=False, force=False):
+        self.pse  # for window function
+        gweights = getattr(self.gcat, 'weight_zerr', np.ones(self.gcat.size))
+        rweights = getattr(self.rcat, 'weight_zerr', np.ones(self.rcat.size))
+        vweights = getattr(self.gcat, 'vweight_zerr', np.ones(self.gcat.size))
+        
+        gcat_xyz = self.gcat.get_xyz(self.cosmo)
+        rcat_xyz = self.rcat.get_xyz(self.cosmo, zcol_name='zobs')  # not ztrue
+
+        bv_cols = [ self.gcat.bv_90, self.gcat.bv_150 ]
+        tcmb_cols = [ self.gcat.tcmb_90, self.gcat.tcmb_150 ]
+
+        fmaps = [ core.grid_points(self.box, gcat_xyz, gweights, rcat_xyz, rweights, kernel=self.kernel, fft=True, compensate=True) ]
+        weights = [ np.sum(gweights) ]  # reminder: footprints are normalized to sum(weights)=1
+
+        for bv, tcmb in zip(bv_cols, tcmb_cols):
+            coeffs = vweights * tcmb
+            coeffs = utils.subtract_binned_means(coeffs, self.gcat.z, nbins=25)  # note mean subtraction here
+            fmaps += [ core.grid_points(self.box, gcat_xyz, coeffs, kernel=self.kernel, fft=True, spin=1, compensate=True) ]
+            weights += [ np.sum(vweights) ]
+        
+        wf = wfunc_utils.scale_wapprox(self.pse.window_function, weights)
+        pk = core.estimate_power_spectrum(self.box, fmaps, self.kbin_edges)
+        pk /= wf[:,:,None]
+        return pk
 
         
     def get_pk_surrogate(self, isurr, run=False):
