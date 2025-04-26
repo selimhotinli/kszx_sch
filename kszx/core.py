@@ -283,7 +283,7 @@ def _check_weights(box, points, weights, prefix=''):
     return weights
 
 
-def grid_points(box, points, weights=None, rpoints=None, rweights=None, kernel=None, fft=False, spin=0, periodic=False, wscal=1.0):
+def grid_points(box, points, weights=None, rpoints=None, rweights=None, kernel=None, fft=False, spin=0, periodic=False, compensate=False, wscal=1.0):
     r"""Returns a map representing a sum of delta functions (or a "galaxies - randoms" difference map).
 
     Function args:
@@ -318,7 +318,10 @@ def grid_points(box, points, weights=None, rpoints=None, rweights=None, kernel=N
         - ``fft`` (boolean): if True, then ``fft_r2c(.., spin)`` will be applied to the
           output map after gridding.
     
-        - ``spin`` (integer): passed as 'spin' argument to ``fft_c2r()``. (Only used if ``fft=True``.)
+        - ``spin`` (integer): passed as 'spin' argument to ``fft_r2c()``. (Only used if ``fft=True``.)
+    
+        - ``compensate`` (boolean): If true, then ``kszx.apply_kernel_compensation()`` is
+          called after ``fft_r2c()``. (Only used if ``fft=True``.)
 
         - ``periodic`` (boolean): if True, then the box has periodic boundary conditions.
 
@@ -367,6 +370,10 @@ def grid_points(box, points, weights=None, rpoints=None, rweights=None, kernel=N
         raise RuntimeError("kszx.grid_points(): 'rpoints' arg is None, but 'rweights' arg is not None")
     if box.ndim != 3:
         raise RuntimeError('kszx.grid_points(): currently only ndim==3 is supported')
+    if (spin != 0) and (not fft):
+        raise RuntimeError("kszx.grid_points(): 'spin' argument was specified with fft=False")
+    if compensate and (not fft):
+        raise RuntimeError("kszx.grid_points(): 'compensate' argument was specified with fft=False")
 
     wscal = float(wscal)
     points = utils.asarray(points, 'kszx.grid_points()', 'points', dtype=float)
@@ -395,7 +402,12 @@ def grid_points(box, points, weights=None, rpoints=None, rweights=None, kernel=N
         rwscal = -weight_sum / rweight_sum
         cpp_kernel(grid, rpoints, rweights, rwscal, box.lpos[0], box.lpos[1], box.lpos[2], box.pixsize, periodic)
 
-    return fft_r2c(box,grid,spin=spin) if fft else grid
+    if fft:
+        grid = fft_r2c(box, grid, spin=spin)
+    if compensate:
+        apply_kernel_compensation(box, grid, kernel)
+        
+    return grid
 
 
 def apply_kernel_compensation(box, arr, kernel, exponent=-0.5):
@@ -895,22 +907,24 @@ def _check_kbin_edges(box, kbin_edges, use_dc):
     return kbin_edges
     
     
-def _parse_map_or_maps(box, map_or_maps):
+def _parse_map_or_maps(box, map_or_maps, caller):
     """Helper for estimate_power_spectrum(). Returns (map_list, multi_map_flag)."""
 
+    if not isinstance(box, Box):        
+        raise RuntimeError(f"{caller}(): expected 'box' argument to an instance of class kszx.Box")
+    
     if box.is_fourier_space_map(map_or_maps):
         return ([map_or_maps], False)  # single map
 
     try:
         map_list = list(map_or_maps)
+        if all(box.is_fourier_space_map(x) for x in map_list):
+            return (map_list, True)
     except:
-        return ([], False)
+        pass
 
-    for x in map_list:
-        if not box.is_fourier_space_map(x):
-            return ([], False)
-
-    return (map_list, True)
+    raise RuntimeError(f"{caller}(): expected argument to be either a Fourier-space map,"
+                       + " or an iterable returning Fourier-space maps")
     
 
 def estimate_power_spectrum(box, map_or_maps, kbin_edges, *, use_dc=False, allow_empty_bins=False, return_counts=False):
@@ -987,12 +1001,7 @@ def estimate_power_spectrum(box, map_or_maps, kbin_edges, *, use_dc=False, allow
     """
 
     kbin_edges = _check_kbin_edges(box, kbin_edges, use_dc)
-    map_list, multi_map_flag = _parse_map_or_maps(box, map_or_maps)
-    
-    if len(map_list) == 0:
-        raise RuntimeError("kszx.estimate_power_spectrum(): expected 'map_or_maps' arg to be either"
-                           + "a Fourier-space map, or an iterable returning Fourier-space maps")
-    
+    map_list, multi_map_flag = _parse_map_or_maps(box, map_or_maps, 'kszx.estimate_power_spectrum')
     pk, bin_counts = cpp_kernels.estimate_power_spectrum(map_list, kbin_edges, box.npix, box.kfund, box.box_volume)
 
     if (not allow_empty_bins) and (np.min(bin_counts) == 0):
