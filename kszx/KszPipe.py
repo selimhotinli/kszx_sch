@@ -21,8 +21,9 @@ from .Box import Box
 from .Catalog import Catalog
 from .Cosmology import Cosmology
 from .CatalogGridder import CatalogGridder
+from .SurrogateFactory import SurrogateFactory
 
-
+    
 class KszPSE2:
     def __init__(self, box, cosmo, randcat, kbin_edges, surr_ngal_mean, surr_ngal_rms, surr_bg, rweights=None, nksz=0, ksz_rweights=None, ksz_bv=None, ksz_tcmb_realization=None, ztrue_col='z', zobs_col='z', deltac=1.68, kernel='cubic', surr_ic_nbins=1, use_dc=False, spin0_hack=False):
         assert isinstance(box, Box)
@@ -262,6 +263,7 @@ class KszPSE2:
                 
         delta0 = core.simulate_gaussian_field(self.box, self.cosmo.Plin_z0)
         core.apply_kernel_compensation(self.box, delta0, self.kernel)
+        self.save_delta0 = delta0 
 
         # delta_g(k,z) = (bg + 2 fNL deltac (bg-1) / alpha(k,z)) * delta_m(k,z)
         #              = (bg D(z) + 2 fNL deltac (bg-1) / alpha0(k)) * delta0(k)
@@ -274,8 +276,10 @@ class KszPSE2:
         self.Sg_coeffs = Sg_prefactor * delta_G
 
         eta_rms = np.sqrt((nrand/ngal) - (bD*bD) * self.sigma2)
-        eta = np.random.normal(scale = eta_rms)
+        ug = np.random.normal(size = nrand)
+        eta = ug * eta_rms
         self.Sg_coeffs += Sg_prefactor * eta
+        self.save_ug = ug
 
         # Add term to deltag:
         #     2 fNL deltac (bg-1) / alpha(k,z) * delta_m(k,z)
@@ -306,7 +310,8 @@ class KszPSE2:
         M = np.zeros(nrand)
         M[:ngal] = 1.0
         M = np.random.permutation(M)
-
+        self.save_M = M
+        
         for i in range(self.nksz):
             self.Sv_noise[i,:] = M * self.ksz_tcmb_realization[i]
             self.Sv_signal[i,:] = (ngal/nrand) * self.ksz_bv[i] * vr
@@ -334,7 +339,7 @@ class KszPSE2:
         """
 
         if not hasattr(self, 'Sg_coeffs'):
-            raise RuntimeError("Before calling KszPSE2.eval_pk_surrogate(), you must call KszPSE2.simulate_surrogate()")
+            raise RuntimeError("Before calling KszPSE.eval_pk_surrogate(), you must call KszPSE.simulate_surrogate()")
         
         Nr = self.nrand
         Ng = self.surr_ngal
@@ -346,29 +351,20 @@ class KszPSE2:
         # fmaps[2*i+2] = surrogate sim S_v, reconstruction noise contribution only (where 0 <= i < nksz).
         # fmaps[2*i+3] = surrogate sim S_v, velocity signal contribution only (where 0 <= i < nksz).
         
-        fmaps_old = [ ]
-        fmaps_new = [ ]
-        weights_new = [ ]
-        fmaps_old += [ self.catalog_gridder.grid_sampled_field(self.randcat, self.Sg_coeffs, Sg_wsum, 0, zcol_name=self.zobs_col) ]
-        fmaps_old += [ self.catalog_gridder.grid_sampled_field(self.randcat, self.dSg_dfnl, Sg_wsum, 0, zcol_name=self.zobs_col) ]
-        fmaps_new += [ core.grid_points(self.box, self.rcat_xyz_obs, self.Sg_coeffs, kernel=self.kernel, fft=True, spin=0, compensate=True) ]
-        fmaps_new += [ core.grid_points(self.box, self.rcat_xyz_obs, self.dSg_dfnl, kernel=self.kernel, fft=True, spin=0, compensate=True) ]
-        weights_new += [ Sg_wsum, Sg_wsum ]
+        fmaps = [ ]
+        fmaps += [ self.catalog_gridder.grid_sampled_field(self.randcat, self.Sg_coeffs, Sg_wsum, 0, zcol_name=self.zobs_col) ]
+        fmaps += [ self.catalog_gridder.grid_sampled_field(self.randcat, self.dSg_dfnl, Sg_wsum, 0, zcol_name=self.zobs_col) ]
         
         for i in range(self.nksz):
             w, bv = self.ksz_rweights[i], self.ksz_bv[i]
             Sv_wsum = (Ng/Nr) * (np.dot(w,bv) if (w is not None) else np.sum(bv))
             spin = 0 if self.spin0_hack else 1
-            fmaps_old += [ self.catalog_gridder.grid_sampled_field(self.randcat, self.Sv_noise[i,:], Sv_wsum, i+1, spin=spin, zcol_name=self.zobs_col) ]
-            fmaps_old += [ self.catalog_gridder.grid_sampled_field(self.randcat, self.Sv_signal[i,:], Sv_wsum, i+1, spin=spin, zcol_name=self.zobs_col) ]
-            fmaps_new += [ core.grid_points(self.box, self.rcat_xyz_obs, self.Sv_noise[i,:], kernel=self.kernel, fft=True, spin=1, compensate=True) ]
-            fmaps_new += [ core.grid_points(self.box, self.rcat_xyz_obs, self.Sv_signal[i,:], kernel=self.kernel, fft=True, spin=1, compensate=True) ]
-            wnew = (Ng * np.mean(w)) if (w is not None) else Ng
-            weights_new += [ wnew, wnew ]
-            
+            fmaps += [ self.catalog_gridder.grid_sampled_field(self.randcat, self.Sv_noise[i,:], Sv_wsum, i+1, spin=spin, zcol_name=self.zobs_col) ]
+            fmaps += [ self.catalog_gridder.grid_sampled_field(self.randcat, self.Sv_signal[i,:], Sv_wsum, i+1, spin=spin, zcol_name=self.zobs_col) ]
+
         # Unnormalized power spectrum estimates (from CatalogGridder)
-        pk_old = core.estimate_power_spectrum(self.box, fmaps_old, self.kbin_edges)
-        assert pk_old.shape == (2*self.nksz+2, 2*self.nksz+2, self.nkbins)
+        pk = core.estimate_power_spectrum(self.box, fmaps, self.kbin_edges)
+        assert pk.shape == (2*self.nksz+2, 2*self.nksz+2, self.nkbins)
 
         # Index mapping for power spectrum normalization.
         imap = [ (i//2) for i in range(2*self.nksz+2) ]
@@ -376,21 +372,9 @@ class KszPSE2:
         # Apply power spectrum normalization
         for i in range(2*self.nksz+2):
             for j in range(2*self.nksz+2):
-                pk_old[i,j,:] *= self.catalog_gridder.ps_normalization[imap[i],imap[j]]
+                pk[i,j,:] *= self.catalog_gridder.ps_normalization[imap[i],imap[j]]
 
-        wf = wfunc_utils.scale_wapprox(self.window_function, weights_new, imap)
-        pk_new = core.estimate_power_spectrum(self.box, fmaps_new, self.kbin_edges)
-        pk_new /= wf[:,:,None]
-
-        # FIXME temporary hack for testing
-        self.pk_old = pk_old
-        self.pk_new = pk_new
-        self.fmaps_old = fmaps_old
-        self.fmaps_new = fmaps_new
-        self.weights_new = weights_new
-        
-        print(f'XXX {np.max(np.abs(pk_old - pk_new)) = }')
-        return pk_old
+        return pk
 
 
     @classmethod
@@ -651,6 +635,7 @@ class KszPipe:
 
         self.box = io_utils.read_pickle(f'{input_dir}/bounding_box.pkl')
         self.kernel = 'cubic'
+        self.deltac = 1.68
 
         # This code moved into cached properties (see below), in order to reduce startup time.
         # self.cosmo = Cosmology('planck18+bao')
@@ -674,6 +659,12 @@ class KszPipe:
     def rcat(self):
         return Catalog.from_h5(f'{self.input_dir}/randoms.h5')
 
+    @functools.cached_property
+    def surrogate_factory(self):
+        # FIXME needs comment
+        surr_ngal_mean = self.gcat.size
+        surr_ngal_rms = 4 * np.sqrt(self.gcat.size)  # 4x Poisson
+        return SurrogateFactory(self.box, self.cosmo, self.rcat, surr_ngal_mean, surr_ngal_rms, 'ztrue')
     
     @functools.cached_property
     def pse(self):
@@ -747,7 +738,6 @@ class KszPipe:
 
     
     def get_pk_data2(self, run=False, force=False):
-        self.pse  # for window function
         gweights = getattr(self.gcat, 'weight_zerr', np.ones(self.gcat.size))
         rweights = getattr(self.rcat, 'weight_zerr', np.ones(self.rcat.size))
         vweights = getattr(self.gcat, 'vweight_zerr', np.ones(self.gcat.size))
@@ -817,7 +807,68 @@ class KszPipe:
         io_utils.write_npy(self.pk_surr_filename, pk)
         return pk
 
+    
+    def get_pk_surrogate2(self, ngal=None, delta=None, M=None, ug=None):        
+        nfreq = 2
+        zobs = self.rcat.zobs
+        nrand = self.rcat.size
+        bv_list = [ self.rcat.bv_90, self.rcat.bv_150 ]
+        tcmb_list = [ self.rcat.tcmb_90, self.rcat.tcmb_150 ]
+        rweights = getattr(self.rcat, 'weight_zerr', np.ones(nrand))
+        vweights = getattr(self.rcat, 'vweight_zerr', np.ones(nrand))
+        xyz_obs = self.rcat.get_xyz(self.cosmo, 'zobs')
 
+        if ug is None:
+            ug = np.random.normal(size=nrand)
+            
+        self.surrogate_factory.simulate_surrogate(ngal=ngal, delta=delta, M=M)
+
+        ngal = self.surrogate_factory.ngal
+        bD = self.surr_bg * self.surrogate_factory.D
+        eta_rms = np.sqrt((nrand/ngal) - (bD*bD) * self.surrogate_factory.sigma2)
+        eta = ug * eta_rms
+
+        # Coeffs
+        Sg = (ngal/nrand) * rweights * (self.surr_bg * self.surrogate_factory.delta + eta)
+        dSg_dfnl = (ngal/nrand) * rweights * (2 * self.deltac) * (self.surr_bg-1) * self.surrogate_factory.phi        
+        Sv_noise = np.zeros((nfreq, nrand))
+        Sv_signal = np.zeros((nfreq, nrand))
+
+        for i,(bv,tcmb) in enumerate(zip(bv_list,tcmb_list)):
+            Sv_noise[i,:] = vweights * self.surrogate_factory.M * tcmb
+            Sv_signal[i,:] = (ngal/nrand) * vweights * bv * self.surrogate_factory.vr
+
+        Sg = utils.subtract_binned_means(Sg , zobs, self.surr_ic_nbins)
+        dSg_dfnl = utils.subtract_binned_means(dSg_dfnl, zobs, self.surr_ic_nbins)
+
+        for sv in [ Sv_noise, Sv_signal ]:
+            assert sv.shape ==  (2, nrand)
+            for j in range(2):
+                sv[j,:] = utils.subtract_binned_means(sv[j,:], zobs, nbins=25)
+
+        # Kpipe -> KszPSE
+        
+        fmaps_new = [ ]
+        weights_new = [ ]
+        Sg_wsum = ngal * np.mean(rweights)
+        
+        fmaps_new += [ core.grid_points(self.box, xyz_obs, Sg, kernel=self.kernel, fft=True, spin=0, compensate=True) ]
+        fmaps_new += [ core.grid_points(self.box, xyz_obs, dSg_dfnl, kernel=self.kernel, fft=True, spin=0, compensate=True) ]
+        weights_new += [ Sg_wsum, Sg_wsum ]
+
+        for i,(bv,tcmb) in enumerate(zip(bv_list,tcmb_list)):
+            Sv_wsum = (ngal/nrand) * np.dot(vweights,bv)
+            fmaps_new += [ core.grid_points(self.box, xyz_obs, Sv_noise[i,:], kernel=self.kernel, fft=True, spin=1, compensate=True) ]
+            fmaps_new += [ core.grid_points(self.box, xyz_obs, Sv_signal[i,:], kernel=self.kernel, fft=True, spin=1, compensate=True) ]
+            wnew = ngal * np.mean(vweights)
+            weights_new += [ wnew, wnew ]
+
+        wf = wfunc_utils.scale_wapprox(self.pse.window_function, weights_new, [0,0,1,1,2,2])
+        pk_new = core.estimate_power_spectrum(self.box, fmaps_new, self.kbin_edges)
+        pk_new /= wf[:,:,None]
+        return pk_new
+
+    
     def run(self, processes=2):
         """Runs pipeline. If any output files already exist, they will be skipped."""
         
