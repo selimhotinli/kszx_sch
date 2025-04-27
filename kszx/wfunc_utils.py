@@ -13,16 +13,35 @@ from .Box import Box
 
 
 def compute_wapprox(box, fourier_space_footprints, rmax=0.03):
-    """
-    Approximation to true window function which neglects k-dependence, spins!
+    """A crude approximation to the P(k) window function which neglects k-dependence and mixing.
 
-    Case 1: 'fourier_space_footprints' is a single Fourier-space map.
-      Returns a scalar.
-
-    Case 2: 'fourier_space_footprints' is a length-nfootprints iterable returning
-      Fourier-space maps. Returns an array of shape (nfootprints, nfootprints).
+    Given N "footprint" maps F_{ij}(x), this function computes an N-by-N matrix W_{ij} which
+    gives the window function for a cross power spectrum on footprints i,j. (Note that since
+    we're negelcting k-dependence and mixing, the window function doesn't have indices which
+    correspond to k-bins.)
     
-    Reminder::
+    Function arguments:
+
+       - ``box`` (kszx.Box): defines pixel size, bounding box size, and location of observer.
+         See :class:`~kszx.Box` for more info.
+
+       - ``fourier_space_footprints`` (array or list of arrays): single or multiple Fourier-space maps.
+
+           - Case 1: If ``fourier_space_footprints`` is an array, then it represents a single Fourier-space map.
+             (The array shape should be given by ``box.fourier_space_shape`` and the dtype should be ``complex``.)
+    
+           - Case 2: If ``fourier_space_footprints`` is a list of arrays, then it represents multiple
+             Fourier-space maps. (Each map in the list should have shape ``box.fourier_space_shape``
+             and dtype ``complex``.)
+       
+       - ``rmax`` (float): if correlation between any two footprints is < rmax, then an exception
+         will be thrown. To disable this check, set rmax=0.
+
+    The return value is either a scalar in case 1 (single Fourier-space map), or an array of shape
+    ``(nmaps, nmaps)`` in case 2 (multiple maps).
+
+    Sometimes a footprint is defined by a random catalog. Here is a reminder of how to make a
+    Fourier-space map from a random catalog::
 
       box = ... # instance of class kszx.Box
       cosmo = ...  # instance of class kszx.Cosmology
@@ -30,8 +49,7 @@ def compute_wapprox(box, fourier_space_footprints, rmax=0.03):
       weights = ...   # 1-d array of length randcat.size
     
       xyz = randcat.get_xyz(cosmo, zcol_name='z')
-      footprint = kszx.grid_points(box, xyz, rweights, kernel='cubic', fft=True)
-      kszx.apply_kernel_compensation(box, footprint, kernel='cubic')
+      footprint = kszx.grid_points(box, xyz, rweights, kernel='cubic', fft=True, compensate=True)
     """
 
     map_list, multi_map_flag = core._parse_map_or_maps(box, fourier_space_footprints, 'kszx.window.wapprox')
