@@ -14,12 +14,15 @@ from scipy.signal import savgol_filter
 from scipy.ndimage import gaussian_filter1d
 from scipy.interpolate import interp1d
 
-from . import io_utils
+from . import core
 from . import utils
+from . import io_utils
+from . import wfunc_utils
 
 from .Catalog import Catalog
 from .Cosmology import Cosmology
 from .KszPSE import KszPSE
+from .SurrogateFactory import SurrogateFactory
 
 
 ####################################################################################################
@@ -163,7 +166,7 @@ class PhotozDistribution:
 
 class Kpipe:
     def __init__(self, input_dir, output_dir, nsurr=400):
-        """Kendrick KSZ P(k) pipeline.
+        """KSZ P(k) pipeline.
 
         Runnable either by calling the run() method, or from the command line with:
            python -m kszx <input_dir> <output_dir>
@@ -172,18 +175,6 @@ class Kpipe:
         bounding_box.pkl }. The pipeline will populate the output directory with files
         { params.yml, pk_data.npy, pk_surrogates.npy }. (For details of these file formats,
         see one of the README files that Kendrick or Selim have lying around.)
-
-        Note that 'class Kpipe', 'class KszPSE', and 'class CatalogGridder' are related
-        as follows:
-
-          - Kpipe: high-level pipeline, knows about file inputs/outputs, defers
-              heavy lifting to 'class KszPSE'.
-
-          - KszPSE: KSZ power spectrum estimation and surrogate generation logic
-              is here.
-
-          - CatalogGridder: a lower-level class which supplies normalizations (both
-              field-level and power spectrum level).
         """
         
         self.input_dir = input_dir
@@ -207,6 +198,8 @@ class Kpipe:
             self.kbin_centers = (self.kbin_edges[1:] + self.kbin_edges[:-1]) / 2.
 
         self.box = io_utils.read_pickle(f'{input_dir}/bounding_box.pkl')
+        self.kernel = 'cubic'   # FIXME hardcoded for now
+        self.deltac = 1.68      # FIXME hardcoded for now
 
         # This code moved into cached properties (see below), in order to reduce startup time.
         # self.cosmo = Cosmology('planck18+bao')
@@ -229,6 +222,33 @@ class Kpipe:
     @functools.cached_property
     def rcat(self):
         return Catalog.from_h5(f'{self.input_dir}/randoms.h5')
+    
+    @functools.cached_property
+    def surrogate_factory(self):
+        # FIXME needs comment
+        surr_ngal_mean = self.gcat.size
+        surr_ngal_rms = 4 * np.sqrt(self.gcat.size)  # 4x Poisson
+        return SurrogateFactory(self.box, self.cosmo, self.rcat, surr_ngal_mean, surr_ngal_rms, 'ztrue')
+
+    
+    @functools.cached_property
+    def window_function(self):
+        nrand = self.rcat.size
+        win_xyz = self.rcat.get_xyz(self.cosmo, zcol_name='zobs')  # not ztrue
+        rweights = getattr(self.rcat, 'weight_zerr', np.ones(nrand))
+        vweights = getattr(self.rcat, 'vweight_zerr', np.ones(nrand))
+
+        # pse_rweights = Length (nksz+1) list of 1-d arrays.
+        # win_footprints = Length (nksz+1) list of Fourier-space maps
+        
+        win_footprints = [ core.grid_points(self.box, win_xyz, rweights, kernel=self.kernel, fft=True, compensate=True, wscal = 1.0/np.sum(rweights)) ]
+
+        for bv in [ self.rcat.bv_90, self.rcat.bv_150 ]:
+            wbv = vweights * bv
+            wsum = np.sum(vweights)
+            win_footprints += [ core.grid_points(self.box, win_xyz, wbv, kernel=self.kernel, fft=True, compensate=True, wscal = 1.0/wsum) ]
+        
+        return wfunc_utils.compute_wapprox(self.box, win_footprints)
 
     
     @functools.cached_property
@@ -301,7 +321,33 @@ class Kpipe:
         io_utils.write_npy(self.pk_data_filename, pk_data)
         return pk_data
 
+    
+    def get_pk_data2(self, run=False, force=False):
+        gweights = getattr(self.gcat, 'weight_zerr', np.ones(self.gcat.size))
+        rweights = getattr(self.rcat, 'weight_zerr', np.ones(self.rcat.size))
+        vweights = getattr(self.gcat, 'vweight_zerr', np.ones(self.gcat.size))
+        
+        gcat_xyz = self.gcat.get_xyz(self.cosmo)
+        rcat_xyz = self.rcat.get_xyz(self.cosmo, zcol_name='zobs')  # not ztrue
 
+        bv_cols = [ self.gcat.bv_90, self.gcat.bv_150 ]
+        tcmb_cols = [ self.gcat.tcmb_90, self.gcat.tcmb_150 ]
+
+        fmaps = [ core.grid_points(self.box, gcat_xyz, gweights, rcat_xyz, rweights, kernel=self.kernel, fft=True, compensate=True) ]
+        weights = [ np.sum(gweights) ]  # reminder: footprints are normalized to sum(weights)=1
+
+        for bv, tcmb in zip(bv_cols, tcmb_cols):
+            coeffs = vweights * tcmb
+            coeffs = utils.subtract_binned_means(coeffs, self.gcat.z, nbins=25)  # note mean subtraction here
+            fmaps += [ core.grid_points(self.box, gcat_xyz, coeffs, kernel=self.kernel, fft=True, spin=1, compensate=True) ]
+            weights += [ np.sum(vweights) ]
+        
+        wf = wfunc_utils.scale_wapprox(self.window_function, weights)
+        pk = core.estimate_power_spectrum(self.box, fmaps, self.kbin_edges)
+        pk /= wf[:,:,None]
+        return pk
+
+    
     def get_pk_surrogate(self, isurr, run=False):
         """Returns a shape (6,6,nkbins) array.
         
@@ -346,7 +392,68 @@ class Kpipe:
         io_utils.write_npy(self.pk_surr_filename, pk)
         return pk
 
+    
+    def get_pk_surrogate2(self, ngal=None, delta=None, M=None, ug=None):        
+        nfreq = 2
+        zobs = self.rcat.zobs
+        nrand = self.rcat.size
+        bv_list = [ self.rcat.bv_90, self.rcat.bv_150 ]
+        tcmb_list = [ self.rcat.tcmb_90, self.rcat.tcmb_150 ]
+        rweights = getattr(self.rcat, 'weight_zerr', np.ones(nrand))
+        vweights = getattr(self.rcat, 'vweight_zerr', np.ones(nrand))
+        xyz_obs = self.rcat.get_xyz(self.cosmo, 'zobs')
 
+        if ug is None:
+            ug = np.random.normal(size=nrand)
+            
+        self.surrogate_factory.simulate_surrogate(ngal=ngal, delta=delta, M=M)
+
+        ngal = self.surrogate_factory.ngal
+        bD = self.surr_bg * self.surrogate_factory.D
+        eta_rms = np.sqrt((nrand/ngal) - (bD*bD) * self.surrogate_factory.sigma2)
+        eta = ug * eta_rms
+
+        # Coeffs
+        Sg = (ngal/nrand) * rweights * (self.surr_bg * self.surrogate_factory.delta + eta)
+        dSg_dfnl = (ngal/nrand) * rweights * (2 * self.deltac) * (self.surr_bg-1) * self.surrogate_factory.phi        
+        Sv_noise = np.zeros((nfreq, nrand))
+        Sv_signal = np.zeros((nfreq, nrand))
+
+        for i,(bv,tcmb) in enumerate(zip(bv_list,tcmb_list)):
+            Sv_noise[i,:] = vweights * self.surrogate_factory.M * tcmb
+            Sv_signal[i,:] = (ngal/nrand) * vweights * bv * self.surrogate_factory.vr
+
+        Sg = utils.subtract_binned_means(Sg , zobs, self.surr_ic_nbins)
+        dSg_dfnl = utils.subtract_binned_means(dSg_dfnl, zobs, self.surr_ic_nbins)
+
+        for sv in [ Sv_noise, Sv_signal ]:
+            assert sv.shape ==  (2, nrand)
+            for j in range(2):
+                sv[j,:] = utils.subtract_binned_means(sv[j,:], zobs, nbins=25)
+
+        # Kpipe -> KszPSE
+        
+        fmaps_new = [ ]
+        weights_new = [ ]
+        Sg_wsum = ngal * np.mean(rweights)
+        
+        fmaps_new += [ core.grid_points(self.box, xyz_obs, Sg, kernel=self.kernel, fft=True, spin=0, compensate=True) ]
+        fmaps_new += [ core.grid_points(self.box, xyz_obs, dSg_dfnl, kernel=self.kernel, fft=True, spin=0, compensate=True) ]
+        weights_new += [ Sg_wsum, Sg_wsum ]
+
+        for i,(bv,tcmb) in enumerate(zip(bv_list,tcmb_list)):
+            Sv_wsum = (ngal/nrand) * np.dot(vweights,bv)
+            fmaps_new += [ core.grid_points(self.box, xyz_obs, Sv_noise[i,:], kernel=self.kernel, fft=True, spin=1, compensate=True) ]
+            fmaps_new += [ core.grid_points(self.box, xyz_obs, Sv_signal[i,:], kernel=self.kernel, fft=True, spin=1, compensate=True) ]
+            wnew = ngal * np.mean(vweights)
+            weights_new += [ wnew, wnew ]
+
+        wf = wfunc_utils.scale_wapprox(self.window_function, weights_new, [0,0,1,1,2,2])
+        pk_new = core.estimate_power_spectrum(self.box, fmaps_new, self.kbin_edges)
+        pk_new /= wf[:,:,None]
+        return pk_new
+
+    
     def run(self, processes=2):
         """Runs pipeline. If any output files already exist, they will be skipped."""
         

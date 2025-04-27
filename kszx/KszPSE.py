@@ -426,6 +426,7 @@ class KszPSE:
                 
         delta0 = core.simulate_gaussian_field(self.box, self.cosmo.Plin_z0)
         core.apply_kernel_compensation(self.box, delta0, self.kernel)
+        self.save_delta0 = delta0
 
         # delta_g(k,z) = (bg + 2 fNL deltac (bg-1) / alpha(k,z)) * delta_m(k,z)
         #              = (bg D(z) + 2 fNL deltac (bg-1) / alpha0(k)) * delta0(k)
@@ -438,8 +439,10 @@ class KszPSE:
         self.Sg_coeffs = Sg_prefactor * delta_G
 
         eta_rms = np.sqrt((nrand/ngal) - (bD*bD) * self.sigma2)
-        eta = np.random.normal(scale = eta_rms)
+        ug = np.random.normal(size = nrand)
+        eta = ug * eta_rms
         self.Sg_coeffs += Sg_prefactor * eta
+        self.save_ug = ug
 
         # Add term to deltag:
         #     2 fNL deltac (bg-1) / alpha(k,z) * delta_m(k,z)
@@ -470,6 +473,7 @@ class KszPSE:
         M = np.zeros(nrand)
         M[:ngal] = 1.0
         M = np.random.permutation(M)
+        self.save_M = M
 
         for i in range(self.nksz):
             self.Sv_noise[i,:] = M * self.ksz_tcmb_realization[i]
