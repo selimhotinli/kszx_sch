@@ -209,6 +209,7 @@ class Kpipe:
         self.pk_data_filename = f'{output_dir}/pk_data.npy'
         self.pk_surr_filename = f'{output_dir}/pk_surrogates.npy'
         self.pk_single_surr_filenames = [ f'{output_dir}/tmp/pk_surr_{i}.npy' for i in range(nsurr) ]
+        self.window_function_filename = f'{output_dir}/tmp/window_function.npy'
 
 
     @functools.cached_property
@@ -233,22 +234,25 @@ class Kpipe:
     
     @functools.cached_property
     def window_function(self):
+        if os.path.exists(self.window_function_filename):
+            return io_utils.load_npy(self.window_function_filename)
+        
         nrand = self.rcat.size
-        win_xyz = self.rcat.get_xyz(self.cosmo, zcol_name='zobs')  # not ztrue
+        xyz_obs = self.rcat.get_xyz(self.cosmo, zcol_name='zobs')  # not ztrue
         rweights = getattr(self.rcat, 'weight_zerr', np.ones(nrand))
         vweights = getattr(self.rcat, 'vweight_zerr', np.ones(nrand))
+        rsum = np.sum(rweights)
+        vsum = np.sum(vweights)
 
-        # pse_rweights = Length (nksz+1) list of 1-d arrays.
-        # win_footprints = Length (nksz+1) list of Fourier-space maps
+        footprints = [
+            core.grid_points(self.box, xyz_obs, rweights, kernel=self.kernel, fft=True, compensate=True, wscal = 1.0/rsum),
+            core.grid_points(self.box, xyz_obs, vweights * self.rcat.bv_90, kernel=self.kernel, fft=True, compensate=True, wscal = 1.0/vsum),
+            core.grid_points(self.box, xyz_obs, vweights * self.rcat.bv_150, kernel=self.kernel, fft=True, compensate=True, wscal = 1.0/vsum)
+        ]
         
-        win_footprints = [ core.grid_points(self.box, win_xyz, rweights, kernel=self.kernel, fft=True, compensate=True, wscal = 1.0/np.sum(rweights)) ]
-
-        for bv in [ self.rcat.bv_90, self.rcat.bv_150 ]:
-            wbv = vweights * bv
-            wsum = np.sum(vweights)
-            win_footprints += [ core.grid_points(self.box, win_xyz, wbv, kernel=self.kernel, fft=True, compensate=True, wscal = 1.0/wsum) ]
-        
-        return wfunc_utils.compute_wapprox(self.box, win_footprints)
+        wf = wfunc_utils.compute_wcrude(self.box, footprints)
+        io_utils.write_npy(self.window_function_filename, wf)
+        return wf
 
     
     @functools.cached_property
@@ -330,20 +334,23 @@ class Kpipe:
         gcat_xyz = self.gcat.get_xyz(self.cosmo)
         rcat_xyz = self.rcat.get_xyz(self.cosmo, zcol_name='zobs')  # not ztrue
 
-        bv_cols = [ self.gcat.bv_90, self.gcat.bv_150 ]
-        tcmb_cols = [ self.gcat.tcmb_90, self.gcat.tcmb_150 ]
+        # Mean subtraction.
+        coeffs_v90 = utils.subtract_binned_means(vweights * self.gcat.tcmb_90, self.gcat.z, nbins=25)
+        coeffs_v150 = utils.subtract_binned_means(vweights * self.gcat.tcmb_150, self.gcat.z, nbins=25)
 
-        fmaps = [ core.grid_points(self.box, gcat_xyz, gweights, rcat_xyz, rweights, kernel=self.kernel, fft=True, compensate=True) ]
-        weights = [ np.sum(gweights) ]  # reminder: footprints are normalized to sum(weights)=1
+        # Note spin=1
+        # FIXME shrink
+        fourier_space_maps = [
+            core.grid_points(self.box, gcat_xyz, gweights, rcat_xyz, rweights, kernel=self.kernel, fft=True, compensate=True),
+            core.grid_points(self.box, gcat_xyz, coeffs_v90, kernel=self.kernel, fft=True, spin=1, compensate=True),
+            core.grid_points(self.box, gcat_xyz, coeffs_v150, kernel=self.kernel, fft=True, spin=1, compensate=True)
+        ]
 
-        for bv, tcmb in zip(bv_cols, tcmb_cols):
-            coeffs = vweights * tcmb
-            coeffs = utils.subtract_binned_means(coeffs, self.gcat.z, nbins=25)  # note mean subtraction here
-            fmaps += [ core.grid_points(self.box, gcat_xyz, coeffs, kernel=self.kernel, fft=True, spin=1, compensate=True) ]
-            weights += [ np.sum(vweights) ]
+        # Rescale window function
+        w = np.array([ np.sum(gweights), np.sum(vweights), np.sum(vweights) ])
+        wf = self.window_function * w[:,None] * w[None,:]
         
-        wf = wfunc_utils.scale_wapprox(self.window_function, weights)
-        pk = core.estimate_power_spectrum(self.box, fmaps, self.kbin_edges)
+        pk = core.estimate_power_spectrum(self.box, fourier_space_maps, self.kbin_edges)
         pk /= wf[:,:,None]
         return pk
 
@@ -394,11 +401,8 @@ class Kpipe:
 
     
     def get_pk_surrogate2(self, ngal=None, delta=None, M=None, ug=None):        
-        nfreq = 2
         zobs = self.rcat.zobs
         nrand = self.rcat.size
-        bv_list = [ self.rcat.bv_90, self.rcat.bv_150 ]
-        tcmb_list = [ self.rcat.tcmb_90, self.rcat.tcmb_150 ]
         rweights = getattr(self.rcat, 'weight_zerr', np.ones(nrand))
         vweights = getattr(self.rcat, 'vweight_zerr', np.ones(nrand))
         xyz_obs = self.rcat.get_xyz(self.cosmo, 'zobs')
@@ -413,43 +417,39 @@ class Kpipe:
         eta_rms = np.sqrt((nrand/ngal) - (bD*bD) * self.surrogate_factory.sigma2)
         eta = ug * eta_rms
 
-        # Coeffs
+        # Coefficient arrays.
         Sg = (ngal/nrand) * rweights * (self.surr_bg * self.surrogate_factory.delta + eta)
-        dSg_dfnl = (ngal/nrand) * rweights * (2 * self.deltac) * (self.surr_bg-1) * self.surrogate_factory.phi        
-        Sv_noise = np.zeros((nfreq, nrand))
-        Sv_signal = np.zeros((nfreq, nrand))
+        dSg_dfnl = (ngal/nrand) * rweights * (2 * self.deltac) * (self.surr_bg-1) * self.surrogate_factory.phi
+        Sv90_noise = vweights * self.surrogate_factory.M * self.rcat.tcmb_90
+        Sv150_noise = vweights * self.surrogate_factory.M * self.rcat.tcmb_150
+        Sv90_signal = (ngal/nrand) * vweights * self.rcat.bv_90 * self.surrogate_factory.vr
+        Sv150_signal = (ngal/nrand) * vweights * self.rcat.bv_150 * self.surrogate_factory.vr
 
-        for i,(bv,tcmb) in enumerate(zip(bv_list,tcmb_list)):
-            Sv_noise[i,:] = vweights * self.surrogate_factory.M * tcmb
-            Sv_signal[i,:] = (ngal/nrand) * vweights * bv * self.surrogate_factory.vr
-
-        Sg = utils.subtract_binned_means(Sg , zobs, self.surr_ic_nbins)
+        # Mean subtraction.
+        Sg = utils.subtract_binned_means(Sg, zobs, self.surr_ic_nbins)
         dSg_dfnl = utils.subtract_binned_means(dSg_dfnl, zobs, self.surr_ic_nbins)
+        Sv90_noise = utils.subtract_binned_means(Sv90_noise, zobs, nbins=25)   # FIXME hardcoded
+        Sv90_signal = utils.subtract_binned_means(Sv90_signal, zobs, nbins=25)
+        Sv150_noise = utils.subtract_binned_means(Sv150_noise, zobs, nbins=25)
+        Sv150_signal = utils.subtract_binned_means(Sv150_signal, zobs, nbins=25)
 
-        for sv in [ Sv_noise, Sv_signal ]:
-            assert sv.shape ==  (2, nrand)
-            for j in range(2):
-                sv[j,:] = utils.subtract_binned_means(sv[j,:], zobs, nbins=25)
+        # Note spin=1 on the vr fields.
+        # FIXME shrink
+        fourier_space_maps = [
+            core.grid_points(self.box, xyz_obs, Sg, kernel=self.kernel, fft=True, spin=0, compensate=True),
+            core.grid_points(self.box, xyz_obs, dSg_dfnl, kernel=self.kernel, fft=True, spin=0, compensate=True),
+            core.grid_points(self.box, xyz_obs, Sv90_noise, kernel=self.kernel, fft=True, spin=1, compensate=True),
+            core.grid_points(self.box, xyz_obs, Sv90_signal, kernel=self.kernel, fft=True, spin=1, compensate=True),
+            core.grid_points(self.box, xyz_obs, Sv150_noise, kernel=self.kernel, fft=True, spin=1, compensate=True),
+            core.grid_points(self.box, xyz_obs, Sv150_signal, kernel=self.kernel, fft=True, spin=1, compensate=True)
+        ]
 
-        # Kpipe -> KszPSE
-        
-        fmaps_new = [ ]
-        weights_new = [ ]
-        Sg_wsum = ngal * np.mean(rweights)
-        
-        fmaps_new += [ core.grid_points(self.box, xyz_obs, Sg, kernel=self.kernel, fft=True, spin=0, compensate=True) ]
-        fmaps_new += [ core.grid_points(self.box, xyz_obs, dSg_dfnl, kernel=self.kernel, fft=True, spin=0, compensate=True) ]
-        weights_new += [ Sg_wsum, Sg_wsum ]
+        imap = [0,0,1,1,2,2]
+        w = np.array([ ngal * np.mean(rweights), ngal * np.mean(vweights), ngal * np.mean(vweights) ])
+        wf = self.window_function * w[:,None] * w[None,:]
+        wf = wf[imap,:][:,imap]
 
-        for i,(bv,tcmb) in enumerate(zip(bv_list,tcmb_list)):
-            Sv_wsum = (ngal/nrand) * np.dot(vweights,bv)
-            fmaps_new += [ core.grid_points(self.box, xyz_obs, Sv_noise[i,:], kernel=self.kernel, fft=True, spin=1, compensate=True) ]
-            fmaps_new += [ core.grid_points(self.box, xyz_obs, Sv_signal[i,:], kernel=self.kernel, fft=True, spin=1, compensate=True) ]
-            wnew = ngal * np.mean(vweights)
-            weights_new += [ wnew, wnew ]
-
-        wf = wfunc_utils.scale_wapprox(self.window_function, weights_new, [0,0,1,1,2,2])
-        pk_new = core.estimate_power_spectrum(self.box, fmaps_new, self.kbin_edges)
+        pk_new = core.estimate_power_spectrum(self.box, fourier_space_maps, self.kbin_edges)
         pk_new /= wf[:,:,None]
         return pk_new
 

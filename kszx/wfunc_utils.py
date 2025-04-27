@@ -13,7 +13,7 @@ from . import core
 from .Box import Box
 
 
-def compute_wapprox(box, fourier_space_footprints, rmax=0.03):
+def compute_wcrude(box, fourier_space_footprints, rmax=0.03):
     r"""A crude approximation to the $P(k)$ window function which neglects k-dependence and mixing.
 
     Given N "footprint" maps $F_{ij}(x)$, this function computes an N-by-N matrix $W_{ij}$ which
@@ -53,7 +53,7 @@ def compute_wapprox(box, fourier_space_footprints, rmax=0.03):
       footprint = kszx.grid_points(box, xyz, rweights, kernel='cubic', fft=True, compensate=True)
     """
 
-    map_list, multi_map_flag = core._parse_map_or_maps(box, fourier_space_footprints, 'kszx.window.wapprox')
+    map_list, multi_map_flag = core._parse_map_or_maps(box, fourier_space_footprints, 'kszx.window.wcrude')
     nfootprints = len(map_list)
 
     # FIXME revisit the issue of choosing K!
@@ -66,43 +66,43 @@ def compute_wapprox(box, fourier_space_footprints, rmax=0.03):
     assert counts.shape == (2,)
 
     # Note factor (1/V_box), which normalizes sum_k -> int d^3k/(2pi)^3
-    wapprox = (pk[:,:,0] - pk[:,:,1]) * counts[0] / box.box_volume
+    wcrude = (pk[:,:,0] - pk[:,:,1]) * counts[0] / box.box_volume
     
     for i in range(nfootprints):
         for j in range(i+1):
-            r = wapprox[i,j] / np.sqrt(wapprox[i,i] * wapprox[j,j])
+            r = wcrude[i,j] / np.sqrt(wcrude[i,i] * wcrude[j,j])
             if np.abs(r) < rmax:
-                raise RuntimeError(f'kszx.window.wapprox(): correlation between footprints ({j,i}) is below threshold'
+                raise RuntimeError(f'kszx.window.wcrude(): correlation between footprints ({j,i}) is below threshold'
                                    + f' ({r=}, {rmax=}). This probably indicates an error somewhere. This check can be'
-                                   + f' disabled entirely by passing rmax=0 to wapprox().')
+                                   + f' disabled entirely by passing rmax=0 to wcrude().')
 
-    return wapprox if multi_map_flag else wapprox[0,0]
+    return wcrude if multi_map_flag else wcrude[0,0]
 
 
-def scale_wapprox(wapprox, weights, index_map=None):
+def scale_wcrude(wcrude, weights, index_map=None):
     # Argument checking starts here.
-    wapprox = np.asarray(wapprox)
+    wcrude = np.asarray(wcrude)
     weights = np.asarray(weights)
     index_map = np.asarray(index_map) if (index_map is not None) else None
 
-    if wapprox.ndim == 0:
-        wapprox = np.reshape(wapprox, (1,1))
-    elif (wapprox.ndim != 2) or (wapprox.shape[0] != wapprox.shape[1]):
-        raise RuntimeError(f'Got {wapprox.shape=}, expected (N,N) or scalar')
+    if wcrude.ndim == 0:
+        wcrude = np.reshape(wcrude, (1,1))
+    elif (wcrude.ndim != 2) or (wcrude.shape[0] != wcrude.shape[1]):
+        raise RuntimeError(f'Got {wcrude.shape=}, expected (N,N) or scalar')
 
     if index_map is None:
-        index_map = np.arange(wapprox.shape[0])    
+        index_map = np.arange(wcrude.shape[0])    
     if (index_map is not None) and (index_map.ndim != 1):
         raise RuntimeError(f'Got {index_map.shape=}, expected 1-d array or None')
 
-    nin = wapprox.shape[0]
+    nin = wcrude.shape[0]
     nout = index_map.shape[0]
 
     if weights.shape != (nout,):
         raise RuntimeError(f'Got {weights.shape=}, expected 1-d array of length {nout}')
 
     # Argument checking finished -- now for the one-line function body :)
-    return wapprox[index_map,:][:,index_map] * np.outer(weights,weights)
+    return wcrude[index_map,:][:,index_map] * np.outer(weights,weights)
 
 
 def compare_pk(pk1, pk2):
