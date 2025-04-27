@@ -30,6 +30,7 @@ kszx documentation
    interpolation
    manipulating_maps
    misc_utils
+   wfunc_utils
 
 .. toctree::
    :maxdepth: 2

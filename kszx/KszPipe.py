@@ -188,8 +188,9 @@ class KszPSE2:
         if zobs_col is None:
             zobs_col = self.zobs_col
             
-        z = self._get_zcol(gcat, 'zobs_col', zobs_col)
+        z = self._get_zcol(gcat, 'zobs_col', zobs_col)        
         gcat_xyz = gcat.get_xyz(self.cosmo, zcol_name=zobs_col)
+        print(f'{z.dtype =} {gcat_xyz.dtype = }')
 
         # Parse the 'gweights', 'ksz_gweights', 'ksz_bv', and 'ksz_tcmb' args.
         # (Same parsing logic as 'rweights', 'ksz_rweights', 'ksz_bv', and 'ksz_tcmb_realization' in __init__().)
@@ -200,6 +201,7 @@ class KszPSE2:
         ksz_gweights = self._parse_ksz_arg(ksz_gweights, fname, 'ksz_gweights', gcat.size, z, allow_none=True)
         ksz_tcmb = self._parse_tcmb_arg(ksz_tcmb, fname, 'ksz_tcmb', gcat.size)
         assert len(ksz_bv) == len(ksz_gweights) == len(ksz_tcmb) == self.nksz
+        print(f'{gweights.dtype=} {ksz_bv.dtype=} {ksz_gweights.dtype=} {ksz_tcmb.dtype=}')
 
         # Initialize fmaps.
 
@@ -208,10 +210,14 @@ class KszPSE2:
 
         for i in range(self.nksz):
             w, bv, t = ksz_gweights[i], ksz_bv[i], ksz_tcmb[i]
+            print(f'{w.dtype=} {bv.dtype=} {t.dtype=}')
             coeffs = (w*t) if (w is not None) else t
             # FIXME mean subtraction now happens here (previously in Kpipe) -- need to make this less confusing
+            print(f'{coeffs.dtype=}')
             coeffs = utils.subtract_binned_means(coeffs, z, nbins=25)
+            print(f'{coeffs.dtype=}')
             wsum = np.dot(w,bv) if (w is not None) else np.sum(bv)
+            print(f'{wsum.dtype=}')
             spin = 0 if self.spin0_hack else 1
             fmaps += [ self.catalog_gridder.grid_sampled_field(gcat, coeffs, wsum, i+1, spin=spin, zcol_name=zobs_col) ]
 
@@ -741,9 +747,14 @@ class KszPipe:
         gweights = getattr(self.gcat, 'weight_zerr', np.ones(self.gcat.size))
         rweights = getattr(self.rcat, 'weight_zerr', np.ones(self.rcat.size))
         vweights = getattr(self.gcat, 'vweight_zerr', np.ones(self.gcat.size))
+        print(f'{gweights.dtype =}')
+        print(f'{rweights.dtype =}')
+        print(f'{vweights.dtype =}')
         
         gcat_xyz = self.gcat.get_xyz(self.cosmo)
         rcat_xyz = self.rcat.get_xyz(self.cosmo, zcol_name='zobs')  # not ztrue
+        print(f'{gcat_xyz.dtype = }')
+        print(f'{rcat_xyz.dtype = }')
 
         bv_cols = [ self.gcat.bv_90, self.gcat.bv_150 ]
         tcmb_cols = [ self.gcat.tcmb_90, self.gcat.tcmb_150 ]
@@ -752,14 +763,19 @@ class KszPipe:
         weights = [ np.sum(gweights) ]  # reminder: footprints are normalized to sum(weights)=1
 
         for bv, tcmb in zip(bv_cols, tcmb_cols):
+            print(f'{bv.dtype =} {tcmb.dtype =}')
             coeffs = vweights * tcmb
             coeffs = utils.subtract_binned_means(coeffs, self.gcat.z, nbins=25)  # note mean subtraction here
+            print(f'{coeffs.dtype =}')
             fmaps += [ core.grid_points(self.box, gcat_xyz, coeffs, kernel=self.kernel, fft=True, spin=1, compensate=True) ]
             weights += [ np.sum(vweights) ]
         
         wf = wfunc_utils.scale_wapprox(self.pse.window_function, weights)
+        print(f'{wf.dtype =}')
         pk = core.estimate_power_spectrum(self.box, fmaps, self.kbin_edges)
+        print(f'{pk.dtype =}')
         pk /= wf[:,:,None]
+        print(f'{pk.dtype =}')
         return pk
 
         

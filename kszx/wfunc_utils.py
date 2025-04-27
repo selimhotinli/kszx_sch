@@ -1,8 +1,9 @@
 """
-The ``kszx.window`` module contains functions for computing the window function.
+The ``kszx.wfunc_utils`` module contains functions for computing window functions.
 
-This source file only contains a few functions right now. In the future I'll expand it
-to include a "high-tech" computation of the window function.
+This module is currently a placeholder -- it implements a crude approximation for the
+window function, that can be used to roughly normalize $P(k)$. In the future I'll expand
+it to include an accurate computation of the window function with k-bin mixing, spins, etc.
 """
 
 import numpy as np
@@ -13,13 +14,13 @@ from .Box import Box
 
 
 def compute_wapprox(box, fourier_space_footprints, rmax=0.03):
-    """A crude approximation to the P(k) window function which neglects k-dependence and mixing.
+    r"""A crude approximation to the $P(k)$ window function which neglects k-dependence and mixing.
 
-    Given N "footprint" maps F_{ij}(x), this function computes an N-by-N matrix W_{ij} which
+    Given N "footprint" maps $F_{ij}(x)$, this function computes an N-by-N matrix $W_{ij}$ which
     gives the window function for a cross power spectrum on footprints i,j. (Note that since
     we're negelcting k-dependence and mixing, the window function doesn't have indices which
     correspond to k-bins.)
-    
+
     Function arguments:
 
        - ``box`` (kszx.Box): defines pixel size, bounding box size, and location of observer.
@@ -102,3 +103,36 @@ def scale_wapprox(wapprox, weights, index_map=None):
 
     # Argument checking finished -- now for the one-line function body :)
     return wapprox[index_map,:][:,index_map] * np.outer(weights,weights)
+
+
+def compare_pk(pk1, pk2):
+    pk1 = np.asarray(pk1)
+    pk2 = np.asarray(pk2)
+
+    if pk1.shape != pk2.shape:
+        raise RuntimeError(f'Got {pk1.shape=} and {pk2.shape=}, expected equal shapes')
+
+    if pk1.ndim == 1:
+        pk1 = pk1.reshape((1,1,len(pk1)))
+        pk2 = pk1.reshape((1,1,len(pk2)))
+    
+    elif (pk1.ndim != 3) or (pk1.shape[0] != pk1.shape[1]):
+        raise RuntimeError(f'Got {pk1.shape=} and {pk2.shape=}, expected (nmaps,nmaps,nkbins)')
+
+    nmaps, nkbins = pk1.shape[0], pk1.shape[2]
+    w = np.ones((nmaps, nkbins))  # weights for power spectrum comparison
+
+    for i in range(nmaps):
+        if not np.all(pk1[i,i,:] > 0):
+            raise RuntimeError(f'Not all auto power spectra pk1[{i},{i},:] were > 0')
+        if not np.all(pk2[i,i,:] > 0):
+            raise RuntimeError(f'Not all auto power spectra pk2[{i},{i},:] were > 0')
+        w[i,:] = np.sqrt(pk1[i,i,:] + pk2[i,i,:])
+    
+    delta = np.abs(pk1-pk2) / (w[:,None,:] * w[None,:,:])
+
+    if nmaps > 1:
+        print('compare_pk(): pairwise epsilon_max values')
+        print(np.max(delta,axis=2))
+    
+    print(f'compare_pk(): global epsilon_max value: {np.max(delta)}')
