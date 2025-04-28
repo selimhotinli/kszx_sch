@@ -79,33 +79,16 @@ def compute_wcrude(box, fourier_space_footprints, rmax=0.03):
     return wcrude if multi_map_flag else wcrude[0,0]
 
 
-def scale_wcrude(wcrude, weights, index_map=None):
-    # Argument checking starts here.
-    wcrude = np.asarray(wcrude)
-    weights = np.asarray(weights)
-    index_map = np.asarray(index_map) if (index_map is not None) else None
+def compare_pk(pk1, pk2, noisy=True):
+    """A utility function I wrote for testing: compares two P(k) arrays in a normalization-independent way.
 
-    if wcrude.ndim == 0:
-        wcrude = np.reshape(wcrude, (1,1))
-    elif (wcrude.ndim != 2) or (wcrude.shape[0] != wcrude.shape[1]):
-        raise RuntimeError(f'Got {wcrude.shape=}, expected (N,N) or scalar')
+    Args:
 
-    if index_map is None:
-        index_map = np.arange(wcrude.shape[0])    
-    if (index_map is not None) and (index_map.ndim != 1):
-        raise RuntimeError(f'Got {index_map.shape=}, expected 1-d array or None')
+      - ``pk1``, ``pk2``: arrays of either shape (nkbins,) or (nmaps,nmaps,nkbins).
 
-    nin = wcrude.shape[0]
-    nout = index_map.shape[0]
-
-    if weights.shape != (nout,):
-        raise RuntimeError(f'Got {weights.shape=}, expected 1-d array of length {nout}')
-
-    # Argument checking finished -- now for the one-line function body :)
-    return wcrude[index_map,:][:,index_map] * np.outer(weights,weights)
-
-
-def compare_pk(pk1, pk2):
+    Returns a dimensionless number which is << 1 if the P(k) arrays are nearly equal.
+    """
+    
     pk1 = np.asarray(pk1)
     pk2 = np.asarray(pk2)
 
@@ -131,8 +114,11 @@ def compare_pk(pk1, pk2):
     
     delta = np.abs(pk1-pk2) / (w[:,None,:] * w[None,:,:])
 
-    if nmaps > 1:
+    if noisy and (nmaps > 1):
         print('compare_pk(): pairwise epsilon_max values')
         print(np.max(delta,axis=2))
+
+    if noisy:
+        print(f'compare_pk(): global epsilon_max value: {np.max(delta)}')
     
-    print(f'compare_pk(): global epsilon_max value: {np.max(delta)}')
+    return np.max(delta)

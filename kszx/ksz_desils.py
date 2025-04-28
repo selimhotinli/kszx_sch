@@ -201,15 +201,9 @@ class Kpipe:
         self.kernel = 'cubic'   # FIXME hardcoded for now
         self.deltac = 1.68      # FIXME hardcoded for now
 
-        # This code moved into cached properties (see below), in order to reduce startup time.
-        # self.cosmo = Cosmology('planck18+bao')
-        # self.gcat = Catalog.from_h5(f'{input_dir}/galaxies.h5')        
-        # self.rcat = Catalog.from_h5(f'{input_dir}/randoms.h5')
-
         self.pk_data_filename = f'{output_dir}/pk_data.npy'
         self.pk_surr_filename = f'{output_dir}/pk_surrogates.npy'
         self.pk_single_surr_filenames = [ f'{output_dir}/tmp/pk_surr_{i}.npy' for i in range(nsurr) ]
-        self.window_function_filename = f'{output_dir}/tmp/window_function.npy'
 
 
     @functools.cached_property
@@ -223,7 +217,11 @@ class Kpipe:
     @functools.cached_property
     def rcat(self):
         return Catalog.from_h5(f'{self.input_dir}/randoms.h5')
-    
+
+    @functools.cached_property
+    def rcat_xyz_obs(self):
+        return self.rcat.get_xyz(self.cosmo, 'zobs')
+        
     @functools.cached_property
     def surrogate_factory(self):
         # FIXME needs comment
@@ -234,24 +232,19 @@ class Kpipe:
     
     @functools.cached_property
     def window_function(self):
-        if os.path.exists(self.window_function_filename):
-            return io_utils.load_npy(self.window_function_filename)
-        
         nrand = self.rcat.size
-        xyz_obs = self.rcat.get_xyz(self.cosmo, zcol_name='zobs')  # not ztrue
         rweights = getattr(self.rcat, 'weight_zerr', np.ones(nrand))
         vweights = getattr(self.rcat, 'vweight_zerr', np.ones(nrand))
         rsum = np.sum(rweights)
         vsum = np.sum(vweights)
 
         footprints = [
-            core.grid_points(self.box, xyz_obs, rweights, kernel=self.kernel, fft=True, compensate=True, wscal = 1.0/rsum),
-            core.grid_points(self.box, xyz_obs, vweights * self.rcat.bv_90, kernel=self.kernel, fft=True, compensate=True, wscal = 1.0/vsum),
-            core.grid_points(self.box, xyz_obs, vweights * self.rcat.bv_150, kernel=self.kernel, fft=True, compensate=True, wscal = 1.0/vsum)
+            core.grid_points(self.box, self.rcat_xyz_obs, rweights, kernel=self.kernel, fft=True, compensate=True, wscal = 1.0/rsum),
+            core.grid_points(self.box, self.rcat_xyz_obs, vweights * self.rcat.bv_90, kernel=self.kernel, fft=True, compensate=True, wscal = 1.0/vsum),
+            core.grid_points(self.box, self.rcat_xyz_obs, vweights * self.rcat.bv_150, kernel=self.kernel, fft=True, compensate=True, wscal = 1.0/vsum)
         ]
         
         wf = wfunc_utils.compute_wcrude(self.box, footprints)
-        io_utils.write_npy(self.window_function_filename, wf)
         return wf
 
     
@@ -291,18 +284,18 @@ class Kpipe:
         return pse
 
     
-    def get_pk_data(self, run=False):
+    def get_pk_data(self, run=False, force=False):
         """Returns a shape (3,3,nkbins) array.
 
         If run=False, then this function expects the P(k) file to be on disk from a previous pipeline run.
         If run=True, then the P(k) file will be computed if it is not on disk.
         """
 
-        if os.path.exists(self.pk_data_filename):
+        if (not force) and os.path.exists(self.pk_data_filename):
             return io_utils.read_npy(self.pk_data_filename)
         
-        if not run:
-            raise RuntimeError(f'Kpipe.get_pk_data(): run=False was specified, and file {self.pk_data_filename} not found')
+        if not (run or force):
+            raise RuntimeError(f'Kpipe.get_pk_data(): run=force=False was specified, and file {self.pk_data_filename} not found')
 
         print('get_pk_data(): running\n', end='')
 
@@ -327,35 +320,42 @@ class Kpipe:
 
     
     def get_pk_data2(self, run=False, force=False):
+        if (not force) and os.path.exists(self.pk_data_filename):
+            return io_utils.read_npy(self.pk_data_filename)
+
+        if not (run or force):
+            raise RuntimeError(f'Kpipe.get_pk_data2(): run=force=False was specified, and file {self.pk_data_filename} not found')
+        
+        print('get_pk_data2(): running\n', end='')
+        
         gweights = getattr(self.gcat, 'weight_zerr', np.ones(self.gcat.size))
         rweights = getattr(self.rcat, 'weight_zerr', np.ones(self.rcat.size))
         vweights = getattr(self.gcat, 'vweight_zerr', np.ones(self.gcat.size))
-        
         gcat_xyz = self.gcat.get_xyz(self.cosmo)
-        rcat_xyz = self.rcat.get_xyz(self.cosmo, zcol_name='zobs')  # not ztrue
 
         # Mean subtraction.
         coeffs_v90 = utils.subtract_binned_means(vweights * self.gcat.tcmb_90, self.gcat.z, nbins=25)
         coeffs_v150 = utils.subtract_binned_means(vweights * self.gcat.tcmb_150, self.gcat.z, nbins=25)
 
-        # Note spin=1
-        # FIXME shrink
+        # Note spin=1 on the vr fields.
         fourier_space_maps = [
-            core.grid_points(self.box, gcat_xyz, gweights, rcat_xyz, rweights, kernel=self.kernel, fft=True, compensate=True),
+            core.grid_points(self.box, gcat_xyz, gweights, self.rcat_xyz_obs, rweights, kernel=self.kernel, fft=True, compensate=True),
             core.grid_points(self.box, gcat_xyz, coeffs_v90, kernel=self.kernel, fft=True, spin=1, compensate=True),
             core.grid_points(self.box, gcat_xyz, coeffs_v150, kernel=self.kernel, fft=True, spin=1, compensate=True)
         ]
 
         # Rescale window function
-        w = np.array([ np.sum(gweights), np.sum(vweights), np.sum(vweights) ])
-        wf = self.window_function * w[:,None] * w[None,:]
+        w = np.array([ np.sum(gweights), np.sum(vweights) ])
+        wf = self.window_function * w[[0,1,1],None] * w[None,[0,1,1]]
         
         pk = core.estimate_power_spectrum(self.box, fourier_space_maps, self.kbin_edges)
         pk /= wf[:,:,None]
+        
+        io_utils.write_npy(self.pk_data_filename, pk)
         return pk
 
     
-    def get_pk_surrogate(self, isurr, run=False):
+    def get_pk_surrogate(self, isurr, run=False, force=False):
         """Returns a shape (6,6,nkbins) array.
         
         If run=False, then this function expects the P(k) file to be on disk from a previous pipeline run.
@@ -364,10 +364,10 @@ class Kpipe:
         
         fname = self.pk_single_surr_filenames[isurr]
         
-        if os.path.exists(fname):
+        if (not force) and os.path.exists(fname):
             return io_utils.read_npy(fname)
 
-        if not run:
+        if not (run or force):
             raise RuntimeError(f'Kpipe.get_pk_surrogate(): run=False was specified, and file {fname} not found')
 
         print(f'get_pk_surrogate({isurr}): running\n', end='')
@@ -400,12 +400,21 @@ class Kpipe:
         return pk
 
     
-    def get_pk_surrogate2(self, ngal=None, delta=None, M=None, ug=None):        
+    def get_pk_surrogate2(self, isurr, ngal=None, delta=None, M=None, ug=None, run=False, force=False):
+        fname = self.pk_single_surr_filenames[isurr]
+        
+        if (not force) and os.path.exists(fname):
+            return io_utils.read_npy(fname)
+
+        if not (run or force):
+            raise RuntimeError(f'Kpipe.get_pk_surrogate2(): run=False was specified, and file {fname} not found')
+
+        print(f'get_pk_surrogate({isurr}): running\n', end='')
+
         zobs = self.rcat.zobs
         nrand = self.rcat.size
         rweights = getattr(self.rcat, 'weight_zerr', np.ones(nrand))
         vweights = getattr(self.rcat, 'vweight_zerr', np.ones(nrand))
-        xyz_obs = self.rcat.get_xyz(self.cosmo, 'zobs')
 
         if ug is None:
             ug = np.random.normal(size=nrand)
@@ -413,8 +422,7 @@ class Kpipe:
         self.surrogate_factory.simulate_surrogate(ngal=ngal, delta=delta, M=M)
 
         ngal = self.surrogate_factory.ngal
-        bD = self.surr_bg * self.surrogate_factory.D
-        eta_rms = np.sqrt((nrand/ngal) - (bD*bD) * self.surrogate_factory.sigma2)
+        eta_rms = np.sqrt((nrand/ngal) - (self.surr_bg**2 * self.surrogate_factory.sigma2) * self.surrogate_factory.D**2)
         eta = ug * eta_rms
 
         # Coefficient arrays.
@@ -434,24 +442,23 @@ class Kpipe:
         Sv150_signal = utils.subtract_binned_means(Sv150_signal, zobs, nbins=25)
 
         # Note spin=1 on the vr fields.
-        # FIXME shrink
         fourier_space_maps = [
-            core.grid_points(self.box, xyz_obs, Sg, kernel=self.kernel, fft=True, spin=0, compensate=True),
-            core.grid_points(self.box, xyz_obs, dSg_dfnl, kernel=self.kernel, fft=True, spin=0, compensate=True),
-            core.grid_points(self.box, xyz_obs, Sv90_noise, kernel=self.kernel, fft=True, spin=1, compensate=True),
-            core.grid_points(self.box, xyz_obs, Sv90_signal, kernel=self.kernel, fft=True, spin=1, compensate=True),
-            core.grid_points(self.box, xyz_obs, Sv150_noise, kernel=self.kernel, fft=True, spin=1, compensate=True),
-            core.grid_points(self.box, xyz_obs, Sv150_signal, kernel=self.kernel, fft=True, spin=1, compensate=True)
+            core.grid_points(self.box, self.rcat_xyz_obs, Sg, kernel=self.kernel, fft=True, spin=0, compensate=True),
+            core.grid_points(self.box, self.rcat_xyz_obs, dSg_dfnl, kernel=self.kernel, fft=True, spin=0, compensate=True),
+            core.grid_points(self.box, self.rcat_xyz_obs, Sv90_noise, kernel=self.kernel, fft=True, spin=1, compensate=True),
+            core.grid_points(self.box, self.rcat_xyz_obs, Sv90_signal, kernel=self.kernel, fft=True, spin=1, compensate=True),
+            core.grid_points(self.box, self.rcat_xyz_obs, Sv150_noise, kernel=self.kernel, fft=True, spin=1, compensate=True),
+            core.grid_points(self.box, self.rcat_xyz_obs, Sv150_signal, kernel=self.kernel, fft=True, spin=1, compensate=True)
         ]
 
-        imap = [0,0,1,1,2,2]
-        w = np.array([ ngal * np.mean(rweights), ngal * np.mean(vweights), ngal * np.mean(vweights) ])
-        wf = self.window_function * w[:,None] * w[None,:]
-        wf = wf[imap,:][:,imap]
+        # Rescale window function.
+        w = np.array([ ngal * np.mean(rweights), ngal * np.mean(vweights) ])
+        wf = self.window_function * w[[0,1,1],None] * w[None,[0,1,1]]
+        wf = wf[[0,0,1,1,2,2],:][:,[0,0,1,1,2,2]]
 
-        pk_new = core.estimate_power_spectrum(self.box, fourier_space_maps, self.kbin_edges)
-        pk_new /= wf[:,:,None]
-        return pk_new
+        pk = core.estimate_power_spectrum(self.box, fourier_space_maps, self.kbin_edges)
+        pk /= wf[:,:,None]
+        return pk
 
     
     def run(self, processes=2):
