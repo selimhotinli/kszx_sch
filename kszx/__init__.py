@@ -27,8 +27,6 @@ from .Cosmology import Cosmology, CosmologicalParams
 
 # "High-level" classes.
 from .CmbClFitter import CmbClFitter
-from .CatalogGridder import CatalogGridder
-from .KszPSE import KszPSE
 from .SurrogateFactory import SurrogateFactory
 
 # "Utility" submodules.

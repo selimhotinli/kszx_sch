@@ -63,7 +63,7 @@ class SurrogateFactory:
         self.sigma2 = self._integrate_kgrid(box, cosmo.Plin_z0(box.get_k()))
 
     
-    def simulate_surrogate(self, *, ngal=None, delta=None, M=None):
+    def simulate_surrogate(self):
         """Simulates linear density/velocity fields on the random catalog.
 
         Initializes the following members:
@@ -75,28 +75,13 @@ class SurrogateFactory:
           self.M        # random vector with (nrand-ngal) zeroes and (ngal) ones
         """
 
-        if ngal is None:
-            ngal = self.ngal_mean + (self.ngal_rms * np.random.normal())
-            ngal = np.clip(ngal, self.ngal_min, self.ngal_max)
-            ngal = int(ngal+0.5)  # round
-            
-        if M is None:
-            # M = random vector with (nrand-ngal) 0s and (ngal) 1s.
-            # (This way of generating M is a little slow, but I don't think there's a faster way to do
-            # it in numpy, and it's not currently a bottleneck.)
-            M = np.zeros(self.nrand)
-            M[:ngal] = 1.0
-            M = np.random.permutation(M)
+        ngal = self.ngal_mean + (self.ngal_rms * np.random.normal())
+        ngal = np.clip(ngal, self.ngal_min, self.ngal_max)
+        ngal = int(ngal+0.5)  # round
+        assert 0 < ngal <= self.nrand
 
-        if delta is None:
-            delta = core.simulate_gaussian_field(self.box, self.cosmo.Plin_z0)
-            core.apply_kernel_compensation(self.box, delta, self.kernel)
-
-        assert 0 < ngal < self.nrand
-        assert self.box.is_fourier_space_map(delta)
-        assert M.shape == (self.nrand,)
-        assert np.all(np.logical_or(M==0,M==1))
-        assert np.sum(M) == ngal
+        delta = core.simulate_gaussian_field(self.box, self.cosmo.Plin_z0)
+        core.apply_kernel_compensation(self.box, delta, self.kernel)
 
         # Note that phi = delta/alpha is independent of z (in linear theory)
         phi = core.multiply_kfunc(self.box, delta, lambda k: 1.0/self.cosmo.alpha_z0(k=k), dc=0)
@@ -110,6 +95,13 @@ class SurrogateFactory:
 
         delta = core.interpolate_points(self.box, delta, self.xyz_true, self.kernel, fft=True)
         delta *= self.D
+            
+        # M = random vector with (nrand-ngal) 0s and (ngal) 1s.
+        # (This way of generating M is a little slow, but I don't think there's a faster way to do
+        # it in numpy, and it's not currently a bottleneck.)
+        M = np.zeros(self.nrand)
+        M[:ngal] = 1.0
+        M = np.random.permutation(M)
 
         self.ngal = ngal
         self.delta = delta

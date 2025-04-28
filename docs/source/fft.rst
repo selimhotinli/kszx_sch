@@ -111,10 +111,9 @@ FFTs with nonzero "spin"
      # Note that power spectra are unnormalized -- see estimate_power_spectrum() docstring.
      pk = kszx.estimate_power_spectrum(box, [delta_g,vr], kbin_edges)
      
-   (In a real pipeline, you'd probably use the high-level class :class`~kszx.KszPSE`,
-   which has "bells and whistles" such as power spectrum normalization. This example
-   code is intended to illustrate low-level building blocks: :func:`~kszx.fft_r2c()`
-   and :func:`~kszx.estimate_power_spectrum()`.)
+   (In a real pipeline, you'd want to apply power spectrum normalization -- see for example
+   :func:`kszx.wfunc_utils.compute_wapprox()`. This exmaple code is intended to illustrate
+   low-level building blocks: :func:`~kszx.fft_r2c()` and :func:`~kszx.estimate_power_spectrum()`.)
      
  - At some point in the future, I'll define spin-$l$ transforms, with an
    extra factor $(\pm i^l P_l({\hat k} \cdot {\hat r}))$. For example, spin-2

@@ -21,7 +21,6 @@ from . import wfunc_utils
 
 from .Catalog import Catalog
 from .Cosmology import Cosmology
-from .KszPSE import KszPSE
 from .SurrogateFactory import SurrogateFactory
 
 
@@ -221,17 +220,12 @@ class Kpipe:
     @functools.cached_property
     def rcat_xyz_obs(self):
         return self.rcat.get_xyz(self.cosmo, 'zobs')
-        
-    @functools.cached_property
-    def surrogate_factory(self):
-        # FIXME needs comment
-        surr_ngal_mean = self.gcat.size
-        surr_ngal_rms = 4 * np.sqrt(self.gcat.size)  # 4x Poisson
-        return SurrogateFactory(self.box, self.cosmo, self.rcat, surr_ngal_mean, surr_ngal_rms, 'ztrue')
 
     
     @functools.cached_property
     def window_function(self):
+        print('Initializing KszPipe.window_function')
+        
         nrand = self.rcat.size
         rweights = getattr(self.rcat, 'weight_zerr', np.ones(nrand))
         vweights = getattr(self.rcat, 'vweight_zerr', np.ones(nrand))
@@ -245,43 +239,22 @@ class Kpipe:
         ]
         
         wf = wfunc_utils.compute_wcrude(self.box, footprints)
+        
+        print('KszPipe.window_function initialized')
         return wf
 
     
     @functools.cached_property
-    def pse(self):
-        """Returns a KszPSE object."""
-        
-        print('Initializing KszPSE: this will take a few minutes')
+    def surrogate_factory(self):
+        print('Initializing KszPipe.surrogate_factory')
         
         # FIXME needs comment
         surr_ngal_mean = self.gcat.size
         surr_ngal_rms = 4 * np.sqrt(self.gcat.size)  # 4x Poisson
-        
-        rweights = getattr(self.rcat, 'weight_zerr', None)
-        vweights = getattr(self.rcat, 'vweight_zerr', None)
-        
-        pse = KszPSE(
-            box = self.box, 
-            cosmo = self.cosmo, 
-            randcat = self.rcat, 
-            kbin_edges = self.kbin_edges,
-            surr_ngal_mean = surr_ngal_mean,
-            surr_ngal_rms = surr_ngal_rms,
-            surr_bg = self.surr_bg,
-            rweights = rweights,
-            nksz = 2,
-            ksz_rweights = vweights,
-            ksz_bv = [ self.rcat.bv_90, self.rcat.bv_150 ],
-            ksz_tcmb_realization = [ self.rcat.tcmb_90, self.rcat.tcmb_150 ],
-            ztrue_col = 'ztrue',
-            zobs_col = 'zobs',
-            surr_ic_nbins = self.surr_ic_nbins,
-            spin0_hack = self.spin0_hack
-        )
-        
-        print('KszPSE initialization done')
-        return pse
+        sf = SurrogateFactory(self.box, self.cosmo, self.rcat, surr_ngal_mean, surr_ngal_rms, 'ztrue')
+
+        print('KszPipe.surrogate_factory initialized')
+        return sf
 
     
     def get_pk_data(self, run=False, force=False):
@@ -290,36 +263,7 @@ class Kpipe:
         If run=False, then this function expects the P(k) file to be on disk from a previous pipeline run.
         If run=True, then the P(k) file will be computed if it is not on disk.
         """
-
-        if (not force) and os.path.exists(self.pk_data_filename):
-            return io_utils.read_npy(self.pk_data_filename)
         
-        if not (run or force):
-            raise RuntimeError(f'Kpipe.get_pk_data(): run=force=False was specified, and file {self.pk_data_filename} not found')
-
-        print('get_pk_data(): running\n', end='')
-
-        # FIXME mean subtraction moved into KszPSE -- need to make this less confusing
-        # t90 = utils.subtract_binned_means(self.gcat.tcmb_90, self.gcat.z, nbins=25)
-        # t150 = utils.subtract_binned_means(self.gcat.tcmb_150, self.gcat.z, nbins=25)
-
-        gweights = getattr(self.gcat, 'weight_zerr', None)
-        vweights = getattr(self.gcat, 'vweight_zerr', None)
-
-        pk_data = self.pse.eval_pk(
-            gcat = self.gcat,
-            gweights = gweights,
-            ksz_gweights = vweights,
-            ksz_bv = [ self.gcat.bv_90, self.gcat.bv_150 ], 
-            ksz_tcmb = [ self.gcat.tcmb_90, self.gcat.tcmb_150 ],
-            zobs_col = 'z'
-        )
-
-        io_utils.write_npy(self.pk_data_filename, pk_data)
-        return pk_data
-
-    
-    def get_pk_data2(self, run=False, force=False):
         if (not force) and os.path.exists(self.pk_data_filename):
             return io_utils.read_npy(self.pk_data_filename)
 
@@ -354,53 +298,14 @@ class Kpipe:
         io_utils.write_npy(self.pk_data_filename, pk)
         return pk
 
-    
+
     def get_pk_surrogate(self, isurr, run=False, force=False):
         """Returns a shape (6,6,nkbins) array.
         
         If run=False, then this function expects the P(k) file to be on disk from a previous pipeline run.
         If run=True, then the P(k) file will be computed if it is not on disk.
         """
-        
-        fname = self.pk_single_surr_filenames[isurr]
-        
-        if (not force) and os.path.exists(fname):
-            return io_utils.read_npy(fname)
 
-        if not (run or force):
-            raise RuntimeError(f'Kpipe.get_pk_surrogate(): run=False was specified, and file {fname} not found')
-
-        print(f'get_pk_surrogate({isurr}): running\n', end='')
-        
-        self.pse.simulate_surrogate()
-        
-        for sv in [ self.pse.Sv_noise, self.pse.Sv_signal ]:
-            assert sv.shape ==  (2, self.rcat.size)
-            for j in range(2):
-                sv[j,:] = utils.subtract_binned_means(sv[j,:], self.rcat.zobs, nbins=25)
-    
-        pk = self.pse.eval_pk_surrogate()
-
-        io_utils.write_npy(fname, pk)
-        return pk
-
-
-    def get_pk_surrogates(self):
-        """Returns a shape (nsurr,6,6,nkins) array, containing P(k) for all surrogates."""
-        
-        if os.path.exists(self.pk_surr_filename):
-            return io_utils.read_npy(self.pk_surr_filename)
-
-        if not all(os.path.exists(f) for f in self.pk_single_surr_filenames):
-            raise RuntimeError(f'Kpipe.read_pk_surrogates(): necessary files do not exist; you need to call Kpipe.run()')
-
-        pk = np.array([ io_utils.read_npy(f) for f in self.pk_single_surr_filenames ])
-        
-        io_utils.write_npy(self.pk_surr_filename, pk)
-        return pk
-
-    
-    def get_pk_surrogate2(self, isurr, ngal=None, delta=None, M=None, ug=None, run=False, force=False):
         fname = self.pk_single_surr_filenames[isurr]
         
         if (not force) and os.path.exists(fname):
@@ -415,15 +320,12 @@ class Kpipe:
         nrand = self.rcat.size
         rweights = getattr(self.rcat, 'weight_zerr', np.ones(nrand))
         vweights = getattr(self.rcat, 'vweight_zerr', np.ones(nrand))
-
-        if ug is None:
-            ug = np.random.normal(size=nrand)
             
-        self.surrogate_factory.simulate_surrogate(ngal=ngal, delta=delta, M=M)
+        self.surrogate_factory.simulate_surrogate()
 
         ngal = self.surrogate_factory.ngal
         eta_rms = np.sqrt((nrand/ngal) - (self.surr_bg**2 * self.surrogate_factory.sigma2) * self.surrogate_factory.D**2)
-        eta = ug * eta_rms
+        eta = np.random.normal(scale = eta_rms)
 
         # Coefficient arrays.
         Sg = (ngal/nrand) * rweights * (self.surr_bg * self.surrogate_factory.delta + eta)
@@ -460,7 +362,22 @@ class Kpipe:
         pk /= wf[:,:,None]
         return pk
 
-    
+
+    def get_pk_surrogates(self):
+        """Returns a shape (nsurr,6,6,nkins) array, containing P(k) for all surrogates."""
+        
+        if os.path.exists(self.pk_surr_filename):
+            return io_utils.read_npy(self.pk_surr_filename)
+
+        if not all(os.path.exists(f) for f in self.pk_single_surr_filenames):
+            raise RuntimeError(f'Kpipe.read_pk_surrogates(): necessary files do not exist; you need to call Kpipe.run()')
+
+        pk = np.array([ io_utils.read_npy(f) for f in self.pk_single_surr_filenames ])
+        
+        io_utils.write_npy(self.pk_surr_filename, pk)
+        return pk
+
+        
     def run(self, processes=2):
         """Runs pipeline. If any output files already exist, they will be skipped."""
         
@@ -480,8 +397,9 @@ class Kpipe:
             print(f'Kpipe.run(): pipeline has already been run, exiting early')
             return
         
-        # Initialize KszPSE before creating multiprocessing Pool.
-        self.pse
+        # Initialize window function and SurrogateFactory before creating multiprocessing Pool.
+        self.window_function
+        self.surrogate_factory
 
         # FIXME currently I don't have a good way of setting the number of processes automatically --
         # caller must adjust the number of processes to the amount of memory in the node.
@@ -490,9 +408,9 @@ class Kpipe:
             l = [ ]
                 
             if not have_data:
-                l += [ pool.apply_async(self.get_pk_data, (True,)) ]
+                l += [ pool.apply_async(self.get_pk_data, (True,False)) ]   # (run,force)=(True,False)
             for i in missing_surrs:
-                l += [ pool.apply_async(self.get_pk_surrogate, (i,True)) ]
+                l += [ pool.apply_async(self.get_pk_surrogate, (i,True)) ]  # (run,force)=(True,False)
 
             for x in l:
                 x.get()
