@@ -197,8 +197,8 @@ class Kpipe:
             self.kbin_centers = (self.kbin_edges[1:] + self.kbin_edges[:-1]) / 2.
 
         self.box = io_utils.read_pickle(f'{input_dir}/bounding_box.pkl')
-        self.kernel = 'cubic'   # FIXME hardcoded for now
-        self.deltac = 1.68      # FIXME hardcoded for now
+        self.kernel = 'cubic'   # hardcoded for now
+        self.deltac = 1.68      # hardcoded for now
 
         self.pk_data_filename = f'{output_dir}/pk_data.npy'
         self.pk_surr_filename = f'{output_dir}/pk_surrogates.npy'
@@ -360,6 +360,8 @@ class Kpipe:
 
         pk = core.estimate_power_spectrum(self.box, fourier_space_maps, self.kbin_edges)
         pk /= wf[:,:,None]
+
+        io_utils.write_npy(fname, pk)
         return pk
 
 
