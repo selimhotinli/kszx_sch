@@ -31,14 +31,17 @@ kszx documentation
    manipulating_maps
    misc_utils
    wfunc_utils
+   plot
 
 .. toctree::
    :maxdepth: 2
    :caption: High-level features:
 
    cmb_cl_fitter
-   plot
-   ksz_desils
+   kszpipe
+   pgv_likelihood
+   regulated_deconvolver
+   surrogate_factory
 
 .. toctree::
    :maxdepth: 2

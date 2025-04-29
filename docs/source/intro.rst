@@ -68,9 +68,9 @@ which read large data files), so you don't need to set it up right away.
 Authors
 -------
 
-Alphabetical:
-
  - Selim Hotinli (https://github.com/selimhotinli)
+ - Yurii Kvasiuk (https://github.com/ykvasiuk)
+ - Edmond Chaussidon (https://github.com/echaussidon)
  - Alex Laguë (https://github.com/alexlague)
  - Mat Madhavacheril (https://github.com/msyriac)
  - Kendrick Smith (https://github.com/kmsmith137)

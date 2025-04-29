@@ -23,11 +23,10 @@ if __name__ == '__main__':
 
     p = subparsers.add_parser('test')
 
-    p = subparsers.add_parser('kpipe_run')
+    p = subparsers.add_parser('kszpipe_run')
     p.add_argument('input_dirname')
     p.add_argument('output_dirname')
-    p.add_argument('-n', type=int, default=400, help='number of surrogates (default 400)')
-    p.add_argument('-p', type=int, default=2, help='number of processes for multiprocessing Pool (default 2))')
+    p.add_argument('-p', type=int, default=4, help='number of processes for multiprocessing Pool (default 4)')
     
     args = parser.parse_args()
 
@@ -53,10 +52,10 @@ if __name__ == '__main__':
     elif args.command == 'test':
         from . import tests
         tests.run_all_tests()   # defined in kszx/tests/__init__.py
-    elif args.command == 'kpipe_run':
-        from . import ksz_desils
-        kpipe = ksz_desils.Kpipe(args.input_dirname, args.output_dirname, nsurr=args.n)
-        kpipe.run(processes=args.p)
+    elif args.command == 'kszpipe_run':
+        from .KszPipe import KszPipe
+        kszpipe = KszPipe(args.input_dirname, args.output_dirname)
+        kszpipe.run(processes=args.p)
     else:
         parser.print_help()
         sys.exit(2)

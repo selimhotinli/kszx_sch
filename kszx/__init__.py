@@ -27,6 +27,9 @@ from .Cosmology import Cosmology, CosmologicalParams
 
 # "High-level" classes.
 from .CmbClFitter import CmbClFitter
+from .KszPipe import KszPipe, KszPipeOutdir
+from .PgvLikelihood import PgvLikelihood
+from .RegulatedDeconvolver import RegulatedDeconvolver
 from .SurrogateFactory import SurrogateFactory
 
 # "Utility" submodules.
@@ -35,7 +38,6 @@ from . import io_utils
 from . import healpix_utils
 from . import pixell_utils
 from . import wfunc_utils
-from . import ksz_desils
 from . import plot
 from . import tests
 
@@ -46,3 +48,6 @@ from . import desils_lrg
 from . import desils_main
 from . import planck
 from . import sdss
+
+# This submodule is a place for old code to retire peacefully.
+from . import retirement_home
