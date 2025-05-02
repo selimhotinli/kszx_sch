@@ -412,7 +412,7 @@ class Cosmology:
 
         The function $\alpha(k,z)$ arises in non-Gaussian halo bias as:
 
-        $$b(k,z) = b_g + 2 b_{ng} \frac{fNL}{\alpha(k,z)}$$
+        $$b(k,z) = b_g + 2 b_{ng} \frac{f_{NL}}{\alpha(k,z)}$$
 
         where $b_{ng} = d(\log n)/d(\log \sigma_8) \approx \delta_c (b_g - 1)$.
 
@@ -451,7 +451,7 @@ class Cosmology:
 
         The function $\alpha(k,z)$ arises in non-Gaussian halo bias as:
 
-        $$b(k,z) = b_g + 2 b_{ng} \frac{fNL}{\alpha(k,z)}$$
+        $$b(k,z) = b_g + 2 b_{ng} \frac{f_{NL}}{\alpha(k,z)}$$
 
         where $b_{ng} = d(\log n)/d(\log \sigma_8) \approx \delta_c (b_g - 1)$.
         """

@@ -35,7 +35,7 @@ kszx documentation
 
 .. toctree::
    :maxdepth: 2
-   :caption: High-level features:
+   :caption: High-level classes:
 
    cmb_cl_fitter
    kszpipe

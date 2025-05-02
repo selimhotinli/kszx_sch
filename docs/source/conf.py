@@ -7,8 +7,8 @@
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
 project = 'kszx'
-copyright = '2024 Selim, Alex, Mat, Kendrick, et al'
-author = 'Selim, Alex, Mat, Kendrick, et al'
+copyright = '2024 Selim, Yurii, Edmond, Alex, Mat, Kendrick, et al'
+author = 'Selim, Yurii, Edmond, Alex, Mat, Kendrick, et al'
 
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
@@ -24,6 +24,7 @@ extensions = ['sphinx.ext.autosectionlabel']
 # https://www.sphinx-doc.org/en/master/usage/extensions/autodoc.html#configuration
 extensions += ['sphinx.ext.autosummary', 'sphinx.ext.autodoc', 'sphinx.ext.napoleon']
 autoclass_content = 'both'
+autodoc_member_order = 'bysource'
 
 # https://www.sympy.org/sphinx-math-dollar/
 extensions += ['sphinx_math_dollar', 'sphinx.ext.mathjax']

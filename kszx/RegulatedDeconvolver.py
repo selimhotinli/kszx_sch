@@ -3,23 +3,30 @@ import scipy.special
 
 from . import utils
 
+# FIXME some day I'll write comments explaining how the RegulatedDeconvolver actually works.
+# In the meantime I apologize for this cryptic code!
+
 
 class RegulatedDeconvolver:
     def __init__(self, zobs_vec, zerr_vec, zbin_width, soft_zmax=None):
-        """A photo-z error deconvolver which avoids the oscillatory behavior of Lucy-Richardson.
+        r"""A photo-z error deconvolver which avoids the oscillatory behavior of Lucy-Richardson.
+
+        The constructor takes a sequence of samples from the observed 2-d $(z_{obs}, z_{err})$
+        distribution, and builds a model for the 3-d $(z_{true}, z_{obs}, z_{err})$ distribution.
         
-        Given the observed 2-d (zobs,zerr) distribution, models the 3-d (ztrue,zobs,zerr) distribution.
-        FIXME: needs comments explaining how it works!
+        This 3-d distribution can be sampled with :meth:`~kszx.RegulatedDeconvolver.sample()`
+        or :meth:`~kszx.RegulatedDeconvolver.sample_parallel()`. This is used in our DESILS-LRG
+        pipeline, to generate triples $(z_{true}, z_{obs}, z_{err})$ for the random catalog,
+        given pairs $(z_{obs}, z_{err})$ from the galaxy catalog.
         
-        - zobs_vec: array of shape (ngal,) containing observed (photometric) redshifts.
+        - ``zobs_vec``: 1-d array containing observed (photometric) redshifts.
 
-        - zerr_vec: array of shape (ngal,) containing estimated photo-z errors.
+        - ``zerr_vec``: 1-d array containing estimated photo-z errors.
 
-        - zbin_width (scalar): used internally for binning. (Recommend ~0.01 for DESILS-LRG.)
+        - ``zbin_width`` (scalar): used internally for binning. (Recommend ~0.01 for DESILS-LRG.)
 
-        - soft_zmax (scalar): used internally; galaxies with (zobs > soft_zmax) are discarded.
+        - ``soft_zmax`` (scalar): used internally; galaxies with (zobs > soft_zmax) are discarded.
           Should be chosen significantly larger than the max redshift of interest.
-        
           (For DESILS-LRG with zmax=1, recommend soft_zmax=1.5. If this parameter is omitted,
           then you'll get a tail of rare galaxies with z~5, which is annoying.)
         """
@@ -65,7 +72,7 @@ class RegulatedDeconvolver:
 
 
     def _sample(self, zobs, zerr):
-        """Helper for sample(): Sample from conditional distribution P(ztrue|zobs,zerr)."""
+        r"""Helper for sample(): Sample from conditional distribution $P(z_{true} | z_{obs},z_{err})$."""
         
         n = len(zobs)
         nb = self.nzbins
@@ -102,7 +109,8 @@ class RegulatedDeconvolver:
 
         
     def sample(self, n, zobs_min=None, zobs_max=None):
-        """Returns (ztrue, zobs, zerr), where all 3 arrays are shape (n,).'
+        r"""Returns ``(ztrue, zobs, zerr)``, where all 3 arrays have shape ``(n,)``.
+        
         If n is large, you may want to call sample_parallel() instead."""
 
         zobs_min = zobs_min if (zobs_min is not None) else (self.zmin - 0.01)
@@ -128,9 +136,9 @@ class RegulatedDeconvolver:
 
 
     def sample_parallel(self, n, zobs_min=None, zobs_max=None, processes=None):
-        """Returns (ztrue, zobs, zerr), where all 3 arrays are shape (n,).
+        r"""Returns ``(ztrue, zobs, zerr)``, where all 3 arrays are shape ``(n,)``.
         
-        Uses a multiprocessing Pool for speed. If 'processes' is None, then a
+        Uses a multiprocessing Pool for speed. If ``processes`` is None, then a
         sensible default will be chosen."""
 
         with utils.Pool(processes) as pool:

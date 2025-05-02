@@ -11,11 +11,15 @@ from .KszPipe import KszPipeOutdir
 
 class PgvLikelihood:
     def __init__(self, data, surrs, bias_matrix, jeffreys_prior=False):
-        """Likelihood function for one or more power spectra of the form P_{gv}(k).
+        r"""Likelihood function for one or more kSZ power spectra of the form $P_{gv}(k)$.
 
+        This class can be used to fit $(f_{NL}, b_v)$ values or run MCMCs.
+        Currently limited to using $P_{gv}(k)$ only -- it would be interesting to
+        extend the analysis to include $P_{gg}(k)$ and/or $P_{vv}(k)$.
+        
         The PgvLikelihood constructor has an abstract syntax, which may not be the
         most convenient. Instead of calling the constructor directly, you may want
-        to call the from_pipeline_outdir() static method as follows::
+        to call :meth:`~kszx.PgvLikelihood.from_pipeline_outdir()` as follows::
 
            dirname = ...   # directory name containing pipeline outputs
            pout = kszx.KszPipeOutdir(dirname)
@@ -26,13 +30,13 @@ class PgvLikelihood:
 
         The rest of this docstring describes the PgvLikelihood constructor syntax
         (even though, as explained above, you probably don't want to call the constructor
-        directly!) First we define::
+        directly!) First we define:
 
-          B = number of bias parameters in the MCMC (usually 1)
-          V = number of velocity reconstructions (usually 1)
-          K = number of k-bins
-          S = number of surrogate sims
-          D = V*K = number of components in "data vector".
+          - B = number of bias parameters in the MCMC (usually 1)
+          - V = number of velocity reconstructions (usually 1)
+          - K = number of k-bins
+          - S = number of surrogate sims
+          - D = V*K = number of components in "data vector".
 
         Note the distinction between a 90+150 GHz "sum" fit (V=1), and a 90+150 GHz
         "joint" fit (V=2). In the first case, we add the 90+150 bandpowers and construct
@@ -42,24 +46,23 @@ class PgvLikelihood:
         
         Then the constructor arguments are as follows:
 
-          - data: P_{gv} "data" bandpowers, as array of shape (V,K).
+          - ``data``: $P_{gv}(k)$ "data" bandpowers, an array of shape ``(V,K)``.
         
-          - surrs: P_{gv} surrogate bandpowers, as array of shape (S,2,2,V,K).
-              where the first length-2 index is fnl exponent {0,1}
-              and the second length-2 index is bias exponent {0,1}
+          - ``surrs``: $P_{gv}(k)$ surrogate bandpowers, an array of shape ``(S,2,2,V,K)``.
+            The first length-2 index is an fnl exponent in {0,1}.
+            The second length-2 index is a bv exponent in {0,1}.
 
-          - bias_matrix: array of shape (B,V), where B <= V. This gives the
+          - ``bias_matrix``: array of shape $(B,V)$, where $B \le V$. This gives the
             correspondence between bias parameters and velocity reconstruction.
             There are basically 3 cases of interest here:
 
-              - single field (V=1):
-                  bias_matrix=[[1]]
+              - ``bias_matrix = [[1,1]]``: analysis of single velocity reconstruction field (V=1).
         
-              - joint analysis (V=2), bias assumed to be the same for both freqs:
-                  bias_matrix = [[1,1]]
+              - ``bias_matrix = [[1,1]]``: joint analysis of two velocity reconstruction fields (V=2),
+                with bias assumed to be the same for both freqs.
 
-              - joint analysis (V=2) with two independent bias parameters:
-                  bias_matrix = [[1,0],[0,1]]
+              - ``bias_matrix = [[1,0],[0,1]]``: joint analysis of two velocity reconstruction
+                fields (V=2), with two independent bias parameters.
         """
 
         data = np.asarray(data, dtype=float)
@@ -97,24 +100,32 @@ class PgvLikelihood:
 
     @staticmethod
     def from_pipeline_outdir(pout, fields, nkbins, multi_bias=None, jeffreys_prior=None):
-        """
-        Constructs a PgvLikelhood from a KszPipeOutdir object. Usually more convenient
-        than calling the PgvLikeihood constructor directly.
+        r"""Constructs a PgvLikelhood from a :class:`~kszx.KszPipeOutdir` instance.
 
-        The 'pout' argument is a KszPipeOutdir object.
+        Usually more convenient than calling the PgvLikelihood constructor directly.
+        Example usage::
         
-        The 'fields' argument is a V-by-2 matrix. Each row of the matrix selects a linear
+           dirname = ...   # directory name containing pipeline outputs
+           pout = kszx.KszPipeOutdir(dirname)
+
+           # The 'fields=[[1,0]]' argument selects 90 GHz.
+           # See below for more examples.
+           lik = kszx.PgvLikelihood.from_pipeline_outdir(pout, fields=[[1,0]], nkbins=10)
+
+        The ``pout`` argument is a :class:`~kszx.KszPipe.KszPipeOutdir` object.
+        
+        The ``fields`` argument is a V-by-2 matrix. Each row of the matrix selects a linear
         combination of the 90+150 GHz velocity reconstructions. For example:
         
-           - fields = [[1,0]] for 90 GHz analysis
-           - fields = [[0,1]] for 150 GHz analysis
-           - fields = [[1,1]] for (90+150) "sum map" analysis
-           - fields = [[1,-1]] for null (90-150) "null map" analysis
-           - fields = [[1,0],[0,1]] for joint analysis with both (90+150 GHz) sets of bandpowers
+           - ``fields = [[1,0]]`` for 90 GHz analysis
+           - ``fields = [[0,1]]`` for 150 GHz analysis
+           - ``fields = [[1,1]]`` for (90+150) "sum map" analysis
+           - ``fields = [[1,-1]]`` for null (90-150) "null map" analysis
+           - ``fields = [[1,0],[0,1]]`` for joint analysis with both (90+150 GHz) sets of bandpowers
 
-        The 'multi_bias' argument only needed for a joint analysis (i.e. V > 1) and determines
-        whether each freq channel has an independent bias parameter (multi_bias=True), or whether
-        all frequency channels have the same bias.
+        The ``multi_bias`` argument is only needed for a joint analysis (i.e. $V > 1$) and determines
+        whether each freq channel has an independent bias parameter (``multi_bias=True``), or whether
+        all frequency channels have the same bias (``multi_bias=False``).
         """
         
         assert isinstance(pout, KszPipeOutdir)
@@ -146,9 +157,12 @@ class PgvLikelihood:
 
     
     def specialize_surrogates(self, fnl, bv, flatten):
-        """
-        Returns a shape (S,V,K) array, by "specializing" surrogates to (fnl, bv).
-        Convenient but slow! Used in many places, but not fast_likelihood().
+        r"""Returns a shape ``(S,V,K)`` array, by "specializing" surrogates to specified $(f_{NL}, b_v)$.
+        
+        The ``bv`` arugment should be an array of shape ``(B,)`` where $B$ is the number
+        of bias parameters in the likelihood. If $B=1$, then ``bv`` can be a scalar.
+
+        Convenient but slow! Used in many places, but not :meth:`~kszx.PgvLikelihood.fast_likelihood()`.
         """
 
         S, K, V, D = self.S, self.K, self.V, self.D
@@ -169,7 +183,16 @@ class PgvLikelihood:
                 
         
     def slow_mean_and_cov(self, fnl, bv):
-        """Returns (mean, cov) where mean.shape=(D,) and cov.shape=(D,D)."""
+        r"""Computes mean and covaraince of surrogates, for specified $(f_{NL}, b_v)$.
+
+        Returns ``(mean, cov)`` where ``mean.shape=(D,)`` and ``cov.shape=(D,D).``
+
+        The ``bv`` arugment should be an array of shape ``(B,)`` where $B$ is the number
+        of bias parameters in the likelihood. If $B=1$, then ``bv`` can be a scalar.
+        
+        Brute force implementation: we call :meth:`kszx.PgvLikelihood.specialize_surrogates()``,
+        then compute the mean and covariance with ``np.mean()`` and ``np.cov()``.
+        """
         
         s = self.specialize_surrogates(fnl, bv, flatten=True)  # shape (S,D)
         mean = np.mean(s, axis=0)       # shape (D,)
@@ -178,16 +201,21 @@ class PgvLikelihood:
 
     
     def slow_mean_and_cov_gradients(self, fnl, bv):
-        """Returns grad(mu), grad(cov). Used to compute Jeffreys prior.
+        r"""Computes the gradient of the mean and covariance with respect to $(f_{NL}, b_v)$.
 
-        Both gradients are with respect to (fnl,bv) and are represented as arrays 
+        Returns ``grad_mean, grad_cov``, where both gradients are represented as arrays
         with an extra length-(B+1) axis, i.e.
 
-          mu.shape = (D,)    =>  grad_mu.shape = (B+1,D)
-          cov.shape = (D,D)  =>  grad_cov.shape = (B+1,D,D)
+          - ``mean.shape = (D,)  =>  grad_mean.shape = (B+1,D)``
+          - ``cov.shape = (D,D)  =>  grad_cov.shape = (B+1,D,D)``
           
-        Uses boneheaded algorithm: since mu, C are at most quadratic in fNL (and bv),
+        Uses boneheaded algorithm: since mean, cov are at most quadratic in $f_{NL}$ and $b_v$,
         naive finite difference is exact (and independent of step sizes).
+
+        The ``bv`` arugment should be an array of shape ``(B,)`` where $B$ is the number
+        of bias parameters in the likelihood. If $B=1$, then ``bv`` can be a scalar.
+
+        This method is only used to compute log-likelihoods with the Jeffreys prior.
         """
 
         B, D = self.B, self.D
@@ -220,7 +248,11 @@ class PgvLikelihood:
         
         
     def slow_log_likelihood(self, fnl, bv):
-        """Returns the scalar quantity log(L)."""
+        r"""Returns the log-likelihood at the specified $(f_{NL}, b_v)$.
+
+        The ``bv`` arugment should be an array of shape ``(B,)`` where $B$ is the number
+        of bias parameters in the likelihood. If $B=1$, then ``bv`` can be a scalar.
+        """
         
         mean, cov = self.slow_mean_and_cov(fnl, bv)
 
@@ -255,10 +287,7 @@ class PgvLikelihood:
 
     
     def run_mcmc(self, nwalkers=8, nsamples=10000, discard=1000, thin=5):
-        """
-        Initializes self.samples to an array of shape (N,2) where N is large,
-        and the length-2 axis represents {fnl,bv}.
-        """
+        r"""Initializes ``self.samples`` to an array of shape (N,B+1) where N is large."""
 
         import emcee
         print(f'MCMC start: {nwalkers=}, {nsamples=}, {discard=}, {thin=}')
@@ -276,10 +305,10 @@ class PgvLikelihood:
 
 
     def show_mcmc(self, title=None):
-        """Makes a corner plot from MCMC results."""
+        r"""Makes a corner plot from MCMC results. Intended to be called from jupyter."""
 
         if not hasattr(self, 'samples'):
-            raise RuntimeError('Must call ')
+            raise RuntimeError('Must call PgvLikelihood.run_mcmc() before PgvLikelihood.show_mcmc().')
         
         import corner
         
@@ -309,12 +338,16 @@ class PgvLikelihood:
 
 
     def analyze_chi2(self, fnl, bv, ddof=None):
-        """Do model parameters (fnl,bv) fit the data? Returns (chi2, ndof, p-value).
+        r"""Computes a $\chi^2$ statistic, which compares $P_{gv}^{data}(k)$ to model with given $(f_{NL}, b_v)$.
 
-        The 'ddof' argument is used to compute the number of degrees of freedom:
-            ndof = nkbins - ddof
+        Returns ($\chi^2$, $N_{dof}$, $p$-value).
 
-        If ddof=None, then it will be equal to the number of nonzero (fnl, bias) params.
+        The ``bv`` arugment should be an array of shape ``(B,)`` where $B$ is the number
+        of bias parameters in the likelihood. If $B=1$, then ``bv`` can be a scalar.
+        
+        The ``ddof`` argument is used to compute the number of degrees of freedom, as
+        ``ndof = nkbins - ddof``. If ``ddof=None``, then it will be equal to the
+        number of nonzero (fnl, bias) params. (This is usually the correct choice.)
         """
         
         fnl = float(fnl)        
@@ -334,7 +367,10 @@ class PgvLikelihood:
         
     
     def fit_fnl_and_bv(self, fnl0=0, bv0=0.3):
-        """Returns (fnl, bv) obtained by maximizing joint likelihood."""
+        r"""Returns $(f_{NL}, b_v)$ obtained by maximizing joint likelihood.
+        
+        Note that $b_v$ is represented as a 1-d array with shape ``(B,)``, even if $B=1$.
+        """
 
         x0 = np.zeros(self.B+1)
         x0[0] = fnl0
@@ -349,7 +385,10 @@ class PgvLikelihood:
 
         
     def fit_bv(self, fnl=0, bv0=0.3):
-        """Returns bv obtained by maximizing conditional likelihood at the given fNL."""
+        r"""Returns $b_v$ obtained by maximizing conditional likelihood at the given $f_{NL}.
+        
+        Note that $b_v$ is represented as a 1-d array with shape ``(B,)``, even if $B=1$.
+        """
 
         x0 = np.full(self.B, bv0)
         f = lambda x: -self.fast_log_likelihood(fnl, x)  # note minus sign
@@ -360,6 +399,8 @@ class PgvLikelihood:
 
 
     def compute_snr(self):
+        r"""Returns total SNR of $P_{gv}(k)$. Does not assume a model for $P_{gv}(k)$."""
+        
         # This implementation works even if there are multiple bias params (B > 1).
         B, D = self.B, self.D
         
@@ -419,7 +460,9 @@ class PgvLikelihood:
 
 
     def fast_mean_and_cov(self, fnl, bv, grad=False):
-        """bv must be a 1-d array of length B, i.e. scalar is not allowed."""
+        r"""Equivalent to :meth:`~kszx.PgvLikelihood.slow_mean_and_cov()`, but faster. Intended for use in MCMC.
+        
+        Note that bv must be a 1-d array of length B, i.e. scalar is not allowed."""
         
         B, D, V, K = self.B, self.D, self.V, self.K
         f3 = np.array((1.0, fnl, fnl**2))
@@ -473,6 +516,10 @@ class PgvLikelihood:
 
 
     def fast_log_likelihood(self, fnl, bv):
+        r"""Equivalent to :meth:`~kszx.PgvLikelihood.slow_log_likelihood()`, but faster. Intended for use in MCMC.
+        
+        Note that ``bv`` must be a 1-d array of length B, i.e. scalar is not allowed."""
+        
         if self.jeffreys_prior:
             # Need gradients
             mean, cov, grad_mean, grad_cov = self.fast_mean_and_cov(fnl, bv, grad=True)
@@ -516,7 +563,7 @@ class PgvLikelihood:
     
 
     def test_fast_mean_and_cov(self):
-        """Test fast_mean_and_cov(), by checking that it agrees with slow_mean_and_cov() at 10 random points."""
+        r"""Test fast_mean_and_cov(), by checking that it agrees with slow_mean_and_cov() at 10 random points."""
 
         for _ in range(10):
             fnl = np.random.uniform(-50, 50)
@@ -533,7 +580,7 @@ class PgvLikelihood:
     
     
     def test_fast_likelihood(self):
-        """Test fast_log_likelihood(), by checking that it agrees with slow_log_likelihood() at 10 random points."""
+        r"""Test fast_log_likelihood(), by checking that it agrees with slow_log_likelihood() at 10 random points."""
         
         for _ in range(10):
             fnl = np.random.uniform(-50, 50)
@@ -545,7 +592,7 @@ class PgvLikelihood:
     
     @staticmethod
     def make_random():
-        """Construct and return a PgvLikelihood with random (data, surrs, bias_matrix).
+        r"""Construct and return a PgvLikelihood with random (data, surrs, bias_matrix).
         
         Useful for standalone testing of 'class PgvLikelihood', in order to construct
         an "interesting" PgvLikelihood, in a situation where KSZ pipeline outputs are

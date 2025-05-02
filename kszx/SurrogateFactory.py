@@ -9,12 +9,11 @@ from .Cosmology import Cosmology
 
 class SurrogateFactory:
     def __init__(self, box, cosmo, randcat, ngal_mean, ngal_rms, ztrue_col='z', kernel='cubic'):
-        """Helper class for simulating surrogate fields defined on a random catalog.
+        r"""Helper class for simulating surrogate fields defined on a random catalog.
 
         Constructor arguments:
 
-          - ``box`` (kszx.Box): defines pixel size, bounding box size, and location of observer.
-            See :class:`~kszx.Box` for more info.
+          - ``box`` (:class:`~kszx.Box`): defines pixel size, bounding box size, and location of observer.
 
           - ``cosmo`` (:class:`~kszx.Cosmology`). Used to simulate linear densities/velocities.
 
@@ -36,6 +35,17 @@ class SurrogateFactory:
             is photometric, then these should be true redshifts, not observed redshifts.)
 
           - ``kernel`` (string): either ``'cic'`` or ``'cubic'`` (more options will be defined later).
+
+        Most of the interesting members are computed in ``simulate_surrogate()``, but the constructor does
+        computes a few useful members:
+
+          - ``self.D`` (1-d array of length nrand): growth function $D(z)$ evaluated on random
+            catalog, normalized to $D=1$ at $z=0$.
+
+          - ``self.faH`` (1-d array of length nrand): parameter combination $f_{rsd}(z) H(z) / (1+z)$,
+            evaluated on random catalog.
+
+          - ``self.sigma2`` (scalar): variance of linear density field at $z=0$.
         """
         
         assert isinstance(box, Box)
@@ -64,15 +74,26 @@ class SurrogateFactory:
 
     
     def simulate_surrogate(self):
-        """Simulates linear density/velocity fields on the random catalog.
+        r"""Simulates linear density/velocity fields on the random catalog.
 
         Initializes the following members:
 
-          self.ngal     # scalar (random, see constructor docstring).
-          self.delta    # linear density field (1-d array of length nrand)
-          self.phi      # phi = delta/alpha (1-d array of length nrand)
-          self.vr       # radial velocity (1-d array of length nrand)
-          self.M        # random vector with (nrand-ngal) zeroes and (ngal) ones
+          - ``self.ngal`` (integer): includes random scatter, see class docstring.
+        
+          - ``self.delta`` (1-d array of length nrand): linear density field
+            $\delta(x)$ evaluated on random catalog.
+        
+          - ``self.phi`` (1-d array of length nrand): field
+            $\phi(x) = \delta(x) / \alpha(x)$ evaluated on random catalog.
+        
+          - ``self.vr`` (1-d array of length nrand): radial velocity field
+            $v_r(x)$  evaluated on random catalog.
+        
+          - ``self.M`` (1-d array of length nrand): random array with
+            $(N_{rand} - N_{gal})$ zeroes and $N_{gal}$ ones.
+
+        Reminder: non-Gaussian galaxy bias takes the form
+        $\delta_g(x) = b_g \delta(x) + 2 f_{NL} \delta_c (b_g-1) \phi(x)$.
         """
 
         ngal = self.ngal_mean + (self.ngal_rms * np.random.normal())

@@ -18,8 +18,10 @@ class KszPipe:
     def __init__(self, input_dir, output_dir):
         r"""This is the main kSZ analysis pipeline, which computes data/surrogate power spectra from catalogs.
 
-        To run the pipeline, either create a KszPipe instance and call the :meth:`~KszPipe.run()` method,
-        or run from the command line with::
+        There are two ways to run a KszPipe pipeline. The first way is to create a KszPipe instance and
+        call the ``run()`` method. This can be done either in a script or a jupyter notebook (if you're
+        using jupyter, you should keep in mind that the KszPipe may take hours to run, and you'll need to
+        babysit the connection to the jupyterhib). The second way is to run from the command line with::
         
            python -m kszx kszpipe_run [-p NUM_PROCESSES] <input_dir> <output_dir>
         
@@ -56,7 +58,7 @@ class KszPipe:
 
           - Currently, there is not much implemented for CMB foregrounds. Later, I'd like
             to include foreground clustering terms in the surrogate model (i.e. terms of the
-            form $b_\delta * \delta(x)$, in addition to the kSZ term $b_v v_r(x)$), and estimate
+            form $b_\delta \delta(x)$, in addition to the kSZ term $b_v v_r(x)$), and estimate
             the $b_\delta$ biases by estimating the spin-zero $P_{gv}$ power spectrum.
         """
         
@@ -66,6 +68,9 @@ class KszPipe:
         # Create output_dir and 'tmp' subdir
         os.makedirs(f'{output_dir}/tmp', exist_ok=True)
 
+        # Read files from pipeline input_dir.
+        # Reference: https://kszx.readthedocs.io/en/latest/kszpipe.html#kszpipe-details
+        
         with open(f'{input_dir}/params.yml', 'r') as f:
             params = yaml.safe_load(f)
 
@@ -107,23 +112,49 @@ class KszPipe:
     def rcat_xyz_obs(self):
         return self.rcat.get_xyz(self.cosmo, 'zobs')
 
+    @functools.cached_property
+    def sum_rcat_gweights(self):
+        return np.sum(self.rcat.weight_gal) if hasattr(self.rcat, 'weight_gal') else self.rcat.size
+
+    @functools.cached_property
+    def sum_rcat_vr_weights(self):
+        return np.sum(self.rcat.weight_vr) if hasattr(self.rcat, 'weight_vr') else self.rcat.size
+
     
     @functools.cached_property
     def window_function(self):
+        r"""
+        3-by-3 matrix $W_{ij}$ containing the window function for power spectra on three spatial footprints:
+        
+          - footprint 0: random catalog weighted by ``weight_gal`` column
+          - footprint 1: random catalog weighted by product of columns ``weight_vr * bv_90``
+          - footprint 2: random catalog weighted by product of columns ``weight_vr * bv_150``
+
+        These spatial weightings are appropriate for the $\delta_g$, $v_r^{90}$, and $v_r^{150}$ fields.
+
+        Window functions are computed with ``wfunc_utils.compute_wcrude()`` and are crude approximations
+        (for more info see :func:`~kszx.wfunc_utils.compute_wcrude()` docstring), but this is okay since
+        surrogate fields are treated consistently.
+        """
+        
         print('Initializing KszPipe.window_function')
         
         nrand = self.rcat.size
         rweights = getattr(self.rcat, 'weight_gal', np.ones(nrand))
         vweights = getattr(self.rcat, 'weight_vr', np.ones(nrand))
-        rsum = np.sum(rweights)
-        vsum = np.sum(vweights)
 
-        footprints = [
-            core.grid_points(self.box, self.rcat_xyz_obs, rweights, kernel=self.kernel, fft=True, compensate=True, wscal = 1.0/rsum),
-            core.grid_points(self.box, self.rcat_xyz_obs, vweights * self.rcat.bv_90, kernel=self.kernel, fft=True, compensate=True, wscal = 1.0/vsum),
-            core.grid_points(self.box, self.rcat_xyz_obs, vweights * self.rcat.bv_150, kernel=self.kernel, fft=True, compensate=True, wscal = 1.0/vsum)
-        ]
+        # Cache these properties for later use (not logically necessary, but may help later pipeline stages run faster)
+        self.sum_rcat_gweights
+        self.sum_rcat_vr_weights
         
+        # Fourier-space maps representing footprints.
+        footprints = [
+            core.grid_points(self.box, self.rcat_xyz_obs, rweights, kernel=self.kernel, fft=True, compensate=True),
+            core.grid_points(self.box, self.rcat_xyz_obs, vweights * self.rcat.bv_90, kernel=self.kernel, fft=True, compensate=True),
+            core.grid_points(self.box, self.rcat_xyz_obs, vweights * self.rcat.bv_150, kernel=self.kernel, fft=True, compensate=True)
+        ]
+
+        # Compute window function using wfunc_utils.compute_wcrude().
         wf = wfunc_utils.compute_wcrude(self.box, footprints)
         
         print('KszPipe.window_function initialized')
@@ -132,11 +163,15 @@ class KszPipe:
     
     @functools.cached_property
     def surrogate_factory(self):
-        print('Initializing KszPipe.surrogate_factory')
+        """
+        Returns an instance of class SurrogateFactory, a helper class for simulating the
+        density and radial velocity fields at locations of randoms.
+        """
         
-        # FIXME needs comment
+        print('Initializing KszPipe.surrogate_factory')
+
         surr_ngal_mean = self.gcat.size
-        surr_ngal_rms = 4 * np.sqrt(self.gcat.size)  # 4x Poisson
+        surr_ngal_rms = 4 * np.sqrt(self.gcat.size)  # 4x Poisson        
         sf = SurrogateFactory(self.box, self.cosmo, self.rcat, surr_ngal_mean, surr_ngal_rms, 'ztrue')
 
         print('KszPipe.surrogate_factory initialized')
@@ -151,11 +186,12 @@ class KszPipe:
           - 0: galaxy overdensity 
           - 1: kSZ velocity reconstruction $v_r^{90}$
           - 2: kSZ velocity reconstruction $v_r^{150}$
-        
-        If run=False, then this function expects the $P(k)$ file to be on disk from a previous pipeline run.
-        If run=True, then the $P(k)$ file will be computed if it is not on disk.
 
-        If force=True, then this function recomputes $P(k)$, even if it is on disk from a previous pipeline run.
+        Flags:
+        
+          - If ``run=False``, then this function expects the $P(k)$ file to be on disk from a previous pipeline run.
+          - If ``run=True``, then the $P(k)$ file will be computed if it is not on disk.
+          - If ``force=True``, then this function recomputes $P(k)$, even if it is on disk from a previous pipeline run.
         """
         
         if (not force) and os.path.exists(self.pk_data_filename):
@@ -171,25 +207,34 @@ class KszPipe:
         vweights = getattr(self.gcat, 'weight_vr', np.ones(self.gcat.size))
         gcat_xyz = self.gcat.get_xyz(self.cosmo)
 
-        # Mean subtraction.
+        # To mitigate CMB foregrounds, we apply mean-subtraction to the vr fields.
+        # (Note that we perform the same mean-subtraction to surrogate fields, in get_pk_surrogate().)
+        
         coeffs_v90 = utils.subtract_binned_means(vweights * self.gcat.tcmb_90, self.gcat.z, self.nzbins_vr)
         coeffs_v150 = utils.subtract_binned_means(vweights * self.gcat.tcmb_150, self.gcat.z, self.nzbins_vr)
 
-        # Note spin=1 on the vr fields.
+        # Note spin=1 on the vr FFTs.
         fourier_space_maps = [
             core.grid_points(self.box, gcat_xyz, gweights, self.rcat_xyz_obs, rweights, kernel=self.kernel, fft=True, compensate=True),
             core.grid_points(self.box, gcat_xyz, coeffs_v90, kernel=self.kernel, fft=True, spin=1, compensate=True),
             core.grid_points(self.box, gcat_xyz, coeffs_v150, kernel=self.kernel, fft=True, spin=1, compensate=True)
         ]
 
-        # Rescale window function
-        w = np.array([ np.sum(gweights), np.sum(vweights) ])
-        wf = self.window_function * w[[0,1,1],None] * w[None,[0,1,1]]
-        
+        # Rescale window function (by roughly a factor Ngal/Nrand in each footprint).
+        w = np.zeros(3)
+        w[0] = np.sum(gweights) / self.sum_rcat_gweights
+        w[1] = w[2] = np.sum(vweights) / self.sum_rcat_vr_weights
+        wf = self.window_function * w[:,None] * w[None,:]
+
+        # Estimate power spectra. and normalize by dividing by window function.
         pk = core.estimate_power_spectrum(self.box, fourier_space_maps, self.kbin_edges)
         pk /= wf[:,:,None]
+
+        # Save 'pk_data.npy' to disk. Note that the file format is specified here:
+        # https://kszx.readthedocs.io/en/latest/kszpipe.html#kszpipe-details
         
         io_utils.write_npy(self.pk_data_filename, pk)
+        
         return pk
 
 
@@ -205,10 +250,11 @@ class KszPipe:
           - 4: surrogate kSZ velocity reconstruction $S_v^{150}$, with $b_v=0$ (i.e. noise only).
           - 5: derivative $dS_v^{150}/db_v$.
         
-        If run=False, then this function expects the $P(k)$ file to be on disk from a previous pipeline run.
-        If run=True, then the $P(k)$ file will be computed if it is not on disk.
+        Flags:
 
-        If force=True, then this function recomputes $P(k)$, even if it is on disk from a previous pipeline run.
+          - If ``run=False``, then this function expects the $P(k)$ file to be on disk from a previous pipeline run.
+          - If ``run=True``, then the $P(k)$ file will be computed if it is not on disk.
+          - If ``force=True``, then this function recomputes $P(k)$, even if it is on disk from a previous pipeline run.
         """
 
         fname = self.pk_single_surr_filenames[isurr]
@@ -225,14 +271,22 @@ class KszPipe:
         nrand = self.rcat.size
         rweights = getattr(self.rcat, 'weight_gal', np.ones(nrand))
         vweights = getattr(self.rcat, 'weight_vr', np.ones(nrand))
-            
-        self.surrogate_factory.simulate_surrogate()
 
+        # The SurrogateFactory simulates LSS fields (delta, phi, vr) sampled at random catalog locations.
+        self.surrogate_factory.simulate_surrogate()
         ngal = self.surrogate_factory.ngal
+
+        # Noise realization for Sg (see overleaf).
         eta_rms = np.sqrt((nrand/ngal) - (self.surr_bg**2 * self.surrogate_factory.sigma2) * self.surrogate_factory.D**2)
+        if np.min(eta_rms) < 0:
+            raise RuntimeError('Noise RMS went negative! This is probably a symptom of not enough randoms (note {(ngal/nrand)=})')
         eta = np.random.normal(scale = eta_rms)
 
-        # Coefficient arrays.
+        # Each surrogate field is a sum (with coefficients) over the random catalog.
+        # First we compute the coefficient arrays (6 fields total).
+        # For more info, see the overleaf, or the sphinx docs:
+        #  https://kszx.readthedocs.io/en/latest/kszpipe.html#kszpipe-details
+        
         Sg = (ngal/nrand) * rweights * (self.surr_bg * self.surrogate_factory.delta + eta)
         dSg_dfnl = (ngal/nrand) * rweights * (2 * self.deltac) * (self.surr_bg-1) * self.surrogate_factory.phi
         Sv90_noise = vweights * self.surrogate_factory.M * self.rcat.tcmb_90
@@ -240,18 +294,28 @@ class KszPipe:
         Sv90_signal = (ngal/nrand) * vweights * self.rcat.bv_90 * self.surrogate_factory.vr
         Sv150_signal = (ngal/nrand) * vweights * self.rcat.bv_150 * self.surrogate_factory.vr
 
-        # Mean subtraction.
+        # Mean subtraction for the surrogate field Sg.
+        # This is intended to make the surrogate field more similar to the galaxy overdensity delta_g
+        # which satisfies "integral constraints" since the random z-distribution is inferred from the
+        # galaxies. (In practice, the effect seems to be small.)
+        
         if self.nzbins_gal > 0:
             Sg = utils.subtract_binned_means(Sg, zobs, self.nzbins_gal)
             dSg_dfnl = utils.subtract_binned_means(dSg_dfnl, zobs, self.nzbins_gal)
 
+        # Mean subtraction for the surrogate fields Sv.
+        # This is intended to mitgate foregrounds.( Note that we perform the same
+        # mean subtraction to the vr arrays, in get_pk_data()).
+        
         if self.nzbins_vr > 0:
             Sv90_noise = utils.subtract_binned_means(Sv90_noise, zobs, self.nzbins_vr)
             Sv90_signal = utils.subtract_binned_means(Sv90_signal, zobs, self.nzbins_vr)
             Sv150_noise = utils.subtract_binned_means(Sv150_noise, zobs, self.nzbins_vr)
             Sv150_signal = utils.subtract_binned_means(Sv150_signal, zobs, self.nzbins_vr)
 
-        # Note spin=1 on the vr fields.
+        # (Coefficient arrays) -> (Fourier-space fields).
+        # Note spin=1 on the vr FFTs.
+        
         fourier_space_maps = [
             core.grid_points(self.box, self.rcat_xyz_obs, Sg, kernel=self.kernel, fft=True, spin=0, compensate=True),
             core.grid_points(self.box, self.rcat_xyz_obs, dSg_dfnl, kernel=self.kernel, fft=True, spin=0, compensate=True),
@@ -261,11 +325,13 @@ class KszPipe:
             core.grid_points(self.box, self.rcat_xyz_obs, Sv150_signal, kernel=self.kernel, fft=True, spin=1, compensate=True)
         ]
 
-        # Rescale window function.
-        w = np.array([ ngal * np.mean(rweights), ngal * np.mean(vweights) ])
-        wf = self.window_function * w[[0,1,1],None] * w[None,[0,1,1]]
+        # Rescale window function, by a factor (ngal/nrand) in each footprint.
+        wf = (ngal/nrand)**2 * self.window_function
+
+        # Expand window function from shape (3,3) to shape (6,6).
         wf = wf[[0,0,1,1,2,2],:][:,[0,0,1,1,2,2]]
 
+        # Estimate power spectra. and normalize by dividing by window function.
         pk = core.estimate_power_spectrum(self.box, fourier_space_maps, self.kbin_edges)
         pk /= wf[:,:,None]
 
@@ -296,20 +362,28 @@ class KszPipe:
             raise RuntimeError(f'KszPipe.read_pk_surrogates(): necessary files do not exist; you need to call KszPipe.run()')
 
         pk = np.array([ io_utils.read_npy(f) for f in self.pk_single_surr_filenames ])
+
+        # Save 'pk_surrogates.npy' to disk. Note that the file format is specified here:
+        # https://kszx.readthedocs.io/en/latest/kszpipe.html#kszpipe-details
         
         io_utils.write_npy(self.pk_surr_filename, pk)
+        
         return pk
 
         
-    def run(self, processes=4):
+    def run(self, processes):
         """Runs pipeline and saves results to disk, skipping results already on disk from previous runs.
 
         Implementation: creates a multiprocessing Pool, and calls :meth:`~kszx.KszPipe.get_pk_data()`
-        and :meth:`~kszx.get_pk_surrogates()` in worker processes. (FIXME use MPI instead?)
+        and :meth:`~kszx.KszPipe.get_pk_surrogates()` in worker processes.
 
         Can be run from the command line with::
         
            python -m kszx kszpipe_run [-p NUM_PROCESSES] <input_dir> <output_dir>
+
+        The ``processes`` argument is the number of worker processes. Currently I don't have a good way
+        of setting this automatically -- the caller must adjust the number of processes, based on the
+        size of the datasets, and amount of memory available.
         """
         
         # Copy yaml file from input to output dir.
@@ -356,23 +430,24 @@ class KszPipe:
 
 class KszPipeOutdir:
     def __init__(self, dirname, nsurr=None):
-        """
-        KszPipeOutdir: a helper class for postprocessing/plotting pipeline outputs.        
-        (Note: there is a separate class 'PgvLikelihood' for MCMCs and parameter fits, see below)
+        r"""A helper class for loading and processing output files from ``class KszPipe``.
 
-        The constructor reads the following files::
-        
-          {dirname}/params.yml         # for nkbins, kmax
-          {dirname}/pk_data.npy        # shape (3, 3, nkbins)
-          {dirname}/pk_surrogates.npy  # shape (nsurr, 6, 6, nkbins)
+        Note: for MCMCs and parameter fits, there is a separate class :class:`~kszx.PgvLikelihood`.
+        The KszPipeOutdir class is more minimal (the main use case is plot scripts!)
+
+        The constructor reads the files ``{dirname}/params.yml``, ``{dirname}/pk_data.npy``,
+        ``{dirname}/pk_surrogates.npy`` which are generated by :meth:`~kszx.KszPipe.run()`.
+        For more info on these files, and documentation of file formats, see the sphinx docs:
+
+           https://kszx.readthedocs.io/en/latest/kszpipe.html#kszpipe-details
           
         Constructor arguments:
 
-          - dirname (string): name of pipeline output directory.
+          - ``dirname`` (string): name of pipeline output directory.
          
-          - nsurr (integer or None): this is a hack for running on an incomplete
-            pipeline. If specified, then {dirname}/pk_surr.npy is not read.
-            Instead we read files of the form {dirname}/tmp/pk_surr_{i}.npy.
+          - ``nsurr`` (integer or None): this is a hack for running on an incomplete
+            pipeline. If specified, then ``{dirname}/pk_surr.npy`` is not read.
+            Instead we read files of the form ``{dirname}/tmp/pk_surr_{i}.npy``.
         """
 
         filename = f'{dirname}/params.yml'
@@ -420,91 +495,91 @@ class KszPipeOutdir:
 
 
     def pgg_data(self):
-        """Returns shape (nkbins,) array containing P_{gg}^{data}."""
+        r"""Returns shape ``(nkbins,)`` array containing $P_{gg}^{data}(k)$."""
         return self.pk_data[0,0,:]
         
     def pgg_mean(self, fnl=0):
-        """Returns shape (nkbins,) array, containing <P_{gg}^{surr}>."""
+        r"""Returns shape ``(nkbins,)`` array, containing $\langle P_{gg}^{surr}(k) \rangle$."""
         return np.mean(self._pgg_surr(fnl), axis=0)
 
     def pgg_rms(self, fnl=0):
-        """Returns shape (nkbins,) array, containing sqrt(Var(P_{gg}^{surr}))."""
+        r"""Returns shape ``(nkbins,)`` array, containing sqrt(Var($P_{gg}^{surr}(k)$))."""
         return np.sqrt(np.var(self._pgg_surr(fnl), axis=0))
 
     
     def pgv_data(self, field):
-        """Returns shape (nkbins,) array containing P_{gv}^{data}.
+        r"""Returns shape ``(nkbins,)`` array containing $P_{gv}^{data}(k)$.
 
-        The 'field' argument is a length-2 vector, selecting a linear combination
+        The ``field`` argument is a length-2 vector, selecting a linear combination
         of the 90+150 GHz velocity reconstructions. For example:
         
-           - field=[1,0] for 90 GHz
-           - field=[0,1] for 150 GHz
-           - field=[1,-1] for null (90-150) GHz.
+           - ``field=[1,0]`` for 90 GHz reconstruction
+           - ``field=[0,1]`` for 150 GHz reconstruction
+           - ``field=[1,-1]`` for null (90-150) GHz reconstruction.
         """
         field = self._check_field(field)
         return field[0]*self.pk_data[0,1] + field[1]*self.pk_data[0,2]
         
     def pgv_mean(self, field, fnl, bv):
-        """Returns shape (nkbins,) array containing <P_{gv}^{surr}>.
+        r"""Returns shape ``(nkbins,)`` array containing $\langle P_{gv}^{surr}(k) \rangle$.
 
-        The 'field' argument is a length-2 vector, selecting a linear combination
+        The ``field`` argument is a length-2 vector, selecting a linear combination
         of the 90+150 GHz velocity reconstructions. For example:
         
-           - field=[1,0] for 90 GHz
-           - field=[0,1] for 150 GHz
-           - field=[1,-1] for null (90-150) GHz.
+           - ``field=[1,0]`` for 90 GHz reconstruction
+           - ``field=[0,1]`` for 150 GHz reconstruction
+           - ``field=[1,-1]`` for null (90-150) GHz reconstruction.
         """
         return np.mean(self._pgv_surr(field,fnl,bv), axis=0)
 
     def pgv_rms(self, field, fnl, bv):
-        """Returns shape (nkbins,) array containing sqrt(Var(P_{gv}^{surr})).
+        r"""Returns shape ``(nkbins,)`` array containing sqrt(Var($P_{gv}^{surr}(k)$)).
 
-        The 'field' argument is a length-2 vector, selecting a linear combination
+        The ``field`` argument is a length-2 vector, selecting a linear combination
         of the 90+150 GHz velocity reconstructions. For example:
         
-           - field=[1,0] for 90 GHz
-           - field=[0,1] for 150 GHz
-           - field=[1,-1] for null (90-150) GHz.
+           - ``field=[1,0]`` for 90 GHz reconstruction
+           - ``field=[0,1]`` for 150 GHz reconstruction
+           - ``field=[1,-1]`` for null (90-150) GHz reconstruction.
         """
         return np.sqrt(np.var(self._pgv_surr(field,fnl,bv), axis=0))
 
 
     def pvv_data(self, field):
-        """Returns shape (nkbins,) array containing P_{vv}^{data}.
+        r"""Returns shape ``(nkbins,)`` array containing $P_{vv}^{data}(k)$.
 
-        The 'field' argument is a length-2 vector, selecting a linear combination
+        The ``field`` argument is a length-2 vector, selecting a linear combination
         of the 90+150 GHz velocity reconstructions. For example:
         
-           - field=[1,0] for 90 GHz
-           - field=[0,1] for 150 GHz
-           - field=[1,-1] for null (90-150) GHz.
+           - ``field=[1,0]`` for 90 GHz reconstruction
+           - ``field=[0,1]`` for 150 GHz reconstruction
+           - ``field=[1,-1]`` for null (90-150) GHz reconstruction.
         """
         field = self._check_field(field)
         t = field[0]*self.pk_data[1,:] + field[1]*self.pk_data[2,:]  # shape (3,)
         return field[0]*t[1] + field[1]*t[2]
         
     def pvv_mean(self, field, bv):
-        """Returns shape (nkbins,) array containing < P_{vv}^{data} >.
+        r"""Returns shape ``(nkbins,)`` array containing $\langle P_{vv}^{data}(k) \rangle$.
 
-        The 'field' argument is a length-2 vector, selecting a linear combination
+        The ``field`` argument is a length-2 vector, selecting a linear combination
         of the 90+150 GHz velocity reconstructions. For example:
         
-           - field=[1,0] for 90 GHz
-           - field=[0,1] for 150 GHz
-           - field=[1,-1] for null (90-150) GHz.
+           - ``field=[1,0]`` for 90 GHz reconstruction
+           - ``field=[0,1]`` for 150 GHz reconstruction
+           - ``field=[1,-1]`` for null (90-150) GHz reconstruction.
         """
         return np.mean(self._pvv_surr(field,bv), axis=0)
         
     def pvv_rms(self, field, bv):
-        """Returns shape (nkbins,) array containing sqrt(var(P_{vv}^{data})).
+        r"""Returns shape ``(nkbins,)`` array containing sqrt(var($P_{vv}^{data}(k)$)).
 
-        The 'field' argument is a length-2 vector, selecting a linear combination
+        The ``field`` argument is a length-2 vector, selecting a linear combination
         of the 90+150 GHz velocity reconstructions. For example:
         
-           - field=[1,0] for 90 GHz
-           - field=[0,1] for 150 GHz
-           - field=[1,-1] for null (90-150) GHz.
+           - ``field=[1,0]`` for 90 GHz reconstruction
+           - ``field=[0,1]`` for 150 GHz reconstruction
+           - ``field=[1,-1]`` for null (90-150) GHz reconstruction.
         """        
         return np.sqrt(np.var(self._pvv_surr(field,bv), axis=0))
 

@@ -18,9 +18,13 @@ def compute_wcrude(box, fourier_space_footprints, rmax=0.03):
 
     Given N "footprint" maps $F_{ij}(x)$, this function computes an N-by-N matrix $W_{ij}$ which
     gives the window function for a cross power spectrum on footprints i,j. (Note that since
-    we're negelcting k-dependence and mixing, the window function doesn't have indices which
+    we're neglecting k-dependence and mixing, the window function doesn't have indices which
     correspond to k-bins.)
 
+    For more details on what is computed, see the sphinx docs:
+    
+         https://kszx.readthedocs.io/en/latest/wfunc_utils.html#wcrude-details
+    
     Function arguments:
 
        - ``box`` (kszx.Box): defines pixel size, bounding box size, and location of observer.
@@ -36,7 +40,7 @@ def compute_wcrude(box, fourier_space_footprints, rmax=0.03):
              and dtype ``complex``.)
        
        - ``rmax`` (float): if correlation between any two footprints is < rmax, then an exception
-         will be thrown. To disable this check, set rmax=0.
+         will be thrown. To disable this check, set ``rmax=0``.
 
     The return value is either a scalar in case 1 (single Fourier-space map), or an array of shape
     ``(nmaps, nmaps)`` in case 2 (multiple maps).
@@ -44,8 +48,8 @@ def compute_wcrude(box, fourier_space_footprints, rmax=0.03):
     Sometimes a footprint is defined by a random catalog. Here is a reminder of how to make a
     Fourier-space map from a random catalog::
 
-      box = ... # instance of class kszx.Box
-      cosmo = ...  # instance of class kszx.Cosmology
+      box = ...       # instance of class kszx.Box
+      cosmo = ...     # instance of class kszx.Cosmology
       randcat = ...   # instance of class kszx.Catalog
       weights = ...   # 1-d array of length randcat.size
     
@@ -82,7 +86,7 @@ def compute_wcrude(box, fourier_space_footprints, rmax=0.03):
 def compare_pk(pk1, pk2, noisy=True):
     """A utility function I wrote for testing: compares two P(k) arrays in a normalization-independent way.
 
-    Args:
+    Function arguments:
 
       - ``pk1``, ``pk2``: arrays of either shape (nkbins,) or (nmaps,nmaps,nkbins).
 
