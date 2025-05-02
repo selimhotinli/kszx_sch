@@ -23,13 +23,15 @@ Installation
      # Note: gcc 14 conflicts with camb (or at least conda thinks so), so force gcc==13.
      # Note: jupyterlab is only needed if you're running jupyterlab locally.
      # Note: sphinx packages are only needed if you're building sphinx docs locally.
+     # Note: emcee/corner are only needed for MCMCs with 'class kszx.PgvLikelihood'.
 
      conda create -n kszx -c conda-forge \
        gxx_linux-64==13.3.0 \
        python==3.12.6 pybind11 \
        jupyterlab \
        sphinx sphinx-math-dollar \
-       h5py python-wget astropy camb fitsio healpy pixell
+       h5py python-wget astropy camb fitsio healpy pixell \
+       emcee corner
 
     conda activate kszx
 
