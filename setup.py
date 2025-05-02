@@ -16,7 +16,7 @@ ext_module = Pybind11Extension("kszx.cpp_kernels", cpp_source_files, extra_compi
 setup(
     name = 'kszx',
     version = '0.0.1',
-    packages = [ 'kszx', 'kszx.tests' ],
+    packages = [ 'kszx', 'kszx.tests', 'kszx.retirement_home' ],
     ext_modules = [ ext_module ],
     cmdclass = {"build_ext": build_ext},
     zip_safe = False,
