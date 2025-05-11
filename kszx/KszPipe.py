@@ -472,7 +472,6 @@ class KszPipeOutdir:
                 raise RuntimeError(f'Got {pk_surr.shape=}, expected (nsurr,6,6,nkbins) where {nkbins=}')
 
         else:
-            assert nsurr >= 1
             pk_surr = [ ]
             
             for i in range(nsurr):
@@ -482,6 +481,7 @@ class KszPipeOutdir:
                 pk_surr.append(pk_surrogate)
                 
             pk_surr = np.array(pk_surr)
+            pk_surr = np.reshape(pk_surr, (nsurr,6,6,nkbins))   # needed if nsurr==0
 
         self.k = kbin_centers
         self.nkbins = nkbins
@@ -500,10 +500,12 @@ class KszPipeOutdir:
         
     def pgg_mean(self, fnl=0):
         r"""Returns shape ``(nkbins,)`` array, containing $\langle P_{gg}^{surr}(k) \rangle$."""
+        assert self.nsurr >= 1
         return np.mean(self._pgg_surr(fnl), axis=0)
 
     def pgg_rms(self, fnl=0):
         r"""Returns shape ``(nkbins,)`` array, containing sqrt(Var($P_{gg}^{surr}(k)$))."""
+        assert self.nsurr >= 2
         return np.sqrt(np.var(self._pgg_surr(fnl), axis=0))
 
     
@@ -530,6 +532,7 @@ class KszPipeOutdir:
            - ``field=[0,1]`` for 150 GHz reconstruction
            - ``field=[1,-1]`` for null (90-150) GHz reconstruction.
         """
+        assert self.nsurr >= 1
         return np.mean(self._pgv_surr(field,fnl,bv), axis=0)
 
     def pgv_rms(self, field, fnl, bv):
@@ -542,6 +545,7 @@ class KszPipeOutdir:
            - ``field=[0,1]`` for 150 GHz reconstruction
            - ``field=[1,-1]`` for null (90-150) GHz reconstruction.
         """
+        assert self.nsurr >= 2
         return np.sqrt(np.var(self._pgv_surr(field,fnl,bv), axis=0))
 
 
@@ -569,6 +573,7 @@ class KszPipeOutdir:
            - ``field=[0,1]`` for 150 GHz reconstruction
            - ``field=[1,-1]`` for null (90-150) GHz reconstruction.
         """
+        assert self.nsurr >= 1
         return np.mean(self._pvv_surr(field,bv), axis=0)
         
     def pvv_rms(self, field, bv):
@@ -581,6 +586,7 @@ class KszPipeOutdir:
            - ``field=[0,1]`` for 150 GHz reconstruction
            - ``field=[1,-1]`` for null (90-150) GHz reconstruction.
         """        
+        assert self.nsurr >= 2
         return np.sqrt(np.var(self._pvv_surr(field,bv), axis=0))
 
 
