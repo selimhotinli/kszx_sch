@@ -339,3 +339,24 @@ def fkp_from_ivar(ivar, cl0, normalize=True, return_wvar=False):
         ret /= wmax
 
     return ret
+
+
+def sensitivity_curve(ivar, step, n):
+    """
+    We define the "sensitivity curve" S(x) to be the sky area (in deg^2)
+    with sensitivity >= x, where x has units (uK-armcin)^{-2}. Note that S(x)
+    is a decreasing function of x.
+
+    Returns 1-d array [ S(step), S(2*step), ..., S(n*step) ].
+
+    For ACT, recommend calling with step = 1.0e-5 and nbins=5000.
+    Note that the units of 'step' are (uK-arcmin)^{-2}.
+    """
+    
+    assert isinstance(ivar, pixell.enmap.ndmap)
+    ps = ivar.pixsizemap() * (180./np.pi)**2  # pixel size in deg^2
+    x = (ivar / ps) / 3600.                   # sensitivity in (uK-arcmin)^{-2}
+    x = np.array(x/step, dtype=int)
+    x = np.minimum(x, n)
+    x = np.bincount(x.reshape((-1,)), weights=ps.reshape((-1,)), minlength=n+1)
+    return np.cumsum(x[::-1])[-2::-1]
