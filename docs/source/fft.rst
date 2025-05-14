@@ -1,7 +1,7 @@
 .. _fft wrappers:
 
-:mod:`FFT wrappers`
-===================
+:mod:`FFTs`
+===========
 
 .. autofunction:: kszx.fft_r2c
 

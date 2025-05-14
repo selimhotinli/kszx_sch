@@ -1,3 +1,12 @@
+"""
+The ``kszx.pixell_utils`` module contains wrappers around the pixell library.
+
+References:
+   - https://github.com/simonsobs/pixell
+   - https://pixell.readthedocs.io/en/latest
+   - https://github.com/simonsobs/pixell_tutorials
+"""
+
 import numpy as np
 import pixell.enmap
 import pixell.enplot
@@ -10,12 +19,18 @@ from .Catalog import Catalog
 
 
 def read_map(filename):
+    """Reads pixell map in FITS format, and returns a pixell.enmap.
+    
+    If the FITS file contains temperature + polarization, only temperature will be returned!
+    """
     print(f'Reading {filename}\n', end='')
     assert filename.endswith('.fits')
     return pixell.enmap.read_map(filename)
 
 
 def write_map(filename, m):
+    """Writes pixell map in FITS format."""
+    
     # I learned the hard way that you need this assert! If pixell.enmap.write_map() is
     # called with a numpy array (instead of a pixell ndmap), it will write a "time-bomb"
     # WCS which causes some pixell functions to fail later, with cryptic error messages.
@@ -28,13 +43,15 @@ def write_map(filename, m):
 
 
 def plot_map(m, downgrade, nolabels=True, filename=None, **kwds):
-    """Thin wrapper around pixell.enplot(), just adding a few tweaks:
+    """Plots pixell map 'm'.
+
+    Thin wrapper around ``pixell.enplot()``, just adding a few tweaks:
 
        - Make downgrade argument mandatory (usually needed in practice to avoid
-         runaway heavyweight behavior). Suggest downgrade=40 for ACT.
+         runaway heavyweight behavior). Suggest ``downgrade=20`` for ACT.
 
-       - Make nolabels=True the default (haven't figured out how to make labels
-         look reasonable).
+       - Make ``nolabels=True`` the default (I haven't figured out how to make pixell
+         labels look reasonable).
 
        - Add 'filename' argument to select between show/write.
 
@@ -79,17 +96,30 @@ def _accum_catalog(ret, shape, wcs, catalog, weights, allow_outliers, normalize_
     
 
 def map_from_catalog(shape, wcs, gcat, weights=None, rcat=None, rweights=None, normalized=True, allow_outliers=True):
-    """Returns a pixell.enmap.ndmap.
-        
-    The (rcat, rweights) arguments represent "randoms" to be subtracted.
-    NOTE: the rweights are renormalized so that sum(rweights) = -sum(weights)!
+    r"""Project a 3-d galaxy catalog to a 2-d pixell map.
 
-    If 'allow_outliers' is True, then "out-of-bounds" galaxies (i.e. galaxies outside 
-    the boundaries of the pixell map) will be silently discarded. If 'allow_outliers'
-    is False, then out-of-bounds galaxies will raise an exception.
+    Function args:
 
-    If normalized=True, then the output map includes a factor 1 / (pixel area).
-    This normalization best represents a sum of delta functions f(x) = sum_j w_j delta^2(th_j).
+      - ``shape``, ``wcs``: these args define the pixell coordinate system.
+
+      - ``gcat`` (:class:`~kszx.Catalog`): galaxy catalog.
+        Must define columns ``ra_deg``, ``dec_deg``.
+
+      - ``weights`` (1-d numpy array, optional): per-galaxy weights.
+
+      - ``rcat``, ``rweights`` (optional): random catalog to be subtracted.
+        The rweights are renormalized so that sum(rweights) = -sum(weights).
+    
+      - ``normalized`` (boolean): If normalized=True, then the output map includes a
+        factor ``1 / (pixel area)``. This normalization best represents a sum of delta
+        functions $f(x) = \sum_j w_j \delta^2(\theta - \theta_j)$.
+
+      - ``allow_outliers`` (boolean): If 'allow_outliers' is True, then "out-of-bounds"
+        galaxies (i.e. galaxies outside the boundaries of the pixell map) will be silently
+        discarded. If 'allow_outliers' is False, then out-of-bounds galaxies will raise an
+        exception.
+
+    Returns a ``pixell.enmap.ndmap``.
     """
 
     assert isinstance(gcat, Catalog)
@@ -117,16 +147,26 @@ def map_from_catalog(shape, wcs, gcat, weights=None, rcat=None, rweights=None, n
 
 
 def eval_map_on_catalog(m, catalog, pad=None, return_mask=False):
-    """Evaluates pixell map 'm' at (ra,dec) values from catalog, and returns a 1-d array.
+    r"""Evaluates pixell map 'm' at (ra,dec) values from catalog, and returns a 1-d array.
 
-    Since pixell maps can be partial-sky, some of the (ra,dec) pairs may be "outliers",
-    i.e. outside the map footprint. If pad=None (the default), this raises an exception.
-    If 'pad' is specified (e.g. pad=0.0) then outlier values are replaced by 'pad'.
+    Function arguments:
 
-    If return_mask=False (the default), returns a 1-d array 'map_vals'.
+       - ``m`` (pixell.enmap.ndmap): 2-d map to be evaluated.
+    
+       - ``catalog`` (:class:`~kszx.Catalog`): galaxy catalog defining (ra, dec) values
+         where map is evaluated. Must define columns ``ra_deg``, ``dec_deg``.
 
-    If return_mask=True, returns (map_vals, mask), where 'mask' is a 1-d boolean array which
-    is True for non-outliers, False for outliers.
+       - ``pad`` (boolean): Since pixell maps can be partial-sky, some of the (ra,dec)
+         pairs may be "outliers", i.e. outside the map footprint. If ``pad=None`` (the default),
+         this raises an exception. If 'pad' is specified (e.g. ``pad=0.0``) then outlier values
+         are replaced by 'pad'.
+
+       - ``return_mask`` (boolean): Defines what quantity this function returns.
+
+         If ``return_mask=False`` (the default), returns a 1-d array 'map_vals'.
+
+         If ``return_mask=True``, returns a pair ``(map_vals, mask)``, where 'mask' is
+         a 1-d boolean array which is True for non-outliers, False for outliers.
     """
 
     assert isinstance(m, pixell.enmap.ndmap)
@@ -157,6 +197,8 @@ def eval_map_on_catalog(m, catalog, pad=None, return_mask=False):
 
 
 def alm2map(alm, shape, wcs):
+    """Applies alm2map spherical transform, returns pixell.enmap.ndmap."""
+    
     # FIXME map2alm() will blow up with a cryptic error message if it gets a bad WCS (e.g. zeroed).
     # Should find a general test for WCS badness, and add asserts throughout this file.
     
@@ -170,6 +212,8 @@ def alm2map(alm, shape, wcs):
     
 
 def map2alm(m, lmax):
+    """Applies map2alm spherical transform, returns alms as 1-d complex numpy array."""
+    
     assert isinstance(m, pixell.enmap.ndmap)
     assert lmax >= 0
     return pixell.curvedsky.map2alm(m, lmax=lmax)
@@ -179,28 +223,39 @@ def map2alm(m, lmax):
 
 
 def ang2pix(shape, wcs, ra_deg, dec_deg, allow_outliers=False, outlier_errmsg=None):
-    """Returns (idec,ira) if allow_outliers is False, or (idec,ira,mask) if allow_outliers is True.
+    """Given (ra,dec) values on the sky, returns the corresponding pixel indices.
 
-    Roughly equivalent to healpy.ang2pix(..., latlon=True).
-    Note that the argument ordering is (ra, dec), consistent with healpy but not pixell!
+    **Note:** if you are interested in this function in order to pixelize a Catalog,
+    you may want to call :func:`~kszx.pixell_utils.map_from_catalog` instead.
 
-    Returns pair of integer-valued arrays (idec, ira), which contain indices
-    with respect to the 'shape' tuple.
+    Function arguments:
 
-    The 'ra_deg' and 'dec_deg' array arguments should have the same shape, and
-    the returned idec/ira arrays will also have this shape.
+      - ``shape``, ``wcs``: these args define the pixell coordinate system.
 
-    Since pixell maps can be partial-sky, pixel indices can be out of bounds.
-    In this case:
+      - ``ra_deg``, ``dec_deg``: numpy arrays with same shape, containing (ra, dec) values.
+
+      - ``allow_outliers`` (boolean): since pixell maps can be partial-sky, pixel indices
+        can be out of bounds. In this case:
     
-       - If allow_outliers=False, we throw an exception.
+        If ``allow_outliers=False``, we raise an exception.
 
-       - If allow_outliers=True, then we "clip" the returned idec/ira arrays
-         so that they are in bounds, and return a boolean mask to indicate which
-         values are valid.
+        If ``allow_outliers=True``, then we "clip" the returned idec/ira arrays
+        so that they are in bounds, and return a boolean mask to indicate which
+        values are valid (see below).
 
-    Note: if you are interested in this function in order to pixelize a Catalog,
-    you may want to call Catalog.to_pixell() instead.
+      - ``outlier_errmsg`` (string, optional): error message if exception is thrown.
+
+    The return value depends on the value of ``allow_outliers``:
+
+      - If ``allow_outliers=False``, returns a pair ``(idec, ira)``.
+    
+      - If ``allow_outliers=True``, returns a triple ``(idec, ira, mask)``.
+
+    The ``(idec, ira)`` arrays are integer-valued, and contain pixel indices along
+    each of the axes of the 2-d pixell map. The ``mask`` array is boolean-valued.
+    
+    Roughly equivalent to ``healpy.ang2pix(..., latlon=True)``.
+    Note that the argument ordering is (ra, dec), consistent with healpy but not pixell!
     """
 
     # pixell wants a single 'coords' array, with [dec,ra] converted to radians
@@ -246,13 +301,10 @@ def ang2pix(shape, wcs, ra_deg, dec_deg, allow_outliers=False, outlier_errmsg=No
 
 
 def uK_arcmin_from_ivar(ivar, max_uK_arcmin=1.0e6):
-    r"""Given an inverse variance map (ivar), returns associated RMS map (in uK-arcmin).
+    r"""Given an inverse variance map, returns associated noise map (in uK-arcmin).
 
     Based on Mat's orphics library:
        https://github.com/msyriac/orphics/blob/master/orphics/maps.py
-
-    **Note:** currently uses pixell maps, but could easily be modified to allow healpix
-    maps -- let me know if this would be useful.
 
     Function args:
     
@@ -285,15 +337,7 @@ def uK_arcmin_from_ivar(ivar, max_uK_arcmin=1.0e6):
 
 
 def fkp_from_ivar(ivar, cl0, normalize=True, return_wvar=False):
-    r"""Given an inverse variance map (ivar), returns associated FKP weighting.
-
-    $$\begin{align}
-    W(\theta) &= \frac{1}{C_l^{(0)} + N(\theta)} \\
-    N(\theta) &\equiv \frac{\mbox{Pixel area}}{\mbox{ivar}(\theta)} \hspace{1cm} \mbox{``Local'' noise power spectrum}
-    \end{align}$$
-
-    **Note:** currently uses pixell maps, but could easily be modified to allow healpix
-    maps -- let me know if this would be useful.
+    r"""Given an inverse variance map, returns associated FKP weighting.
 
     Function args:
 
@@ -311,13 +355,19 @@ def fkp_from_ivar(ivar, cl0, normalize=True, return_wvar=False):
       - ``normalize`` (boolean): if True, then we normalize the weight function 
         so that $\max(W(\theta))=1$.
 
-      - ``return_wvar`` (boolean): if True, then we return $W(\theta) / ivar(\theta)$,
+      - ``return_wvar`` (boolean): if True, then we return $W(\theta) / \mbox{ivar}(\theta)$,
         instead of returning $W(\theta)$.
     
     Returns a pixell map.
 
-    In implementation, in order to avoid divide-by-zero for ivar=0, we compute
-    $W(\theta)$ equivalently as:
+    The FKP weighting is defined by:
+    
+    $$\begin{align}
+    W(\theta) &= \frac{1}{C_l^{(0)} + N(\theta)} \\
+    N(\theta) &\equiv \frac{\mbox{Pixel area}}{\mbox{ivar}(\theta)} \hspace{1cm} \mbox{"Local" noise power spectrum}
+    \end{align}$$
+
+    In implementation, in order to avoid divide-by-zero for ivar=0, we compute $W(\theta)$ equivalently as:
     
     $$W(\theta) = \frac{\mbox{ivar}(\theta)}{(\mbox{pixel area}) + C_l^{(0)} \mbox{ivar}(\theta)}$$
     """
@@ -342,15 +392,38 @@ def fkp_from_ivar(ivar, cl0, normalize=True, return_wvar=False):
 
 
 def sensitivity_curve(ivar, step, n):
-    """
-    We define the "sensitivity curve" S(x) to be the sky area (in deg^2)
-    with sensitivity >= x, where x has units (uK-armcin)^{-2}. Note that S(x)
-    is a decreasing function of x.
+    r"""Given an ivar map, computes the "sensitivity function" $S(x)$ at x = [ step, ..., n*step].
+    
+    We define the "sensitivity function" $S(x)$ to be the sky area (in deg^2)
+    with sensitivity >= x, where x has units (uK-armcin)^{-2}. Note that $S(x)$
+    is a decreasing function of x. This is useful for making a plot of sky sensitivity.
 
-    Returns 1-d array [ S(step), S(2*step), ..., S(n*step) ].
+    Function args:
 
-    For ACT, recommend calling with step = 1.0e-5 and nbins=5000.
-    Note that the units of 'step' are (uK-arcmin)^{-2}.
+      - ``ivar`` (pixell map): inverse variance map, units (uK)^{-2}.
+        (For example, the return value from :func:`~kszx.act.read_ivar()`.)
+
+      - ``step``: units (uK-arcmin)^{-2}, see above.
+        Recommend ``step = 1.0e-5`` for ACT.
+
+      - ``n``: number of returned points, see above.
+
+    Returns 1-d array ``[ S(step), S(2*step), ..., S(n*step) ]``.
+
+    Example usage::
+
+      step = 1.0e-5
+      nbins = 3000
+      ivar = kszx.act.read_ivar(150, dr=6, download=True)    
+    
+      x = step * np.arange(nbins)
+      Sx = kszx.pixell_utils.sensitivity_curve(ivar,step,nbins)
+
+      plt.plot(x, Sx)
+      plt.yscale('log')
+      plt.ylim(1, 10**5)
+      plt.xlabel(r'Threshold $x$ ($\mu$K-arcmin)$^{-2}$')
+      plt.ylabel(r'Sky area with sensitivity $> x$ (deg$^2$)')
     """
     
     assert isinstance(ivar, pixell.enmap.ndmap)

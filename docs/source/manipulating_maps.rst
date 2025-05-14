@@ -1,5 +1,5 @@
-:mod:`Manipulating maps`
-========================
+:mod:`Maps and spectra`
+=======================
 
 .. autofunction:: kszx.multiply_rfunc
 .. autofunction:: kszx.multiply_kfunc

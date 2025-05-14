@@ -23,18 +23,20 @@ kszx documentation
    catalog
 
 .. toctree::
-   :maxdepth: 2
+   :maxdepth: 1
    :caption: Core functions:
 
    fft
    interpolation
    manipulating_maps
    misc_utils
+   healpix_utils
+   pixell_utils
    wfunc_utils
    plot
 
 .. toctree::
-   :maxdepth: 2
+   :maxdepth: 1
    :caption: High-level classes:
 
    cmb_cl_fitter
@@ -44,7 +46,7 @@ kszx documentation
    surrogate_factory
 
 .. toctree::
-   :maxdepth: 2
+   :maxdepth: 1
    :caption: Datasets:
 
    act
