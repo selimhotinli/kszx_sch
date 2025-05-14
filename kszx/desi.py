@@ -32,6 +32,7 @@ def read_galaxies(survey, dr, download=False):
            - 'BGS_ANY_NGC', 'BGS_ANY_SGC',
            - 'BGS_BRIGHT_NGC', 'BGS_BRIGHT_SGC',
            - 'BGS_BRIGHT-21.5_NGC', 'BGS_BRIGHT-21.5_SGC',
+           - 'ELG_LOPnotqso_NGC', 'ELG_LOPnotqso_SGC'
            - 'LRG+ELG_LOPnotqso_NGC', 'LRG+ELG_LOPnotqso_SGC'
 
       - ``dr`` (int): currently only dr=1 is supported
@@ -39,9 +40,9 @@ def read_galaxies(survey, dr, download=False):
     Returns a :class:`kszx.Catalog` object, with the following columns::
      
       ra_deg, dec_deg, z,    # sky location, redshift
-      weight
+      weight                 # use this one!
       wfkp                   # FKP weight
-      wcp, wzf, wsys,        # systematic weights
+      wcp, wzf, wsys,        # systematic weights (don't use these!)
 
     Example usage::
 
@@ -69,6 +70,7 @@ def read_randoms(survey, dr, download=False, nfiles=None):
            - 'BGS_ANY_NGC', 'BGS_ANY_SGC',
            - 'BGS_BRIGHT_NGC', 'BGS_BRIGHT_SGC',
            - 'BGS_BRIGHT-21.5_NGC', 'BGS_BRIGHT-21.5_SGC',
+           - 'ELG_LOPnotqso_NGC', 'ELG_LOPnotqso_SGC'
            - 'LRG+ELG_LOPnotqso_NGC', 'LRG+ELG_LOPnotqso_SGC'
 
       - ``dr`` (int): currently only dr=1 is supported.
@@ -81,9 +83,9 @@ def read_randoms(survey, dr, download=False, nfiles=None):
     Returns a :class:`kszx.Catalog` object, with the following columns::
      
       ra_deg, dec_deg, z,    # sky location, redshift
-      weight
+      weight                 # use this one!
       wfkp                   # FKP weight
-      wcp, wzf, wsys,        # systematic weights
+      wcp, wzf, wsys,        # systematic weights (don't use these!)
 
     Example usage::
 
@@ -111,6 +113,7 @@ def download(survey, dr, nrfiles):
            - 'BGS_ANY_NGC', 'BGS_ANY_SGC',
            - 'BGS_BRIGHT_NGC', 'BGS_BRIGHT_SGC',
            - 'BGS_BRIGHT-21.5_NGC', 'BGS_BRIGHT-21.5_SGC',
+           - 'ELG_LOPnotqso_NGC', 'ELG_LOPnotqso_SGC'
            - 'LRG+ELG_LOPnotqso_NGC', 'LRG+ELG_LOPnotqso_SGC'
 
       - ``dr`` (int): currently only dr=1 is supported.
@@ -184,6 +187,7 @@ def _check_survey(survey, dr):
         'BGS_ANY_NGC', 'BGS_ANY_SGC',
         'BGS_BRIGHT_NGC', 'BGS_BRIGHT_SGC',
         'BGS_BRIGHT-21.5_NGC', 'BGS_BRIGHT-21.5_SGC',
+        'ELG_LOPnotqso_NGC', 'ELG_LOPnotqso_SGC',
         'LRG+ELG_LOPnotqso_NGC', 'LRG+ELG_LOPnotqso_SGC'
     ]
     
