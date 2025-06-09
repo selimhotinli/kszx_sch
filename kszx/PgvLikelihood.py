@@ -157,7 +157,7 @@ class PgvLikelihood:
 
     
     def specialize_surrogates(self, fnl, bv, flatten):
-        r"""Returns a shape ``(S,V,K)`` array, by "specializing" surrogates to specified $(f_{NL}, b_v)$.
+        r"""Returns a shape ``(S,V,K)`` array, by "specializing" surrogates to specified $(f_{NL}, A_{CIP}, b_v)$.
         
         The ``bv`` arugment should be an array of shape ``(B,)`` where $B$ is the number
         of bias parameters in the likelihood. If $B=1$, then ``bv`` can be a scalar.
@@ -167,13 +167,14 @@ class PgvLikelihood:
 
         S, K, V, D = self.S, self.K, self.V, self.D
         
-        fnl = float(fnl)        
+        fnl  = float(fnl) 
+        acip = float(acip) 
         b = self._validate_bv(bv)        # shape (B,)
         b = np.dot(b, self.bias_matrix)  # shape (V,)
         b = np.reshape(b, (1,V,1))       # shape (1,V,1)
 
-        # Apply fnl, obtaining shape (S,2,V,K)
-        s = self.surrs[:,0,:,:,:] + fnl * self.surrs[:,1,:,:,:]
+        # Apply fnl, obtaining shape (S,3,V,K)
+        s = self.surrs[:,0,:,:,:] + fnl * self.surrs[:,1,:,:,:] + acip * self.surrs[:,2,:,:,:]
 
         # Apply bv, obtaining shape (S,V,K)
         s = s[:,0,:,:] + b * s[:,1,:,:]
@@ -182,8 +183,8 @@ class PgvLikelihood:
         return np.reshape(s,(S,D)) if flatten else s
                 
         
-    def slow_mean_and_cov(self, fnl, bv):
-        r"""Computes mean and covaraince of surrogates, for specified $(f_{NL}, b_v)$.
+    def slow_mean_and_cov(self, fnl, acip, bv):
+        r"""Computes mean and covaraince of surrogates, for specified $(f_{NL}, A_{CIP}, b_v)$.
 
         Returns ``(mean, cov)`` where ``mean.shape=(D,)`` and ``cov.shape=(D,D).``
 
@@ -194,22 +195,22 @@ class PgvLikelihood:
         then compute the mean and covariance with ``np.mean()`` and ``np.cov()``.
         """
         
-        s = self.specialize_surrogates(fnl, bv, flatten=True)  # shape (S,D)
+        s = self.specialize_surrogates(fnl, acip, bv, flatten=True)  # shape (S,D)
         mean = np.mean(s, axis=0)       # shape (D,)
         cov = np.cov(s, rowvar=False)   # shape (D, D)
         return mean, cov
 
     
-    def slow_mean_and_cov_gradients(self, fnl, bv):
-        r"""Computes the gradient of the mean and covariance with respect to $(f_{NL}, b_v)$.
+    def slow_mean_and_cov_gradients(self, fnl, acip, bv):
+        r"""Computes the gradient of the mean and covariance with respect to $(f_{NL}, A_{CIP}, b_v)$.
 
         Returns ``grad_mean, grad_cov``, where both gradients are represented as arrays
         with an extra length-(B+1) axis, i.e.
 
-          - ``mean.shape = (D,)  =>  grad_mean.shape = (B+1,D)``
-          - ``cov.shape = (D,D)  =>  grad_cov.shape = (B+1,D,D)``
+          - ``mean.shape = (D,)  =>  grad_mean.shape = (B+2,D)``
+          - ``cov.shape = (D,D)  =>  grad_cov.shape = (B+2,D,D)``
           
-        Uses boneheaded algorithm: since mean, cov are at most quadratic in $f_{NL}$ and $b_v$,
+        Uses boneheaded algorithm: since mean, cov are at most quadratic in $f_{NL}$, $A_{CIP}$ and $b_v$,
         naive finite difference is exact (and independent of step sizes).
 
         The ``bv`` arugment should be an array of shape ``(B,)`` where $B$ is the number
@@ -220,17 +221,18 @@ class PgvLikelihood:
 
         B, D = self.B, self.D
 
-        fnl = float(fnl)        
+        fnl  = float(fnl)
+        acip = float(acip)
         bv = self._validate_bv(bv)   # shape (B,)
 
-        # Parameter vectors of shape (B+1,)
-        x0 = np.concatenate(((fnl,), bv))
-        dx = np.concatenate(((50,), np.full(B,0.1)))
+        # Parameter vectors of shape (B+2,)
+        x0 = np.concatenate(((fnl,),(acip,), bv))
+        dx = np.concatenate(((50,),(50,), np.full(B,0.1)))
         
-        mu_p = np.zeros((B+1, D))
-        mu_n = np.zeros((B+1, D))
-        cov_p = np.zeros((B+1, D, D))
-        cov_n = np.zeros((B+1, D, D))
+        mu_p = np.zeros((B+2, D))
+        mu_n = np.zeros((B+2, D))
+        cov_p = np.zeros((B+2, D, D))
+        cov_n = np.zeros((B+2, D, D))
 
         for i in range(B+1):
             xp = np.copy(x0)
@@ -241,20 +243,20 @@ class PgvLikelihood:
             mu_p[i,:], cov_p[i,:,:] = self.slow_mean_and_cov(xp[0], xp[1:])
             mu_n[i,:], cov_n[i,:,:] = self.slow_mean_and_cov(xn[0], xn[1:])
    
-        grad_mu = (mu_p - mu_n) / (2 * dx.reshape((B+1,1)))
-        grad_cov = (cov_p - cov_n) / (2 * dx.reshape((B+1,1,1)))
+        grad_mu = (mu_p - mu_n) / (2 * dx.reshape((B+2,1)))
+        grad_cov = (cov_p - cov_n) / (2 * dx.reshape((B+2,1,1)))
  
         return grad_mu, grad_cov
         
         
-    def slow_log_likelihood(self, fnl, bv):
-        r"""Returns the log-likelihood at the specified $(f_{NL}, b_v)$.
+    def slow_log_likelihood(self, fnl, acip, bv):
+        r"""Returns the log-likelihood at the specified $(f_{NL}, A_{CIP}, b_v)$.
 
         The ``bv`` arugment should be an array of shape ``(B,)`` where $B$ is the number
         of bias parameters in the likelihood. If $B=1$, then ``bv`` can be a scalar.
         """
         
-        mean, cov = self.slow_mean_and_cov(fnl, bv)
+        mean, cov = self.slow_mean_and_cov(fnl, acip, bv)
 
         x = self.data_vector - mean
         cinv = np.linalg.inv(cov)
@@ -266,7 +268,7 @@ class PgvLikelihood:
         logL -= 0.5 * logabsdet
 
         if self.jeffreys_prior:
-            grad_mu, grad_cov = self.slow_mean_and_cov_gradients(fnl, bv)
+            grad_mu, grad_cov = self.slow_mean_and_cov_gradients(fnl, acip, bv)
             cinv_dmu = [ np.dot(cinv,dmu) for dmu in grad_mu ]
             cinv_dc = [ np.dot(cinv,dc) for dc in grad_cov ]
 
@@ -292,12 +294,13 @@ class PgvLikelihood:
         import emcee
         print(f'MCMC start: {nwalkers=}, {nsamples=}, {discard=}, {thin=}')
 
-        x0 = np.zeros((nwalkers, self.B+1))
+        x0 = np.zeros((nwalkers, self.B+2))
         x0[:,0] = np.random.uniform(-50, 50, size=nwalkers)  # fnl
-        x0[:,1:] = np.random.uniform(0.5, 1.0, size=(nwalkers,self.B))  # bv
+        x0[:,1] = np.random.uniform(-50, 50, size=nwalkers)  # acip
+        x0[:,2:] = np.random.uniform(0.5, 1.0, size=(nwalkers,self.B))  # bv
 
         logL = lambda x: self.fast_log_likelihood(x[0], x[1:])
-        sampler = emcee.EnsembleSampler(nwalkers, self.B+1, logL)
+        sampler = emcee.EnsembleSampler(nwalkers, self.B+2, logL)
         sampler.run_mcmc(x0, nsamples)
         self.samples = sampler.get_chain(discard=discard, thin=thin, flat=True)
         
@@ -312,20 +315,26 @@ class PgvLikelihood:
         
         import corner
         
-        fig = corner.corner(self.samples, bins=100, range=(0.99,0.99), labels=[r'$f_{NL}$',r'$b_v$'])
+        fig = corner.corner(self.samples, bins=100, range=(0.99,0.99), labels=[r'$f_{NL}$',r'$A_{CIP}$',r'$b_v$'])
         if title is not None:
             fig.suptitle(title)
         
         plt.show()
 
-        fnl_samples = self.samples[:,0]  # shape (nsamp,)
-        bv_samples = self.samples[:,1:]  # shape (nsamp,B)
+        fnl_samples  = self.samples[:,0]  # shape (nsamp,)
+        acip_samples = self.samples[:,1]  # shape (nsamp,)
+        bv_samples = self.samples[:,2:]  # shape (nsamp,B)
         qlevels = [ 0.025, 0.16, 0.5, 0.84, 0.975 ]
         
         fnl_quantiles = np.quantile(fnl_samples, qlevels)
         for q,fnl in zip(qlevels, fnl_quantiles):
             s = f'  ({(fnl-fnl_quantiles[2]):+.03f})' if (q != 0.5) else ''
             print(f'{(100*q):.03f}% quantile: {fnl=:.03f}{s}')
+
+        acip_quantiles = np.quantile(acip_samples, qlevels)
+        for q,acip in zip(qlevels, acip_quantiles):
+            s = f'  ({(acip-acip_quantiles[2]):+.03f})' if (q != 0.5) else ''
+            print(f'{(100*q):.03f}% quantile: {acip=:.03f}{s}')
 
         for b in range(self.B):
             bv_quantiles = np.quantile(bv_samples[:,b], qlevels)
@@ -338,7 +347,7 @@ class PgvLikelihood:
 
 
     def analyze_chi2(self, fnl, bv, ddof=None):
-        r"""Computes a $\chi^2$ statistic, which compares $P_{gv}^{data}(k)$ to model with given $(f_{NL}, b_v)$.
+        r"""Computes a $\chi^2$ statistic, which compares $P_{gv}^{data}(k)$ to model with given $(f_{NL}, A_{CIP}, b_v)$.
 
         Returns ($\chi^2$, $N_{dof}$, $p$-value).
 
@@ -350,12 +359,14 @@ class PgvLikelihood:
         number of nonzero (fnl, bias) params. (This is usually the correct choice.)
         """
         
-        fnl = float(fnl)        
+        fnl = float(fnl)
+        acip = float(acip)
         bv = self._validate_bv(bv)   # shape (B,)
-        mean, cov = self.slow_mean_and_cov(fnl, bv)
+        mean, cov = self.slow_mean_and_cov(fnl, acip, bv)
 
         if ddof is None:
             ddof = 1 if (fnl != 0) else 0
+            ddof += 1 if (acip != 0)
             ddof += np.count_nonzero(bv)
         
         x = self.data_vector - mean
@@ -366,32 +377,34 @@ class PgvLikelihood:
         return chi2, ndof, pte
         
     
-    def fit_fnl_and_bv(self, fnl0=0, bv0=0.3):
-        r"""Returns $(f_{NL}, b_v)$ obtained by maximizing joint likelihood.
+    def fit_fnl_and_bv(self, fnl0=0, acip0=0, bv0=0.3):
+        r"""Returns $(f_{NL}, A_{CIP}, b_v)$ obtained by maximizing joint likelihood.
         
         Note that $b_v$ is represented as a 1-d array with shape ``(B,)``, even if $B=1$.
         """
 
         x0 = np.zeros(self.B+1)
         x0[0] = fnl0
-        x0[1:] = bv0
+        x0[1] = acip0
+        x0[2:] = bv0
 
-        f = lambda x: -self.fast_log_likelihood(x[0], x[1:])  # note minus sign
+        f = lambda x: -self.fast_log_likelihood(x[0], x[1], x[2:])  # note minus sign
         result = scipy.optimize.minimize(f, x0, method='Nelder-Mead')
         
         fnl = result.x[0]
-        bv = result.x[1:]
-        return fnl, bv        
+        acip = result.x[1]
+        bv = result.x[2:]
+        return fnl, acip, bv        
 
         
-    def fit_bv(self, fnl=0, bv0=0.3):
-        r"""Returns $b_v$ obtained by maximizing conditional likelihood at the given $f_{NL}.
+    def fit_bv(self, fnl=0, acip=0, bv0=0.3):
+        r"""Returns $b_v$ obtained by maximizing conditional likelihood at the given $f_{NL}$ and $A_{CIP}$.
         
         Note that $b_v$ is represented as a 1-d array with shape ``(B,)``, even if $B=1$.
         """
 
         x0 = np.full(self.B, bv0)
-        f = lambda x: -self.fast_log_likelihood(fnl, x)  # note minus sign
+        f = lambda x: -self.fast_log_likelihood(fnl, acip, x)  # note minus sign
         result = scipy.optimize.minimize(f, x0, method='Nelder-Mead')
         
         bv = result.x
