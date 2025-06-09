@@ -90,6 +90,7 @@ class KszPipe:
         self.box = io_utils.read_pickle(f'{input_dir}/bounding_box.pkl')
         self.kernel = 'cubic'   # hardcoded for now
         self.deltac = 1.68      # hardcoded for now
+        self.b_bc = -0.34067    # hardcoded for now b_bc(z)=-(0.16 + 0.2z + 0.083z^2) arXiv:1908.08953
 
         self.pk_data_filename = f'{output_dir}/pk_data.npy'
         self.pk_surr_filename = f'{output_dir}/pk_surrogates.npy'
@@ -239,16 +240,17 @@ class KszPipe:
 
 
     def get_pk_surrogate(self, isurr, run=False, force=False):
-        r"""Returns a shape (6,6,nkbins) array, and saves it in ``pipeline_outdir/tmp/pk_surr_{isurr}.npy``.
+        r"""Returns a shape (7,7,nkbins) array, and saves it in ``pipeline_outdir/tmp/pk_surr_{isurr}.npy``.
         
         The returned array contains auto and cross power spectra of the following fields, for a single surrogate:
         
           - 0: surrogate galaxy field $S_g$ with $f_{NL}=0$.
           - 1: derivative $dS_g/df_{NL}$.
-          - 2: surrogate kSZ velocity reconstruction $S_v^{90}$, with $b_v=0$ (i.e. noise only).
-          - 3: derivative $dS_v^{90}/db_v$.
-          - 4: surrogate kSZ velocity reconstruction $S_v^{150}$, with $b_v=0$ (i.e. noise only).
-          - 5: derivative $dS_v^{150}/db_v$.
+          - 2: derivative $dS_g/dA_{CIP}$.
+          - 3: surrogate kSZ velocity reconstruction $S_v^{90}$, with $b_v=0$ (i.e. noise only).
+          - 4: derivative $dS_v^{90}/db_v$.
+          - 5: surrogate kSZ velocity reconstruction $S_v^{150}$, with $b_v=0$ (i.e. noise only).
+          - 6: derivative $dS_v^{150}/db_v$.
         
         Flags:
 
@@ -289,6 +291,7 @@ class KszPipe:
         
         Sg = (ngal/nrand) * rweights * (self.surr_bg * self.surrogate_factory.delta + eta)
         dSg_dfnl = (ngal/nrand) * rweights * (2 * self.deltac) * (self.surr_bg-1) * self.surrogate_factory.phi
+        dSg_dACIP = (ngal/nrand) * rweights * self.b_bc * self.surrogate_factory.dCIP
         Sv90_noise = vweights * self.surrogate_factory.M * self.rcat.tcmb_90
         Sv150_noise = vweights * self.surrogate_factory.M * self.rcat.tcmb_150
         Sv90_signal = (ngal/nrand) * vweights * self.rcat.bv_90 * self.surrogate_factory.vr
@@ -302,6 +305,7 @@ class KszPipe:
         if self.nzbins_gal > 0:
             Sg = utils.subtract_binned_means(Sg, zobs, self.nzbins_gal)
             dSg_dfnl = utils.subtract_binned_means(dSg_dfnl, zobs, self.nzbins_gal)
+            dSg_dACIP = utils.subtract_binned_means(dSg_dACIP, zobs, self.nzbins_gal)
 
         # Mean subtraction for the surrogate fields Sv.
         # This is intended to mitgate foregrounds.( Note that we perform the same
@@ -319,6 +323,7 @@ class KszPipe:
         fourier_space_maps = [
             core.grid_points(self.box, self.rcat_xyz_obs, Sg, kernel=self.kernel, fft=True, spin=0, compensate=True),
             core.grid_points(self.box, self.rcat_xyz_obs, dSg_dfnl, kernel=self.kernel, fft=True, spin=0, compensate=True),
+            core.grid_points(self.box, self.rcat_xyz_obs, dSg_dACIP, kernel=self.kernel, fft=True, spin=0, compensate=True),
             core.grid_points(self.box, self.rcat_xyz_obs, Sv90_noise, kernel=self.kernel, fft=True, spin=1, compensate=True),
             core.grid_points(self.box, self.rcat_xyz_obs, Sv90_signal, kernel=self.kernel, fft=True, spin=1, compensate=True),
             core.grid_points(self.box, self.rcat_xyz_obs, Sv150_noise, kernel=self.kernel, fft=True, spin=1, compensate=True),
@@ -328,8 +333,8 @@ class KszPipe:
         # Rescale window function, by a factor (ngal/nrand) in each footprint.
         wf = (ngal/nrand)**2 * self.window_function
 
-        # Expand window function from shape (3,3) to shape (6,6).
-        wf = wf[[0,0,1,1,2,2],:][:,[0,0,1,1,2,2]]
+        # Expand window function from shape (3,3) to shape (7,7).
+        wf = wf[[0,0,0,1,1,2,2],:][:,[0,0,0,1,1,2,2]]
 
         # Estimate power spectra. and normalize by dividing by window function.
         pk = core.estimate_power_spectrum(self.box, fourier_space_maps, self.kbin_edges)
@@ -340,16 +345,17 @@ class KszPipe:
 
 
     def get_pk_surrogates(self):
-        """Returns a shape (nsurr,6,6,nkins) array, and saves it in ``pipeline_outdir/pk_surrogates.npy``.
+        """Returns a shape (nsurr,7,7,nkins) array, and saves it in ``pipeline_outdir/pk_surrogates.npy``.
         
         The returned array contains auto and cross power spectra of the following fields, for all surrogates:
 
           - 0: surrogate galaxy field $S_g$ with $f_{NL}=0$.
           - 1: derivative $dS_g/df_{NL}$.
-          - 2: surrogate kSZ velocity reconstruction $S_v^{90}$, with $b_v=0$ (i.e. noise only).
-          - 3: derivative $dS_v^{90}/db_v$.
-          - 4: surrogate kSZ velocity reconstruction $S_v^{150}$, with $b_v=0$ (i.e. noise only).
-          - 5: derivative $dS_v^{150}/db_v$.
+          - 2: derivative $dS_g/dA_{CIP}$.
+          - 3: surrogate kSZ velocity reconstruction $S_v^{90}$, with $b_v=0$ (i.e. noise only).
+          - 4: derivative $dS_v^{90}/db_v$.
+          - 5: surrogate kSZ velocity reconstruction $S_v^{150}$, with $b_v=0$ (i.e. noise only).
+          - 6: derivative $dS_v^{150}/db_v$.
 
         This function only reads files from disk -- it does not run the pipeline.
         To run the pipeline, use :meth:`~kszx.KszPipe.run()`.
@@ -468,20 +474,20 @@ class KszPipeOutdir:
 
         if nsurr is None:
             pk_surr = io_utils.read_npy(f'{dirname}/pk_surrogates.npy')
-            if (pk_surr.ndim != 4) or (pk_surr.shape[1:] != (6,6,nkbins)):
-                raise RuntimeError(f'Got {pk_surr.shape=}, expected (nsurr,6,6,nkbins) where {nkbins=}')
+            if (pk_surr.ndim != 4) or (pk_surr.shape[1:] != (7,7,nkbins)):
+                raise RuntimeError(f'Got {pk_surr.shape=}, expected (nsurr,7,7,nkbins) where {nkbins=}')
 
         else:
             pk_surr = [ ]
             
             for i in range(nsurr):
                 pk_surrogate = io_utils.read_npy(f'{dirname}/tmp/pk_surr_{i}.npy')
-                if pk_surrogate.shape != (6,6,nkbins):
-                    raise RuntimeError(f'Got {pk_surrogate.shape=}, expected (6,6,nkbins) where {nkbins=}')
+                if pk_surrogate.shape != (7,7,nkbins):
+                    raise RuntimeError(f'Got {pk_surrogate.shape=}, expected (7,7,nkbins) where {nkbins=}')
                 pk_surr.append(pk_surrogate)
                 
             pk_surr = np.array(pk_surr)
-            pk_surr = np.reshape(pk_surr, (nsurr,6,6,nkbins))   # needed if nsurr==0
+            pk_surr = np.reshape(pk_surr, (nsurr,7,7,nkbins))   # needed if nsurr==0
 
         self.k = kbin_centers
         self.nkbins = nkbins
@@ -498,15 +504,15 @@ class KszPipeOutdir:
         r"""Returns shape ``(nkbins,)`` array containing $P_{gg}^{data}(k)$."""
         return self.pk_data[0,0,:]
         
-    def pgg_mean(self, fnl=0):
+    def pgg_mean(self, fnl=0, acip=0):
         r"""Returns shape ``(nkbins,)`` array, containing $\langle P_{gg}^{surr}(k) \rangle$."""
         assert self.nsurr >= 1
-        return np.mean(self._pgg_surr(fnl), axis=0)
+        return np.mean(self._pgg_surr(fnl,acip), axis=0)
 
-    def pgg_rms(self, fnl=0):
+    def pgg_rms(self, fnl=0, acip=0):
         r"""Returns shape ``(nkbins,)`` array, containing sqrt(Var($P_{gg}^{surr}(k)$))."""
         assert self.nsurr >= 2
-        return np.sqrt(np.var(self._pgg_surr(fnl), axis=0))
+        return np.sqrt(np.var(self._pgg_surr(fnl,acip), axis=0))
 
     
     def pgv_data(self, field):
@@ -522,7 +528,7 @@ class KszPipeOutdir:
         field = self._check_field(field)
         return field[0]*self.pk_data[0,1] + field[1]*self.pk_data[0,2]
         
-    def pgv_mean(self, field, fnl, bv):
+    def pgv_mean(self, field, fnl, acip, bv):
         r"""Returns shape ``(nkbins,)`` array containing $\langle P_{gv}^{surr}(k) \rangle$.
 
         The ``field`` argument is a length-2 vector, selecting a linear combination
@@ -533,9 +539,9 @@ class KszPipeOutdir:
            - ``field=[1,-1]`` for null (90-150) GHz reconstruction.
         """
         assert self.nsurr >= 1
-        return np.mean(self._pgv_surr(field,fnl,bv), axis=0)
+        return np.mean(self._pgv_surr(field,fnl,acip,bv), axis=0)
 
-    def pgv_rms(self, field, fnl, bv):
+    def pgv_rms(self, field, fnl, acip, bv):
         r"""Returns shape ``(nkbins,)`` array containing sqrt(Var($P_{gv}^{surr}(k)$)).
 
         The ``field`` argument is a length-2 vector, selecting a linear combination
@@ -546,7 +552,7 @@ class KszPipeOutdir:
            - ``field=[1,-1]`` for null (90-150) GHz reconstruction.
         """
         assert self.nsurr >= 2
-        return np.sqrt(np.var(self._pgv_surr(field,fnl,bv), axis=0))
+        return np.sqrt(np.var(self._pgv_surr(field,fnl,acip,bv), axis=0))
 
 
     def pvv_data(self, field):
@@ -597,24 +603,24 @@ class KszPipeOutdir:
             raise RuntimeError(f"Expected 'field' argument to be a 1-d array of length 2, got {field.shape=}")
         return field
     
-    def _pgg_surr(self, fnl=0):
+    def _pgg_surr(self, fnl=0, acip=0):
         """Returns shape (nsurr, nkbins) array, containing P_{gg} for each surrogate"""
-        pgg = self.pk_surr[:,:2,:2,:]             # shape (nsurr, 2, 2, nkbins)
-        pgg = pgg[:,0,:,:] + fnl * pgg[:,1,:,:]   # shape (nsurr, 2, nkbins)
-        return pgg[:,0,:] + fnl * pgg[:,1,:]      # shape (nsurr, nkbins)
+        pgg = self.pk_surr[:,:3,:3,:]             # shape (nsurr, 3, 3, nkbins)
+        pgg = pgg[:,0,:,:] + fnl * pgg[:,1,:,:] + acip * pgg[:,2,:,:]   # shape (nsurr, 3, nkbins)
+        return pgg[:,0,:] + fnl * pgg[:,1,:] + acip * pgg[:,2,:]      # shape (nsurr, nkbins)
     
-    def _pgv_surr(self, field, fnl, bv):
+    def _pgv_surr(self, field, fnl, acip, bv):
         """Returns shape (nsurr, nkbins) array, containing P_{gv} for each surrogate"""
         field = self._check_field(field)
-        pgv = self.pk_surr[:,:2,2:,:]                                # shape (nsurr, 2, 4, nkbins)
-        pgv = pgv[:,0,:,:] + fnl * pgv[:,1,:,:]                      # shape (nsurr, 4, nkbins)
-        pgv = field[0] * pgv[:,0:2,:] + field[1] * pgv[:,2:4,:]      # shape (nsurr, 2, nkbins)
-        return pgv[:,0,:] + bv * pgv[:,1,:]                          # shape (nsurr, nkbins)
+        pgv = self.pk_surr[:,:3,3:,:]                                 # shape (nsurr, 3, 4, nkbins)
+        pgv = pgv[:,0,:,:] + fnl * pgv[:,1,:,:] + acip * pgv[:,2,:,:] # shape (nsurr, 4, nkbins)
+        pgv = field[0] * pgv[:,0:2,:] + field[1] * pgv[:,2:4,:]       # shape (nsurr, 2, nkbins)
+        return pgv[:,0,:] + bv * pgv[:,1,:]                           # shape (nsurr, nkbins)
 
     def _pvv_surr(self, field, bv):
         """Returns shape (nsurr, nkbins) array, containing P_{vv} for each surrogate"""
         field = self._check_field(field)
-        pvv = self.pk_surr[:,2:,2:,:]                                  # shape (nsurr, 4, 4, nkbins)
+        pvv = self.pk_surr[:,3:,3:,:]                                  # shape (nsurr, 4, 4, nkbins)
         pvv = field[0] * pvv[:,0:2,:,:] + field[1] * pvv[:,2:4,:,:]    # shape (nsurr, 2, 4, nkbins)
         pvv = field[0] * pvv[:,:,0:2,:] + field[1] * pvv[:,:,2:4,:]    # shape (nsurr, 2, 2, nkbins)
         pvv = pvv[:,0,:,:] + bv * pvv[:,1,:,:]                         # shape (nsurr, 2, nkbins)
