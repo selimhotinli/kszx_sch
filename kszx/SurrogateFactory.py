@@ -46,6 +46,9 @@ class SurrogateFactory:
             evaluated on random catalog.
 
           - ``self.sigma2`` (scalar): variance of linear density field at $z=0$.
+
+          - ``self.dCIPfac`` (1-d array of length nrand): Correspondance between delta and Delta_CIP.
+
         """
         
         assert isinstance(box, Box)
@@ -71,6 +74,8 @@ class SurrogateFactory:
         self.D = cosmo.D(z=ztrue, z0norm=True)
         self.faH = cosmo.frsd(z=ztrue) * cosmo.H(z=ztrue) / (1+ztrue)
         self.sigma2 = self._integrate_kgrid(box, cosmo.Plin_z0(box.get_k()))
+
+        self.dCIPfac = 5./2. * cosmo.H(z=ztrue)**2. * (1+ztrue)
 
     
     def simulate_surrogate(self):
@@ -107,6 +112,8 @@ class SurrogateFactory:
         # Note that phi = delta/alpha is independent of z (in linear theory)
         phi = core.multiply_kfunc(self.box, delta, lambda k: 1.0/self.cosmo.alpha_z0(k=k), dc=0)
         phi = core.interpolate_points(self.box, phi, self.xyz_true, self.kernel, fft=True)
+
+        omm0 = (self.cosmo.params.ombh2 + self.cosmo.params.omch2) / self.cosmo.h**2
         
         # vr = (faHD/k) delta, evaluated at xyz_true.
         vr = core.multiply_kfunc(self.box, delta, lambda k: 1.0/k, dc=0)
@@ -116,6 +123,10 @@ class SurrogateFactory:
 
         delta = core.interpolate_points(self.box, delta, self.xyz_true, self.kernel, fft=True)
         delta *= self.D
+
+        # dCIP = (5H^2O_m/(2ak^2)) A delta
+        dCIP = core.multiply_kfunc(self.box, delta, lambda k: 1.0/k**2., dc=0)
+        dCIP *= self.dCIPfac
             
         # M = random vector with (nrand-ngal) 0s and (ngal) 1s.
         # (This way of generating M is a little slow, but I don't think there's a faster way to do
@@ -129,6 +140,7 @@ class SurrogateFactory:
         self.phi = phi
         self.vr = vr
         self.M = M
+        self.dCIP = dCIP
 
     
     @staticmethod
