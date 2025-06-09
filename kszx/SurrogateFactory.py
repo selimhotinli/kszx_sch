@@ -75,8 +75,8 @@ class SurrogateFactory:
         self.faH = cosmo.frsd(z=ztrue) * cosmo.H(z=ztrue) / (1+ztrue)
         self.sigma2 = self._integrate_kgrid(box, cosmo.Plin_z0(box.get_k()))
 
-        omm0 = (self.cosmo.params.ombh2 + self.cosmo.params.omch2) / self.cosmo.h**2
-        ffac = 1 + (self.cosmo.params.ombh2 / self.cosmo.params.omch2)
+        omm0 = (cosmo.params.ombh2 + cosmo.params.omch2) / cosmo.h**2
+        ffac = 1 + (cosmo.params.ombh2 / cosmo.params.omch2)
         
         self.dCIPfac = ffac * 5./2. * omm0 * cosmo.H(z=ztrue)**2. * (1+ztrue)
     
