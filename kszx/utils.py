@@ -498,11 +498,15 @@ def boxcar_sum(a, m, normalize=False):
 
 
 def subtract_binned_means(data, x, nbins):
-    """Averages a 1-d 'data' array in x-bins, and returns a copy of 'data' with binned means subtracted."""
+    """Averages a 1-d 'data' array in x-bins, and returns a copy of 'data' with binned means subtracted.
+    If nbins==0, then returns a copy of 'data'."""
 
-    assert nbins >= 1
+    assert nbins >= 0
     assert data.shape == x.shape
 
+    if nbins == 0:
+        return np.copy(data)
+        
     # Compute bin edges
     bins = np.linspace(np.min(x), np.max(x), nbins + 1)
     

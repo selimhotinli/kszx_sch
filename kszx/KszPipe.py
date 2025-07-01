@@ -299,20 +299,18 @@ class KszPipe:
         # which satisfies "integral constraints" since the random z-distribution is inferred from the
         # galaxies. (In practice, the effect seems to be small.)
         
-        if self.nzbins_gal > 0:
-            Sg = utils.subtract_binned_means(Sg, zobs, self.nzbins_gal)
-            dSg_dfnl = utils.subtract_binned_means(dSg_dfnl, zobs, self.nzbins_gal)
+        Sg = utils.subtract_binned_means(Sg, zobs, self.nzbins_gal)
+        dSg_dfnl = utils.subtract_binned_means(dSg_dfnl, zobs, self.nzbins_gal)
 
         # Mean subtraction for the surrogate fields Sv.
         # This is intended to mitgate foregrounds.( Note that we perform the same
         # mean subtraction to the vr arrays, in get_pk_data()).
         
-        if self.nzbins_vr > 0:
-            Sv90_noise = utils.subtract_binned_means(Sv90_noise, zobs, self.nzbins_vr)
-            Sv90_signal = utils.subtract_binned_means(Sv90_signal, zobs, self.nzbins_vr)
-            Sv150_noise = utils.subtract_binned_means(Sv150_noise, zobs, self.nzbins_vr)
-            Sv150_signal = utils.subtract_binned_means(Sv150_signal, zobs, self.nzbins_vr)
-
+        Sv90_noise = utils.subtract_binned_means(Sv90_noise, zobs, self.nzbins_vr)
+        Sv90_signal = utils.subtract_binned_means(Sv90_signal, zobs, self.nzbins_vr)
+        Sv150_noise = utils.subtract_binned_means(Sv150_noise, zobs, self.nzbins_vr)
+        Sv150_signal = utils.subtract_binned_means(Sv150_signal, zobs, self.nzbins_vr)
+        
         # (Coefficient arrays) -> (Fourier-space fields).
         # Note spin=1 on the vr FFTs.
         
