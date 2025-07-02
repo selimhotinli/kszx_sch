@@ -7,6 +7,8 @@ import scipy.integrate
 import scipy.interpolate
 import multiprocessing
 
+from . import cpp_kernels
+
 
 ####################################################################################################
 
@@ -41,8 +43,9 @@ def set_nthreads(nthreads, reseed_numpy_rng=False):
     global _curr_nthreads
     _curr_nthreads = nthreads
 
-    # FIXME more code needed here, to propagate new 'nthreads' to all libraries (e.g. blas).
-    # Here's a library that looks helpful: https://github.com/joblib/threadpoolctl
+    cpp_kernels.omp_set_num_threads(nthreads)
+    
+    # FIXME more code needed here, to propagate new 'nthreads' to all libraries (e.g. blas, numba).
     
     if reseed_numpy_rng:
         # I think this is the best way to reseed numpy's global RNG.

@@ -1,10 +1,14 @@
 #include "cpp_kernels.hpp"
+#include <omp.h>
 
 
 PYBIND11_MODULE(cpp_kernels, m)
 {
     // m.doc = "C++ kernels";
 
+    m.def("omp_get_max_threads", omp_get_max_threads);
+    m.def("omp_set_num_threads", omp_set_num_threads, py::arg("nthreads"));
+    
     m.def("cic_interpolate_3d", cic_interpolate_3d,
 	  py::arg("grid"), py::arg("points"),
 	  py::arg("lpos0"), py::arg("lpos1"), py::arg("lpos2"),

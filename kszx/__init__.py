@@ -40,6 +40,7 @@ from . import pixell_utils
 from . import wfunc_utils
 from . import plot
 from . import tests
+from . import timing
 
 # Datasets.
 from . import act

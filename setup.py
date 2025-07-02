@@ -11,7 +11,12 @@ cpp_source_files = [
     "cpp/kbin_average.cpp"
 ]
 
-ext_module = Pybind11Extension("kszx.cpp_kernels", cpp_source_files, extra_compile_args = ['-O3'])
+ext_module = Pybind11Extension(
+    "kszx.cpp_kernels",
+    cpp_source_files,
+    extra_compile_args = ['-O3','-fopenmp'],
+    extra_link_args = ['-fopenmp']
+)
 
 setup(
     name = 'kszx',
