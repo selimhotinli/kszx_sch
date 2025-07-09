@@ -8,12 +8,11 @@ from .Catalog import Catalog
 from .Cosmology import Cosmology
 from .KszPipe import KszPipeOutdir
 
-
 class PgvLikelihood:
     def __init__(self, data, surrs, bias_matrix, jeffreys_prior=False):
         r"""Likelihood function for one or more kSZ power spectra of the form $P_{gv}(k)$.
 
-        This class can be used to fit $(f_{NL}, b_v)$ values or run MCMCs.
+        This class can be used to fit $(f_{NL}, A_{CIP}, b_v)$ values or run MCMCs.                                    >>>> SCH
         Currently limited to using $P_{gv}(k)$ only -- it would be interesting to
         extend the analysis to include $P_{gg}(k)$ and/or $P_{vv}(k)$.
         
@@ -48,8 +47,9 @@ class PgvLikelihood:
 
           - ``data``: $P_{gv}(k)$ "data" bandpowers, an array of shape ``(V,K)``.
         
-          - ``surrs``: $P_{gv}(k)$ surrogate bandpowers, an array of shape ``(S,2,2,V,K)``.
+          - ``surrs``: $P_{gv}(k)$ surrogate bandpowers, an array of shape ``(S,2,2,2,V,K)``.                             >>>> SCH
             The first length-2 index is an fnl exponent in {0,1}.
+            The second length-2 index is an acip exponent in {0,1}.                                                       >>>> SCH
             The second length-2 index is a bv exponent in {0,1}.
 
           - ``bias_matrix``: array of shape $(B,V)$, where $B \le V$. This gives the
@@ -71,13 +71,13 @@ class PgvLikelihood:
         
         if data.ndim != 2:
             raise RuntimeError(f'got {data.shape=}, expected (V,K)')
-        if (surrs.ndim != 5) or (surrs.shape[1:3] != (2,2)):
-            raise RuntimeError(f'got {surrs.shape=}, expected (S,2,2,V,K)')
+        if (surrs.ndim != 5) or (surrs.shape[1:3] != (3,2)): # >>>> SCH
+            raise RuntimeError(f'got {surrs.shape=}, expected (S,3,2,V,K)') # >>>> SCH
         if bias_matrix.ndim != 2:
             raise RuntimeError(f'got {bias_matrix.shape=}, expected (B,V)')
 
         if data.shape != surrs.shape[3:]:
-            raise RuntimeError(f'data/surrs have inconsistent shapes (expected (V,K) and (S,2,2,V,K), got {data.shape} and {surr.shape})')
+            raise RuntimeError(f'data/surrs have inconsistent shapes (expected (V,K) and (S,3,2,V,K), got {data.shape} and {surrs.shape})') # >>>> SCH
         if data.shape[0] != bias_matrix.shape[1]:
             raise RuntimeError(f'data/bias_matrix have inconsistent shapes (expected (V,K) and (B,V), got {data.shape} and {bias_matrix.shape})')
         if bias_matrix.shape[0] > bias_matrix.shape[1]:
@@ -147,16 +147,20 @@ class PgvLikelihood:
         pgv_data = [ (f[0]*pgv_data[0,:] +f[1]*pgv_data[1,:]) for f in fields ]  # shape (V,K)
 
         # PgvLikelihood constructor expects surrogate array of shape (S,2,2,V,K).
-        pgv_surr = pout.pk_surr[:,0:2,2:6,:K]           # shape (S,2,4,K)
-        pgv_surr = np.reshape(pgv_surr, (S,2,2,2,K))    # shape (S,2,2,2,K), length-2 indices are (fnl_exponent, freq, bv_exponent)
-        pgv_surr = [ (f[0]*pgv_surr[:,:,0,:,:] + f[1]*pgv_surr[:,:,1,:,:]) for f in fields ]  # shape (V,S,2,2,K)
-        pgv_surr = np.transpose(pgv_surr, (1,2,3,0,4))  # shape (S,2,2,V,K)
+        print('pout.pk_surr.shape',pout.pk_surr.shape)
+        pgv_surr = pout.pk_surr[:,0:3,3:7,:K]           # shape (S,3,4,K)
+        print('1 pgv_surr.shape',pgv_surr.shape)
+        pgv_surr = np.reshape(pgv_surr, (S,3,2,2,K))    # shape (S,3,2,2,K), length-2 indices are (fnl_exponent, freq, bv_exponent)
+        print('2 pgv_surr.shape',pgv_surr.shape)
+        pgv_surr = [ (f[0]*pgv_surr[:,:,0,:,:] + f[1]*pgv_surr[:,:,1,:,:]) for f in fields ]  # shape (V,S,3,2,K)
+        pgv_surr = np.transpose(pgv_surr, (1,2,3,0,4))  # shape (S,3,2,V,K)
+        print('3 pgv_surr.shape',pgv_surr.shape)
 
         bias_matrix = np.identity(V) if multi_bias else np.ones((1,V))
         return PgvLikelihood(pgv_data, pgv_surr, bias_matrix, jeffreys_prior)
 
     
-    def specialize_surrogates(self, fnl, bv, flatten):
+    def specialize_surrogates(self, fnl, acip, bv, flatten):
         r"""Returns a shape ``(S,V,K)`` array, by "specializing" surrogates to specified $(f_{NL}, A_{CIP}, b_v)$.
         
         The ``bv`` arugment should be an array of shape ``(B,)`` where $B$ is the number
@@ -175,6 +179,9 @@ class PgvLikelihood:
 
         # Apply fnl, obtaining shape (S,3,V,K)
         s = self.surrs[:,0,:,:,:] + fnl * self.surrs[:,1,:,:,:] + acip * self.surrs[:,2,:,:,:]
+        
+        # print('s.shape',s.shape)
+        # print('s',s)
 
         # Apply bv, obtaining shape (S,V,K)
         s = s[:,0,:,:] + b * s[:,1,:,:]
@@ -198,6 +205,10 @@ class PgvLikelihood:
         s = self.specialize_surrogates(fnl, acip, bv, flatten=True)  # shape (S,D)
         mean = np.mean(s, axis=0)       # shape (D,)
         cov = np.cov(s, rowvar=False)   # shape (D, D)
+        
+        # print('mean',mean)
+        # print('cov',cov)
+        
         return mean, cov
 
     
@@ -227,24 +238,35 @@ class PgvLikelihood:
 
         # Parameter vectors of shape (B+2,)
         x0 = np.concatenate(((fnl,),(acip,), bv))
-        dx = np.concatenate(((50,),(50,), np.full(B,0.1)))
+        
+        print('x0',x0)
+        
+        dx = np.concatenate(((50,), (50,), np.full(B,0.1)))
+        
+        print('dx',dx)
+        
+        print('D',D)
+        print('B',B)
         
         mu_p = np.zeros((B+2, D))
         mu_n = np.zeros((B+2, D))
         cov_p = np.zeros((B+2, D, D))
         cov_n = np.zeros((B+2, D, D))
 
-        for i in range(B+1):
+        for i in range(B+2):
             xp = np.copy(x0)
             xn = np.copy(x0)
             xp[i] += dx[i]
             xn[i] -= dx[i]
 
-            mu_p[i,:], cov_p[i,:,:] = self.slow_mean_and_cov(xp[0], xp[1:])
-            mu_n[i,:], cov_n[i,:,:] = self.slow_mean_and_cov(xn[0], xn[1:])
+            mu_p[i,:], cov_p[i,:,:] = self.slow_mean_and_cov(xp[0], xp[1], xp[2:])
+            mu_n[i,:], cov_n[i,:,:] = self.slow_mean_and_cov(xn[0], xp[1], xn[2:])
    
         grad_mu = (mu_p - mu_n) / (2 * dx.reshape((B+2,1)))
         grad_cov = (cov_p - cov_n) / (2 * dx.reshape((B+2,1,1)))
+        
+        # print('grad_mu',grad_mu)
+        # print('grad_cov',grad_cov)
  
         return grad_mu, grad_cov
         
@@ -346,7 +368,7 @@ class PgvLikelihood:
         print(f'\nSNR: {self.compute_snr():.03f}')
 
 
-    def analyze_chi2(self, fnl, bv, ddof=None):
+    def analyze_chi2(self, fnl, acip, bv, ddof=None):
         r"""Computes a $\chi^2$ statistic, which compares $P_{gv}^{data}(k)$ to model with given $(f_{NL}, A_{CIP}, b_v)$.
 
         Returns ($\chi^2$, $N_{dof}$, $p$-value).
@@ -365,8 +387,9 @@ class PgvLikelihood:
         mean, cov = self.slow_mean_and_cov(fnl, acip, bv)
 
         if ddof is None:
-            ddof = 1 if (fnl != 0) else 0
-            ddof += 1 if (acip != 0)
+            ddof1 = 1 if (fnl != 0)  else 0
+            ddof2 = 1 if (acip != 0) else 0
+            ddof = ddof1 + ddof2
             ddof += np.count_nonzero(bv)
         
         x = self.data_vector - mean
@@ -383,7 +406,7 @@ class PgvLikelihood:
         Note that $b_v$ is represented as a 1-d array with shape ``(B,)``, even if $B=1$.
         """
 
-        x0 = np.zeros(self.B+1)
+        x0 = np.zeros(self.B+2)
         x0[0] = fnl0
         x0[1] = acip0
         x0[2:] = bv0
@@ -417,14 +440,21 @@ class PgvLikelihood:
         # This implementation works even if there are multiple bias params (B > 1).
         B, D = self.B, self.D
         
-        _, cov = self.slow_mean_and_cov(0, np.zeros(self.B))                # discard mean
-        grad_mu, _ = self.slow_mean_and_cov_gradients(0, np.zeros(self.B))  # discard grad_cov
-        m = grad_mu[1:,:]           # shape (B,D)       
+        _, cov = self.slow_mean_and_cov(0, 0, np.zeros(self.B))                # discard mean
+        grad_mu, _ = self.slow_mean_and_cov_gradients(0, 0, np.zeros(self.B))  # discard grad_cov
+        
+        # print('grad_mu.shape',grad_mu.shape)
+        # print('cov.shape',cov.shape)
+        
+        m = grad_mu[2:,:]           # shape (B,D)       
         d = self.data_vector        # shape (D,)
 
         cinv_m = np.linalg.solve(cov, m.T)  # shape (D,B)
         h = np.dot(m, cinv_m)               # shape (B,B)
         g = np.dot(d, cinv_m)
+        
+        # print('h',h)
+        # print('g',g)
 
         dchisq = np.dot(g, np.linalg.solve(h, g))
         return np.sqrt(dchisq)
@@ -455,90 +485,119 @@ class PgvLikelihood:
     def _init_fast_likelihood(self):
         S, V, K, D = self.S, self.V, self.K, self.D
         
-        # xmu = shape (2,2,V,K), reshaped to (2,2*D).
-        # Length-2 axes are fnl exponent and bv exponent.
+        # xmu = shape (3,2,V,K), reshaped to (3,2*D).
+        # Length-3x2 axes are fnl exponent, acip exponent, and bv exponent.
         
-        t = np.mean(self.surrs, axis=0)      # shape (2,2,D)
-        self.xmu = np.reshape(t, (2,2*D))
+        t = np.mean(self.surrs, axis=0)      # shape (3,2,D)
+        # print('t.shape',t.shape)
+        # print('D',D)
+        self.xmu = np.reshape(t, (3,2*D))
+        # print('self.xmu.shape',self.xmu.shape)
         
         # xcov = shape (3,2,V,K,2,V,K), reshaped to (3,4*D*D)
         # Length-3 axis is fnl exponent {0,1,2}, and length-2 axes are bv exponents {0,1}.
-
-        t = np.reshape(self.surrs, (S,4*D))      # shape (S, 4D)
-        t = np.cov(t, rowvar=False)              # shape (4D,4D)
-        t = np.reshape(t, (2,2*D,2,2*D))         # shape (2,2D,2,2D) where length-2 axes are fnl exponents
-        t = np.array([ t[0,:,0,:], t[0,:,1,:]+t[1,:,0,:], t[1,:,1,:] ])   # shape (3,2D,2D)
-        t = np.reshape(t, (3,4*D*D))         # shape (3,4D^2)
+        
+        # print('self.surrs.shape',self.surrs.shape)
+        t = np.reshape(self.surrs, (S,6*D))      # shape (S, 6D)
+        # print('1 t.shape',t.shape)
+        t = np.cov(t, rowvar=False)              # shape (6D,6D)
+        # print('2 t.shape',t.shape)
+        t = np.reshape(t, (3,2*D,3,2*D))         # shape (3,2D,3,2D) where length-2 axes are fnl exponents
+        # print('3 t.shape',t.shape)
+        t = np.array([ t[0,:,0,:], t[0,:,1,:]+t[1,:,0,:], t[0,:,2,:]+t[2,:,0,:], t[1,:,1,:], t[2,:,2,:] ])   # shape (5,2D,2D)
+        # print('4 t.shape',t.shape)
+        t = np.reshape(t, (5,4*D*D))         # shape (3,4D^2)
+        # print('5 t.shape',t.shape)
         self.xcov = np.copy(t)               # make contiguous
 
 
-    def fast_mean_and_cov(self, fnl, bv, grad=False):
+    def fast_mean_and_cov(self, fnl, acip, bv, grad=False):
         r"""Equivalent to :meth:`~kszx.PgvLikelihood.slow_mean_and_cov()`, but faster. Intended for use in MCMC.
         
         Note that bv must be a 1-d array of length B, i.e. scalar is not allowed."""
         
         B, D, V, K = self.B, self.D, self.V, self.K
-        f3 = np.array((1.0, fnl, fnl**2))
+        
+        f5 = np.array((1.0, fnl, acip, fnl**2, acip**2))
+        # a3 = np.array((1.0, acip, acip**2))
 
         bv = np.dot(bv, self.bias_matrix)  # shape (V,)
         bv20 = np.reshape(bv, (V,1))
         bv42 = np.reshape(bv, (1,1,V,1))
         bv50 = np.reshape(bv, (V,1,1,1,1))
 
-        # Reminder: xmu = shape (2,2,V,K), reshaped to (2,2*D).
-        mu0 = np.dot(f3[:2], self.xmu)       # shape (2*D)
+        # print('self.xmu.shape',self.xmu.shape)
+        # print('self.xcov.shape',self.xcov.shape)
+        
+        # Reminder: xmu = shape (3,2,V,K), reshaped to (2,2*D).
+        mu0 = np.dot(f5[:3], self.xmu)       # shape (2*D)
         mu0 = np.reshape(mu0, (2,V,K))       # shape (2,V,K)
         mu = mu0[0,:,:] + bv20 * mu0[1,:,:]  # shape (V,K)
         mu = np.reshape(mu, (D,))
 
-        # Reminder: xcov = shape (3,2,V,K,2,V,K), reshaped to (3,4*D*D)
-        cov0 = np.dot(f3, self.xcov)                         # shape (4*D*D)
+        # Reminder: xcov = shape (5,2,V,K,2,V,K), reshaped to (5,4*D*D)
+        cov0 = np.dot(f5, self.xcov)                         # shape (4*D*D)
         cov0 = np.reshape(cov0, (2,V,K,2,V,K))               # shape (2,V,K,2,V,K)
         cov1 = cov0[0,:,:,:,:,:] + bv50 * cov0[1,:,:,:,:,:]  # shape (V,K,2,V,K)
         cov = cov1[:,:,0,:,:] + bv42 * cov1[:,:,1,:,:]       # shape (V,K,V,K)
         cov = np.reshape(cov, (D,D))
+        
+        # print('cov.shape',cov.shape)
 
         if not grad:
             return mu, cov
 
         dmu_dfnl = np.reshape(self.xmu[1,:], (2,V,K))        # shape (2,V,K)
         dmu_dfnl = dmu_dfnl[0,:,:] + bv20 * dmu_dfnl[1,:,:]  # shape (V,K)
+        
+        dmu_dacip = np.reshape(self.xmu[2,:], (2,V,K))        # shape (2,V,K)
+        dmu_dacip = dmu_dacip[0,:,:] + bv20 * dmu_dacip[1,:,:]  # shape (V,K)
+
         dmu_dbv = mu0[1,:,:]                                 # shape (V,K)
 
         f2 = np.array((1.0, 2*fnl))
-        dcov_dfnl = np.dot(f2, self.xcov[1:])                               # shape (4*D*D)
-        dcov_dfnl = np.reshape(dcov_dfnl, (2,V,K,2,V,K))                    # shape (2,V,K,2,V,K)
-        dcov_dfnl = dcov_dfnl[0,:,:,:,:,:] + bv50 * dcov_dfnl[1,:,:,:,:,:]  # shape (V,K,2,V,K)
-        dcov_dfnl = dcov_dfnl[:,:,0,:,:] + bv42 * dcov_dfnl[:,:,1,:,:]      # shape (V,K,V,K)
+        dcov_dfnl = np.dot(f2, self.xcov[1:3])                               # shape (4*D*D)
+        dcov_dfnl = np.reshape(dcov_dfnl, (2,V,K,2,V,K))                     # shape (2,V,K,2,V,K)
+        dcov_dfnl = dcov_dfnl[0,:,:,:,:,:] + bv50 * dcov_dfnl[1,:,:,:,:,:]   # shape (V,K,2,V,K)
+        dcov_dfnl = dcov_dfnl[:,:,0,:,:] + bv42 * dcov_dfnl[:,:,1,:,:]       # shape (V,K,V,K)
+        
+        f2 = np.array((1.0, 2*acip))
+        dcov_dacip = np.dot(f2, self.xcov[3:5])                                # shape (4*D*D)
+        dcov_dacip = np.reshape(dcov_dacip, (2,V,K,2,V,K))                     # shape (2,V,K,2,V,K)
+        dcov_dacip = dcov_dacip[0,:,:,:,:,:] + bv50 * dcov_dacip[1,:,:,:,:,:]  # shape (V,K,2,V,K)
+        dcov_dacip = dcov_dacip[:,:,0,:,:] + bv42 * dcov_dacip[:,:,1,:,:]      # shape (V,K,V,K)
+
         dcov_dbv0 = cov0[1,:,:,:,:,:]                                       # shape (V,K,2,V,K)
         dcov_dbv0 = dcov_dbv0[:,:,0,:,:] + bv42 * dcov_dbv0[:,:,1,:,:]      # shape (V,K,V,K)
         dcov_dbv1 = cov1[:,:,1,:,:]                                         # shape (V,K,V,K)
         
-        mu_grad = np.zeros((B+1,V,K))     
+        mu_grad = np.zeros((B+2,V,K))     
         mu_grad[0,:,:] = dmu_dfnl
-        mu_grad[1:,:,:] = self.bias_matrix.reshape((B,V,1)) * dmu_dbv.reshape((1,V,K))
-        mu_grad = np.reshape(mu_grad, (B+1,D))
+        mu_grad[1,:,:] = dmu_dacip
+        mu_grad[2:,:,:] = self.bias_matrix.reshape((B,V,1)) * dmu_dbv.reshape((1,V,K))
+        mu_grad = np.reshape(mu_grad, (B+2,D))
         
-        cov_grad = np.zeros((B+1,V,K,V,K))
+        cov_grad = np.zeros((B+2,V,K,V,K))
         cov_grad[0,:,:,:,:] = dcov_dfnl
-        cov_grad[1:,:,:,:,:] = self.bias_matrix.reshape((B,V,1,1,1)) * dcov_dbv0.reshape((1,V,K,V,K))
-        cov_grad[1:,:,:,:,:] += self.bias_matrix.reshape((B,1,1,V,1)) * dcov_dbv1.reshape((1,V,K,V,K))
-        cov_grad = np.reshape(cov_grad, (B+1,D,D))
+        cov_grad[1,:,:,:,:] = dcov_dacip
+        cov_grad[2:,:,:,:,:] = self.bias_matrix.reshape((B,V,1,1,1)) * dcov_dbv0.reshape((1,V,K,V,K))
+        cov_grad[2:,:,:,:,:] += self.bias_matrix.reshape((B,1,1,V,1)) * dcov_dbv1.reshape((1,V,K,V,K))
+        cov_grad = np.reshape(cov_grad, (B+2,D,D))
         
         return mu, cov, mu_grad, cov_grad
 
 
-    def fast_log_likelihood(self, fnl, bv):
+    def fast_log_likelihood(self, fnl, acip, bv):
         r"""Equivalent to :meth:`~kszx.PgvLikelihood.slow_log_likelihood()`, but faster. Intended for use in MCMC.
         
         Note that ``bv`` must be a 1-d array of length B, i.e. scalar is not allowed."""
         
         if self.jeffreys_prior:
             # Need gradients
-            mean, cov, grad_mean, grad_cov = self.fast_mean_and_cov(fnl, bv, grad=True)
+            mean, cov, grad_mean, grad_cov = self.fast_mean_and_cov(fnl, acip, bv, grad=True)
         else:
             # No gradients needed
-            mean, cov = self.fast_mean_and_cov(fnl, bv, grad=False)
+            mean, cov = self.fast_mean_and_cov(fnl, acip, bv, grad=False)
         
         x = self.data_vector - mean
         l = np.linalg.cholesky(cov)
@@ -557,11 +616,11 @@ class PgvLikelihood:
             # F_{ij} = (1/2) Tr(C^{-1} dC_i C^{-1} dC_j)
             #        = (1/2) Tr(S_i S_j)  where S_i = L^{-1} dC_i L^{-T}
             
-            t = grad_cov.reshape(((B+1)*D, D))
+            t = grad_cov.reshape(((B+2)*D, D))
             u = scipy.linalg.solve_triangular(l, t.T, lower=True)  # shape (D, (B+1)*D)
-            u = u.reshape((D*(B+1), D))
+            u = u.reshape((D*(B+2), D))
             v = scipy.linalg.solve_triangular(l, u.T, lower=True)  # shape (D,D*(B+1))
-            v = v.reshape((D*D, B+1))
+            v = v.reshape((D*D, B+2))
             f += 0.5 * np.dot(v.T, v)
 
             # Jeffreys prior is equivalent to including sqrt(det(F)) in the likelihood.
@@ -580,11 +639,12 @@ class PgvLikelihood:
 
         for _ in range(10):
             fnl = np.random.uniform(-50, 50)
+            acip = np.random.uniform(-50,50)
             bv = np.random.uniform(0, 1, size=(self.B,))
             
-            slow_mean, slow_cov = self.slow_mean_and_cov(fnl, bv)
-            slow_mean_grad, slow_cov_grad = self.slow_mean_and_cov_gradients(fnl, bv)
-            fast_mean, fast_cov, fast_mean_grad, fast_cov_grad = self.fast_mean_and_cov(fnl, bv, grad=True)
+            slow_mean, slow_cov = self.slow_mean_and_cov(fnl, acip, bv)
+            slow_mean_grad, slow_cov_grad = self.slow_mean_and_cov_gradients(fnl, acip, bv)
+            fast_mean, fast_cov, fast_mean_grad, fast_cov_grad = self.fast_mean_and_cov(fnl, acip, bv, grad=True)
 
             assert np.all(np.abs(slow_mean - fast_mean) < 1.0e-10)
             assert np.all(np.abs(slow_cov - fast_cov) < 1.0e-10)
@@ -597,9 +657,10 @@ class PgvLikelihood:
         
         for _ in range(10):
             fnl = np.random.uniform(-50, 50)
+            acip = np.random.uniform(-50, 50)
             bv = np.random.uniform(0, 1, size=(self.B,))
-            logL_slow = self.slow_log_likelihood(fnl, bv)
-            logL_fast = self.fast_log_likelihood(fnl, bv)
+            logL_slow = self.slow_log_likelihood(fnl, acip, bv)
+            logL_fast = self.fast_log_likelihood(fnl, acip, bv)
             assert np.abs(logL_slow - logL_fast) < 1.0e-10
         
     

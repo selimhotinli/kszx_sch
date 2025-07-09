@@ -90,7 +90,7 @@ class KszPipe:
         self.box = io_utils.read_pickle(f'{input_dir}/bounding_box.pkl')
         self.kernel = 'cubic'   # hardcoded for now
         self.deltac = 1.68      # hardcoded for now
-        self.b_bc = -0.34067    # hardcoded for now b_bc(z)=-(0.16 + 0.2z + 0.083z^2) arXiv:1908.08953
+        # self.b_bc = -0.34067    # hardcoded for now b_bc(z)=-(0.16 + 0.2z + 0.083z^2) arXiv:1908.08953
 
         self.pk_data_filename = f'{output_dir}/pk_data.npy'
         self.pk_surr_filename = f'{output_dir}/pk_surrogates.npy'
@@ -291,7 +291,7 @@ class KszPipe:
         
         Sg = (ngal/nrand) * rweights * (self.surr_bg * self.surrogate_factory.delta + eta)
         dSg_dfnl = (ngal/nrand) * rweights * (2 * self.deltac) * (self.surr_bg-1) * self.surrogate_factory.phi
-        dSg_dACIP = (ngal/nrand) * rweights * self.b_bc * self.surrogate_factory.dCIP
+        dSg_dACIP = (ngal/nrand) * rweights * self.surrogate_factory.dCIP
         Sv90_noise = vweights * self.surrogate_factory.M * self.rcat.tcmb_90
         Sv150_noise = vweights * self.surrogate_factory.M * self.rcat.tcmb_150
         Sv90_signal = (ngal/nrand) * vweights * self.rcat.bv_90 * self.surrogate_factory.vr

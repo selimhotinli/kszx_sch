@@ -77,8 +77,9 @@ class SurrogateFactory:
 
         omm0 = (cosmo.params.ombh2 + cosmo.params.omch2) / cosmo.h**2
         ffac = 1 + (cosmo.params.ombh2 / cosmo.params.omch2)
+        b_bc = -(0.16 + 0.2 * ztrue + 0.083 * ztrue**2.)
         
-        self.dCIPfac = ffac * 5./2. * omm0 * cosmo.H(z=ztrue)**2. * (1+ztrue)
+        self.dCIPfac = b_bc * ffac * 5./2. * omm0 * cosmo.H(z=ztrue)**2. * (1+ztrue)
     
     def simulate_surrogate(self):
         r"""Simulates linear density/velocity fields on the random catalog.
@@ -120,13 +121,15 @@ class SurrogateFactory:
         vr = core.interpolate_points(self.box, vr, self.xyz_true, self.kernel, fft=True, spin=1)
         vr *= self.faH
         vr *= self.D
+        
+        # dCIP = (5H^2O_m/(2ak^2)) A delta
+        dCIP = core.multiply_kfunc(self.box, delta, lambda k: 1.0/k**2., dc=0)
+        dCIP = core.interpolate_points(self.box, dCIP, self.xyz_true, self.kernel, fft=True, spin=0)
+        dCIP *= self.dCIPfac
+        dCIP *= self.D
 
         delta = core.interpolate_points(self.box, delta, self.xyz_true, self.kernel, fft=True)
         delta *= self.D
-
-        # dCIP = (5H^2O_m/(2ak^2)) A delta
-        dCIP = core.multiply_kfunc(self.box, delta, lambda k: 1.0/k**2., dc=0)
-        dCIP *= self.dCIPfac
             
         # M = random vector with (nrand-ngal) 0s and (ngal) 1s.
         # (This way of generating M is a little slow, but I don't think there's a faster way to do
