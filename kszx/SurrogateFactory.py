@@ -6,7 +6,7 @@ from .Box import Box
 from .Catalog import Catalog
 from .Cosmology import Cosmology
 
-
+# >>>>> SCH edits.
 class SurrogateFactory:
     def __init__(self, box, cosmo, randcat, ngal_mean, ngal_rms, ztrue_col='z', kernel='cubic'):
         r"""Helper class for simulating surrogate fields defined on a random catalog.
@@ -71,6 +71,7 @@ class SurrogateFactory:
         self.D = cosmo.D(z=ztrue, z0norm=True)
         self.faH = cosmo.frsd(z=ztrue) * cosmo.H(z=ztrue) / (1+ztrue)
         self.sigma2 = self._integrate_kgrid(box, cosmo.Plin_z0(box.get_k()))
+        self.f = cosmo.frsd(z=ztrue)
 
     
     def simulate_surrogate(self):
@@ -107,16 +108,27 @@ class SurrogateFactory:
         # Note that phi = delta/alpha is independent of z (in linear theory)
         phi = core.multiply_kfunc(self.box, delta, lambda k: 1.0/self.cosmo.alpha_z0(k=k), dc=0)
         phi = core.interpolate_points(self.box, phi, self.xyz_true, self.kernel, fft=True)
+
+        # <<<SCH: The RSD correction to be added here. First attempt: Simple Kaiser term. 
+        # <<<SCH: I note this is likely is quite a hacky way of getting
+        # rsd = core.multiply_kfunc(self.box, delta, lambda k: self.f/k**2, dc=0)
+        rsd = core.fft_c2r(self.box, delta, spin=1) # I believe gives \mu * delta
+        rsd = core.fft_r2c(self.box, rsd,   spin=1) # I believe gives \mu * \mu * delta
         
         # vr = (faHD/k) delta, evaluated at xyz_true.
         vr = core.multiply_kfunc(self.box, delta, lambda k: 1.0/k, dc=0)
         vr = core.interpolate_points(self.box, vr, self.xyz_true, self.kernel, fft=True, spin=1)
         vr *= self.faH
         vr *= self.D
-
+        
+        #<<<SCH: NOTE: rsd term is = \mu^2 f delta. 
+        rsd = core.interpolate_points(self.box, rsd, self.xyz_true, self.kernel, fft=True)
+        rsd *= self.f
+        rsd *= self.D
+        
         delta = core.interpolate_points(self.box, delta, self.xyz_true, self.kernel, fft=True)
         delta *= self.D
-            
+                    
         # M = random vector with (nrand-ngal) 0s and (ngal) 1s.
         # (This way of generating M is a little slow, but I don't think there's a faster way to do
         # it in numpy, and it's not currently a bottleneck.)
@@ -129,6 +141,7 @@ class SurrogateFactory:
         self.phi = phi
         self.vr = vr
         self.M = M
+        self.rsd = rsd
 
     
     @staticmethod

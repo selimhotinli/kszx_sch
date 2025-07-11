@@ -287,7 +287,8 @@ class KszPipe:
         # For more info, see the overleaf, or the sphinx docs:
         #  https://kszx.readthedocs.io/en/latest/kszpipe.html#kszpipe-details
         
-        Sg = (ngal/nrand) * rweights * (self.surr_bg * self.surrogate_factory.delta + eta)
+        # >> SCH: added self.surrogate_factory.rsd
+        Sg = (ngal/nrand) * rweights * (self.surr_bg * self.surrogate_factory.delta + self.surrogate_factory.rsd + eta)
         dSg_dfnl = (ngal/nrand) * rweights * (2 * self.deltac) * (self.surr_bg-1) * self.surrogate_factory.phi
         Sv90_noise = vweights * self.surrogate_factory.M * self.rcat.tcmb_90
         Sv150_noise = vweights * self.surrogate_factory.M * self.rcat.tcmb_150
